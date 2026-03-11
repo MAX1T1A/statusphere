@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 
-from app.renderer.tui.widgets import format_cpu, format_memory
+from app.renderer.tui.widgets import format_cpu, format_memory, format_window
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
@@ -59,7 +59,7 @@ class TUI:
         table.add_column("Memory", justify="right", ratio=2)
         table.add_column("Load 1m", justify="right", ratio=1)
         table.add_column("Workspace", style="magenta", ratio=1)
-        table.add_column("Window", style="dim", ratio=4, overflow="ellipsis")
+        table.add_column("App", ratio=4, overflow="ellipsis")
 
         if not self._devices:
             table.add_row("[dim]waiting for devices…[/dim]", "", "", "", "", "")
@@ -71,7 +71,7 @@ class TUI:
                     format_memory(snap.get("memory_used_mb"), snap.get("memory_total_mb")),
                     f"{snap['load_avg_1m']:.2f}" if snap.get("load_avg_1m") is not None else "—",
                     snap.get("active_workspace") or "—",
-                    snap.get("active_window") or "—",
+                    format_window(snap.get("active_app"), snap.get("active_window")),
                 )
 
         panel = Panel(
