@@ -14,7 +14,7 @@ class SystemCollector:
 
         match self.context.os_family:
             case "linux":
-                # LinuxCollector().collect(snapshot)
+                LinuxCollector().collect(snapshot)
 
                 match self.context.de_wm:
                     case "hyprland":
