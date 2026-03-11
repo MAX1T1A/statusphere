@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import ssl
 from collections.abc import Awaitable, Callable
 
 import websockets

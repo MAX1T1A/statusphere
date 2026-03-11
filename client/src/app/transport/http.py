@@ -15,7 +15,7 @@ class HTTPTransport(Transport):
         self._client: httpx.AsyncClient | None = None
 
     async def start(self) -> None:
-        self._client = httpx.AsyncClient(verify=False)
+        self._client = httpx.AsyncClient()
 
     async def stop(self) -> None:
         if self._client:
