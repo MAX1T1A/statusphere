@@ -1,6 +1,6 @@
 import asyncio
-import signal
 
+from app.renderer import FeedRenderer
 from app.transport import Transport
 from app.transport.http import HTTPTransport
 from app.watcher import SystemWatcher
@@ -8,27 +8,19 @@ from app.watcher import SystemWatcher
 
 async def main() -> None:
     transport: Transport = HTTPTransport(
-        server_url="http://localhost:8000",
+        server_url="https://max1t1a-statusphere-znycvf-8e6cc4-193-181-208-72.traefik.me",
         token="my-room-token",
     )
     watcher = SystemWatcher(on_change=transport.send)
 
-    await transport.start()
-    await watcher.start()
+    async def on_ready():
+        await transport.start()
+        await watcher.start()
+        asyncio.create_task(transport.listen(renderer.update))
 
-    stop_event = asyncio.Event()
-    loop = asyncio.get_event_loop()
-    loop.add_signal_handler(signal.SIGINT, stop_event.set)
-    loop.add_signal_handler(signal.SIGTERM, stop_event.set)
+    renderer = FeedRenderer(on_ready=on_ready)
+    await renderer.run()
 
-    async def on_event(data: dict) -> None:
-        print("📡 получили снапшот:", data)
-
-    listen_task = asyncio.create_task(transport.listen(on_event))
-
-    await stop_event.wait()
-
-    listen_task.cancel()
     await watcher.stop()
     await transport.stop()
 
