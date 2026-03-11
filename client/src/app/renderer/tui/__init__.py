@@ -58,7 +58,7 @@ class TUI:
         table.add_column("CPU", justify="right", ratio=1)
         table.add_column("Memory", justify="right", ratio=2)
         table.add_column("Load 1m", justify="right", ratio=1)
-        table.add_column("Workspace", style="magenta", ratio=1)
+        table.add_column("Workspace", justify="right", ratio=1)
         table.add_column("App", ratio=4, overflow="ellipsis")
 
         if not self._devices:
