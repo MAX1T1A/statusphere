@@ -1,0 +1,26 @@
+[project]
+name = "statusphere-server"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "MAX1T1A", email = "max1t1aldan@gmail.com"}
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.uv]
+package = false
