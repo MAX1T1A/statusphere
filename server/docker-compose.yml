@@ -1,0 +1,9 @@
+services:
+  statusphere-server:
+    build: .
+    container_name: statusphere-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      LOGGING_LEVEL: "20"
