@@ -2,17 +2,15 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
-const maxDeviceLen = 16
-
 func ColDevice() Column {
 	return Column{
 		Header: "Device",
 		Format: func(d map[string]any) string {
 			if name, ok := d["device_name"].(string); ok && name != "" {
-				return truncate(name, maxDeviceLen)
+				return name
 			}
 			if v, ok := d["device_id"].(string); ok {
-				return truncate(v, maxDeviceLen)
+				return v
 			}
 			return "—"
 		},

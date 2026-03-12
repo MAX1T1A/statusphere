@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os/exec"
 
+	"statusphere-client/internal/collector/linux/hyprland/utils"
 	"statusphere-client/internal/models"
 )
 
@@ -27,7 +28,7 @@ func ActiveWindow() func(models.Snapshot) {
 			snap["active_window"] = v
 		}
 		if v, ok := data["class"].(string); ok {
-			snap["active_app"] = v
+			snap["active_app"] = utils.CleanAppName(v)
 		}
 	}
 }
