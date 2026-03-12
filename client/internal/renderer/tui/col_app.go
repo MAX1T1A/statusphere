@@ -20,6 +20,10 @@ func ColApp() Column {
 			app, _ := d["active_app"].(string)
 			win, _ := d["active_window"].(string)
 
+			if app != "" {
+				app = CleanAppName(app)
+			}
+
 			if app == "" && win == "" {
 				return "—"
 			}
