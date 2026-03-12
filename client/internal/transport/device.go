@@ -1,11 +1,12 @@
 package transport
 
 import (
-	"net"
 	"os"
 
-	"crypto/sha256"
+	"crypto/rand"
 	"encoding/hex"
+	"path/filepath"
+	"strings"
 )
 
 func ID() string {
@@ -13,17 +14,27 @@ func ID() string {
 		return v
 	}
 
-	ifaces, err := net.Interfaces()
+	configDir, err := os.UserConfigDir()
 	if err != nil {
-		return "unknown"
+		return generateID()
 	}
 
-	for _, iface := range ifaces {
-		if len(iface.HardwareAddr) > 0 {
-			h := sha256.Sum256(iface.HardwareAddr)
-			return hex.EncodeToString(h[:8])
+	path := filepath.Join(configDir, "statusphere", "device_id")
+
+	if data, err := os.ReadFile(path); err == nil {
+		if id := strings.TrimSpace(string(data)); id != "" {
+			return id
 		}
 	}
 
-	return "unknown"
+	id := generateID()
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	os.WriteFile(path, []byte(id), 0o644)
+	return id
+}
+
+func generateID() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }

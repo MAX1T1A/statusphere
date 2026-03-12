@@ -99,8 +99,8 @@ func (m model) View() string {
 			if row == table.HeaderRow {
 				return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")).Padding(0, 1)
 			}
-			if col < len(cols) && row-1 >= 0 && row-1 < len(rows) {
-				return cols[col].Style(rows[row-1][col])
+			if col < len(cols) && row < len(rows) {
+				return cols[col].Style(rows[row][col])
 			}
 			return lipgloss.NewStyle().Padding(0, 1)
 		})
