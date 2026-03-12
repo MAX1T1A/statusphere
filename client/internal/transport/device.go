@@ -10,10 +10,6 @@ import (
 )
 
 func ID() string {
-	if v := os.Getenv("DEVICE_ID"); v != "" {
-		return v
-	}
-
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return generateID()
@@ -31,6 +27,14 @@ func ID() string {
 	os.MkdirAll(filepath.Dir(path), 0o755)
 	os.WriteFile(path, []byte(id), 0o644)
 	return id
+}
+
+func Name() string {
+	if v := os.Getenv("DEVICE_NAME"); v != "" {
+		return v
+	}
+	hostname, _ := os.Hostname()
+	return hostname
 }
 
 func generateID() string {
