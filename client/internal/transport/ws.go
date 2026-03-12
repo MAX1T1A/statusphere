@@ -20,9 +20,10 @@ const (
 )
 
 type WSTransport struct {
-	url      string
-	token    string
-	deviceID string
+	url        string
+	token      string
+	deviceID   string
+	deviceName string
 
 	mu   sync.Mutex
 	conn *websocket.Conn
@@ -35,9 +36,10 @@ func NewWS(serverURL, token string) *WSTransport {
 	url += "/ws"
 
 	return &WSTransport{
-		url:      url,
-		token:    token,
-		deviceID: ID(),
+		url:        url,
+		token:      token,
+		deviceID:   ID(),
+		deviceName: Name(),
 	}
 }
 
@@ -65,7 +67,10 @@ func (t *WSTransport) Send(snap models.Snapshot) error {
 		return fmt.Errorf("not connected")
 	}
 
-	data, err := json.Marshal(snap)
+	snap["device_id"] = t.deviceID
+	snap["device_name"] = t.deviceName
+
+	data, err := json.Marshal(map[string]any(snap))
 	if err != nil {
 		return err
 	}
