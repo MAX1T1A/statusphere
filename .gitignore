@@ -20,6 +20,8 @@ parts/
 sdist/
 var/
 wheels/
+CLAUDE.md
+.claude
 share/python-wheels/
 *.egg-info/
 .installed.cfg
