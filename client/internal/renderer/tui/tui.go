@@ -124,8 +124,8 @@ func New() *TUI {
 
 		// Linux
 
-		ColCPU(),
-		ColMemory(),
+		// ColCPU(),
+		// ColMemory(),
 		ColMusic(),
 		// ColLoad(),
 		// -----------------

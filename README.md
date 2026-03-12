@@ -1,158 +1,90 @@
-# Statusphere
+# statusphere
 
-Share your device status with friends in real time. No polling — only push when something changes.
+Мониторинг системы в реальном времени для тебя и друзей. CPU, память, активные приложения — всё в терминале или браузере.
 
-## How it works
+## Как работает
 
-Each device runs a **client** that watches the system state. When something changes (active window, workspace, CPU, RAM) — it pushes a snapshot to the **server**. The server broadcasts it to everyone in the same room via SSE.
+Клиент собирает метрики, шлёт на сервер по WebSocket, получает данные от других. Пока никого нет — спит. Кто-то подключился — просыпается.
 
-```
-[Device A]──POST /status──▶ [Server] ──SSE /feed──▶ [Device B]
-[Device B]──POST /status──▶ [Server] ──SSE /feed──▶ [Device A]
-```
-
-No unnecessary traffic — the client only sends when state actually changes.
-
-## Project structure
-
-```
-statusphere/
-├── client/       # runs on each device
-└── server/       # self-hosted, one instance for a group of friends
-```
-
-## Server
-
-### Run with Docker
+## Запуск
 
 ```bash
-cd server
-docker compose up -d
+go mod tidy
+
+# терминал
+go run ./cmd/client -ui tui
+
+# браузер (localhost:8080)
+go run ./cmd/client -ui web
 ```
 
-### Run locally
+Имя устройства задаётся через `DEVICE_NAME`:
 
 ```bash
-cd server
-uv sync
-PYTHONPATH=src uv run uvicorn app:app --host 0.0.0.0 --port 8000
+DEVICE_NAME="мой ноут" go run ./cmd/client -ui tui
 ```
 
-### API
+## Как добавить новую метрику
 
-| Method | Endpoint | Headers | Description |
-|--------|----------|---------|-------------|
-| `POST` | `/status` | `X-Room-Token`, `X-Device-Id` | Push a snapshot |
-| `GET` | `/feed` | `X-Room-Token`, `X-Device-Id` | Subscribe to room updates via SSE |
+**1.** Провайдер — `internal/collector/linux/uptime.go`:
 
-## Client
+```go
+package linux
 
-### Requirements
+import (
+    "os"
+    "strconv"
+    "strings"
+    "statusphere-client/internal/model"
+)
 
-- Python 3.12+
-- [uv](https://github.com/astral-sh/uv)
-
-### Run
-
-```bash
-cd client
-uv sync
-PYTHONPATH=src uv run python -m app
-```
-
-### Configuration
-
-Set via environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SERVER_URL` | `http://localhost:8000` | Server address |
-| `ROOM_TOKEN` | `my-room-token` | Shared token for a group of friends |
-| `DEVICE_ID` | MAC-based UUID | Unique device identifier |
-
-### Supported platforms
-
-| OS | Distro | DE / WM | Status |
-|----|--------|---------|--------|
-| Linux | any | any | ✅ CPU, RAM, load avg |
-| Linux | any | Hyprland | ✅ + active window, app, workspace |
-| Windows | — | — | 🚧 planned |
-| macOS | — | — | 🚧 planned |
-| Android | — | — | 🚧 planned |
-
-## Collected data
-
-```json
-{
-  "device_id": "...",
-  "cpu_percent": 12.4,
-  "memory_used_mb": 4200.0,
-  "memory_total_mb": 16384.0,
-  "load_avg_1m": 0.85,
-  "active_workspace": "3",
-  "active_window": "statusphere - Visual Studio Code",
-  "active_app": "code"
+func Uptime() func(model.Snapshot) {
+    return func(snap model.Snapshot) {
+        data, err := os.ReadFile("/proc/uptime")
+        if err != nil {
+            return
+        }
+        val, _ := strconv.ParseFloat(strings.Fields(string(data))[0], 64)
+        snap["uptime_hours"] = val / 3600
+    }
 }
 ```
 
-Fields are `null` if not supported on the current platform.
+**2.** Регистрация в `cmd/client/main.go`:
 
-## Adding a new collector
-
-1. Create a file inside the appropriate platform folder:
-
-```
-client/src/app/collector/linux/my_feature.py
+```go
+providers = append(providers, linuxc.Uptime())
 ```
 
-2. Write a function that returns the value:
+**3.** Колонка — `internal/renderer/tui/col_uptime.go`:
 
-```python
-def my_value() -> str | None:
-    try:
-        ...
-    except Exception:
-        return None
+```go
+package tui
+
+import (
+    "fmt"
+    "github.com/charmbracelet/lipgloss"
+)
+
+func ColUptime() Column {
+    return Column{
+        Header: "Uptime",
+        Format: func(d map[string]any) string {
+            if v, ok := d["uptime_hours"].(float64); ok {
+                return fmt.Sprintf("%.1fh", v)
+            }
+            return "—"
+        },
+        Style: func(string) lipgloss.Style {
+            return lipgloss.NewStyle().Align(lipgloss.Right).Padding(0, 1)
+        },
+    }
+}
 ```
 
-3. Add the field to `Snapshot`:
+Добавь `ColUptime()` в список колонок в `tui.go`. Готово.
 
-```python
-@dataclass
-class Snapshot:
-    ...
-    my_value: str | None = None
-```
+## Стек
 
-4. Call it in the corresponding collector:
-
-```python
-class LinuxCollector:
-    def collect(self, snapshot: Snapshot) -> None:
-        ...
-        snapshot.my_value = my_value()
-```
-
-That's it. The server doesn't need to be touched — it's data-agnostic.
-
-## Rooms
-
-A room is a group of friends sharing statuses. Everyone with the same token is in the same room.
-
-1. Pick a token (any string)
-2. Share it with friends
-3. Set `ROOM_TOKEN=your-token` on each device
-
-Private channels (per-user subscriptions) are planned.
-
-## Self-hosting
-
-The server is a single stateless FastAPI app with in-memory storage. Deploy it anywhere Docker runs — a VPS, a home server, Dokploy, Coolify.
-
-```bash
-docker compose up -d
-```
-
-## License
-
-MIT
+- [bubbletea](https://github.com/charmbracelet/bubbletea) + [lipgloss](https://github.com/charmbracelet/lipgloss) — TUI
+- [coder/websocket](https://github.com/coder/websocket) — WebSocket
