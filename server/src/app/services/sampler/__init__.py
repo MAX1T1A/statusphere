@@ -40,7 +40,7 @@ class Sampler:
             rows.append((room_token, device_id, device_name, data))
 
         try:
-            await self._repo.save_batch(rows)
+            await self._repository.save_batch(rows)
             self._logger.debug("flushed %d snapshots", len(rows))
         except Exception:
             self._logger.exception("flush failed")
