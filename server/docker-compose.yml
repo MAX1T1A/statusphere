@@ -16,8 +16,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      - statusphere-network
 
   db:
     image: timescale/timescaledb:latest-pg16
@@ -33,12 +31,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-    networks:
-      - statusphere-network
 
 volumes:
   pgdata:
-
-networks:
-  statusphere-network:
-    external: true
