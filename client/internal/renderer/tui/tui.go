@@ -131,6 +131,9 @@ func New() *TUI {
 		// Hyprland
 		ColWorkspace(),
 		ColApp(),
+
+		// Music
+		ColMusic(),
 	}
 
 	m := model{
