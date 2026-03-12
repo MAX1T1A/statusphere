@@ -41,6 +41,7 @@ func buildProviders(ctx detector.Context) []collector.Provider {
 			linuxc.CPUPercent(),
 			linuxc.Memory(),
 			linuxc.LoadAvg(),
+			linuxc.Uptime(),
 			linuxc.Music(),
 		)
 

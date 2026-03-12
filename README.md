@@ -35,11 +35,11 @@ import (
     "os"
     "strconv"
     "strings"
-    "statusphere-client/internal/model"
+    "statusphere-client/internal/models"
 )
 
-func Uptime() func(model.Snapshot) {
-    return func(snap model.Snapshot) {
+func Uptime() func(models.Snapshot) {
+    return func(snap models.Snapshot) {
         data, err := os.ReadFile("/proc/uptime")
         if err != nil {
             return

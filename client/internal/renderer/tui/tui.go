@@ -126,6 +126,7 @@ func New() *TUI {
 
 		// ColCPU(),
 		// ColMemory(),
+		ColUptime(),
 		ColMusic(),
 		// ColLoad(),
 		// -----------------
