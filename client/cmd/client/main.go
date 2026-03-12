@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -12,12 +13,15 @@ import (
 	"statusphere-client/internal/collector"
 	"statusphere-client/internal/feed"
 	"statusphere-client/internal/models"
+	"statusphere-client/internal/renderer"
+	"statusphere-client/internal/stats"
 
 	linuxc "statusphere-client/internal/collector/linux"
 	archc "statusphere-client/internal/collector/linux/arch"
 	hyprlandc "statusphere-client/internal/collector/linux/hyprland"
 
 	"statusphere-client/internal/detector"
+	"statusphere-client/internal/renderer/noop"
 	"statusphere-client/internal/renderer/tui"
 
 	"statusphere-client/internal/transport"
@@ -30,6 +34,11 @@ const (
 	refreshRate   = 1 * time.Second
 	serverURL     = "https://sphere.ug3n.com"
 	roomToken     = "my-room-token"
+)
+
+var (
+	uiMode    = flag.String("ui", "tui", "UI mode: tui, headless")
+	statsMode = flag.String("stats", "", "show stats: day, 3days, week, month")
 )
 
 func buildProviders(ctx detector.Context) []collector.Provider {
@@ -65,6 +74,17 @@ func buildProviders(ctx detector.Context) []collector.Provider {
 }
 
 func main() {
+	flag.Parse()
+
+	if *statsMode != "" {
+		s, err := stats.Fetch(serverURL, roomToken, *statsMode)
+		if err != nil {
+			log.Fatalf("stats error: %v", err)
+		}
+		stats.Print(s)
+		return
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
@@ -104,7 +124,21 @@ func main() {
 	}
 
 	f := feed.New()
-	t := tui.New()
+
+	var ui renderer.Renderer
+	switch *uiMode {
+	case "tui":
+		ui = tui.New()
+	case "headless":
+		noop := noop.NewNoop()
+		ui = noop
+		go func() {
+			<-ctx.Done()
+			noop.Stop()
+		}()
+	default:
+		log.Fatalf("unknown ui mode: %s", *uiMode)
+	}
 
 	go w.Run(ctx)
 
@@ -115,7 +149,7 @@ func main() {
 				return
 			}
 			f.Update(msg)
-			t.UpdateDevices(f.Snapshot())
+			ui.UpdateDevices(f.Snapshot())
 			w.Resume()
 			resetIdle()
 		})
@@ -129,13 +163,13 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				t.UpdateDevices(f.Snapshot())
+				ui.UpdateDevices(f.Snapshot())
 			}
 		}
 	}()
 
-	if err := t.Run(); err != nil {
-		log.Fatalf("tui error: %v", err)
+	if err := ui.Run(); err != nil {
+		log.Fatalf("ui error: %v", err)
 	}
 	cancel()
 }
