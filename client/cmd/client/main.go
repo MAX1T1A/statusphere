@@ -10,13 +10,14 @@ import (
 	"time"
 
 	"statusphere-client/internal/collector"
+	"statusphere-client/internal/feed"
+	"statusphere-client/internal/models"
 
 	linuxc "statusphere-client/internal/collector/linux"
 	archc "statusphere-client/internal/collector/linux/arch"
 	hyprlandc "statusphere-client/internal/collector/linux/hyprland"
 
 	"statusphere-client/internal/detector"
-	"statusphere-client/internal/models"
 	"statusphere-client/internal/renderer/tui"
 
 	"statusphere-client/internal/transport"
@@ -26,6 +27,7 @@ import (
 const (
 	watchInterval = 2 * time.Second
 	idleTimeout   = 30 * time.Second
+	refreshRate   = 1 * time.Second
 	serverURL     = "https://sphere.ug3n.com"
 	roomToken     = "my-room-token"
 )
@@ -65,14 +67,12 @@ func main() {
 	defer cancel()
 
 	sysCtx := detector.Detect()
-
 	providers := buildProviders(sysCtx)
 	coll := collector.New(providers...)
 
 	ws := transport.NewWS(serverURL, roomToken)
-
 	if err := ws.Connect(ctx); err != nil {
-		log.Fatalf("initial connect failed: %v", err)
+		log.Fatalf("connect failed: %v", err)
 	}
 	defer ws.Close()
 
@@ -101,6 +101,7 @@ func main() {
 		})
 	}
 
+	f := feed.New()
 	t := tui.New()
 
 	go w.Run(ctx)
@@ -111,15 +112,28 @@ func main() {
 			if err := json.Unmarshal(data, &msg); err != nil {
 				return
 			}
-			t.Update(msg)
+			f.Update(msg)
+			t.UpdateDevices(f.Snapshot())
 			w.Resume()
 			resetIdle()
 		})
 	}()
 
+	go func() {
+		ticker := time.NewTicker(refreshRate)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				t.UpdateDevices(f.Snapshot())
+			}
+		}
+	}()
+
 	if err := t.Run(); err != nil {
 		log.Fatalf("tui error: %v", err)
 	}
-
 	cancel()
 }

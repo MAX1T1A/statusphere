@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 )
 
-type FeedMsg map[string]any
+type FeedMsg []map[string]any
 
 type Column struct {
 	Header string
@@ -35,8 +35,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case FeedMsg:
-		if id, ok := msg["device_id"].(string); ok {
-			m.devices[id] = map[string]any(msg)
+		m.devices = make(map[string]map[string]any)
+		for _, dev := range msg {
+			if id, ok := dev["device_id"].(string); ok {
+				m.devices[id] = dev
+			}
 		}
 	}
 	return m, nil
@@ -113,6 +116,9 @@ type TUI struct {
 
 func New() *TUI {
 	columns := []Column{
+		// General
+		ColStatus(),
+
 		// Linux
 		ColDevice(),
 		ColCPU(),
@@ -140,6 +146,6 @@ func (t *TUI) Run() error {
 	return err
 }
 
-func (t *TUI) Update(data map[string]any) {
-	t.prog.Send(FeedMsg(data))
+func (t *TUI) UpdateDevices(devices []map[string]any) {
+	t.prog.Send(FeedMsg(devices))
 }
