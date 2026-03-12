@@ -8,6 +8,14 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 )
 
+func truncate(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max-1]) + "…"
+}
+
 type FeedMsg []map[string]any
 
 type Column struct {

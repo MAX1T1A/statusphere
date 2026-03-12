@@ -9,13 +9,13 @@ func ColApp() Column {
 			app, _ := d["active_app"].(string)
 			win, _ := d["active_window"].(string)
 			if app != "" && win != "" {
-				return app + " — " + win
+				return truncate(app+" — "+win, 30)
 			}
 			if app != "" {
-				return app
+				return truncate(app, 30)
 			}
 			if win != "" {
-				return win
+				return truncate(win, 30)
 			}
 			return "—"
 		},

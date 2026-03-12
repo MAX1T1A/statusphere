@@ -7,7 +7,7 @@ func ColDevice() Column {
 		Header: "Device",
 		Format: func(d map[string]any) string {
 			if v, ok := d["device_id"].(string); ok {
-				return v
+				return truncate(v, 20)
 			}
 			return "—"
 		},

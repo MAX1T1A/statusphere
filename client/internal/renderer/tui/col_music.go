@@ -10,7 +10,7 @@ func ColMusic() Column {
 			if track == "" {
 				return "—"
 			}
-			return "♪ " + track
+			return truncate("♪ "+track, 35)
 		},
 		Style: func(string) lipgloss.Style {
 			return lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Padding(0, 1)
