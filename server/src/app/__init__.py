@@ -1,13 +1,21 @@
 from contextlib import asynccontextmanager
 
 from app.builder import Application
+from app.db.connection import provide_pool
 from fastapi import FastAPI
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Application(app=app).build()
+    pool = await provide_pool()
+    application = Application(app=app, pool=pool)
+    application.build()
+    application.sampler.start()
+
     yield
+
+    await application.sampler.stop()
+    await pool.close()
 
 
 app = FastAPI(
