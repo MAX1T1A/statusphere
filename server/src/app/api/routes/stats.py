@@ -19,4 +19,4 @@ async def summary(
     days = PERIODS.get(period, 1)
     since = date.today() - timedelta(days=days - 1)
 
-    return await service.summary(room_token, device_id, period, str(since))
+    return await service.summary(room_token, device_id, period, since)
