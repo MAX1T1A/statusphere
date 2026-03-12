@@ -117,23 +117,29 @@ type TUI struct {
 func New() *TUI {
 	columns := []Column{
 		// General
+
 		ColStatus(),
 		ColDevice(),
+		// -----------------
 
 		// Linux
+
 		ColCPU(),
 		ColMemory(),
+		ColMusic(),
 		// ColLoad(),
+		// -----------------
 
 		// Arch
+
 		// ColPackages(),
+		// -----------------
 
 		// Hyprland
+
 		// ColWorkspace(),
 		ColApp(),
-
-		// Music
-		ColMusic(),
+		// -----------------
 	}
 
 	m := model{
