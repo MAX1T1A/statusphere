@@ -1,12 +1,9 @@
 services:
   statusphere-server:
     build: .
-    container_name: statusphere-server
     restart: unless-stopped
     ports:
-      - "8000:8000"
-    volumes:
-      - ./src:/app/src
+      - "8000"
     environment:
       LOGGING_LEVEL: ${LOGGING_LEVEL}
       POSTGRES_DB_HOST: ${POSTGRES_DB_HOST}
@@ -19,13 +16,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - statusphere-network
 
   db:
     image: timescale/timescaledb:latest-pg16
-    container_name: statusphere-db
     restart: unless-stopped
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_DB_LOGIN}
       POSTGRES_PASSWORD: ${POSTGRES_DB_PASSWORD}
@@ -37,6 +33,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - statusphere-network
 
 volumes:
   pgdata:
+
+networks:
+  statusphere-network:
+    external: true
