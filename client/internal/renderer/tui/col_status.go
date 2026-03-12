@@ -1,15 +1,33 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"time"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+const (
+	onlineThreshold = 10
+	idleThreshold   = 60
+)
 
 func ColStatus() Column {
 	return Column{
 		Header: "Status",
 		Format: func(d map[string]any) string {
-			if v, ok := d["status"].(string); ok {
-				return v
+			ts, ok := d["last_seen"].(int64)
+			if !ok {
+				return "—"
 			}
-			return "—"
+			ago := time.Now().Unix() - ts
+			switch {
+			case ago < onlineThreshold:
+				return "online"
+			case ago < idleThreshold:
+				return "idle"
+			default:
+				return "offline"
+			}
 		},
 		Style: func(val string) lipgloss.Style {
 			base := lipgloss.NewStyle().Padding(0, 1)
