@@ -13,32 +13,36 @@ const (
 
 func ColStatus() Column {
 	return Column{
-		Header: "Status",
+		Header: "●",
 		Format: func(d map[string]any) string {
 			ts, ok := d["last_seen"].(int64)
 			if !ok {
-				return "—"
+				return "○"
 			}
-			ago := time.Now().Unix() - ts
+			ago := timeNow() - ts
 			switch {
 			case ago < onlineThreshold:
-				return "online"
+				return "●"
 			case ago < idleThreshold:
-				return "idle"
+				return "◐"
 			default:
-				return "offline"
+				return "○"
 			}
 		},
 		Style: func(val string) lipgloss.Style {
 			base := lipgloss.NewStyle().Padding(0, 1)
 			switch val {
-			case "online":
-				return base.Foreground(lipgloss.Color("10")).Bold(true)
-			case "idle":
+			case "●":
+				return base.Foreground(lipgloss.Color("10"))
+			case "◐":
 				return base.Foreground(lipgloss.Color("11"))
 			default:
 				return base.Foreground(lipgloss.Color("8"))
 			}
 		},
 	}
+}
+
+func timeNow() int64 {
+	return time.Now().Unix()
 }
