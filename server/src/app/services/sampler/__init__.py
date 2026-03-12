@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 
 from app.repositories.snapshot import SnapshotRepository
 
@@ -9,9 +10,9 @@ from .v1.stop import stop
 
 
 class Sampler:
-    def __init__(self, repository: SnapshotRepository, interval: float = 30.0) -> None:
+    def __init__(self, repository: SnapshotRepository) -> None:
         self._repository = repository
-        self._interval = interval
+        self._interval = int(os.environ.get("SAMPLER_INTERVAL", 30))
         self._buffer: dict[tuple[str, str], tuple[str, str | None, dict]] = {}
         self._lock = asyncio.Lock()
         self._task: asyncio.Task | None = None

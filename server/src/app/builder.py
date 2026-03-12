@@ -6,15 +6,14 @@ from app.repositories.providers import (
     provide_snapshot_repository,
     provide_snapshot_repository_stub,
 )
-from app.repositories.snapshot import SnapshotRepository
 from app.services.providers import (
     provide_room_manager,
     provide_room_manager_stub,
     provide_sampler,
     provide_sampler_stub,
+    provide_snapshot_service,
+    provide_snapshot_service_stub,
 )
-from app.services.room import RoomManager
-from app.services.sampler import Sampler
 from asyncpg import Pool
 from fastapi import FastAPI
 
@@ -23,7 +22,7 @@ class Application:
     def __init__(self, app: FastAPI, pool: Pool) -> None:
         self.app = app
         self.pool = pool
-        self.room_manager: RoomManager | None = None
+
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def _configure_logging(self) -> None:
@@ -38,12 +37,14 @@ class Application:
     def _create_services(self) -> None:
         self.room_manager = provide_room_manager()
         self.sampler = provide_sampler(self.snapshot_repository)
+        self.snapshot_service = provide_snapshot_service(self.snapshot_repository)
 
     def _override_dependencies(self) -> None:
         self.app.dependency_overrides = {
             provide_snapshot_repository_stub: lambda: self.snapshot_repository,
             provide_room_manager_stub: lambda: self.room_manager,
             provide_sampler_stub: lambda: self.sampler,
+            provide_snapshot_service_stub: lambda: self.snapshot_service,
         }
 
     def _add_routes(self) -> None:
