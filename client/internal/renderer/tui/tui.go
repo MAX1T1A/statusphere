@@ -118,18 +118,18 @@ func New() *TUI {
 	columns := []Column{
 		// General
 		ColStatus(),
+		ColDevice(),
 
 		// Linux
-		ColDevice(),
 		ColCPU(),
 		ColMemory(),
-		ColLoad(),
+		// ColLoad(),
 
 		// Arch
-		ColPackages(),
+		// ColPackages(),
 
 		// Hyprland
-		ColWorkspace(),
+		// ColWorkspace(),
 		ColApp(),
 
 		// Music
