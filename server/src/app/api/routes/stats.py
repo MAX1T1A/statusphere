@@ -20,3 +20,16 @@ async def summary(
     since = date.today() - timedelta(days=days - 1)
 
     return await service.summary(room_token, device_id, period, since)
+
+
+@router.get("/spotify")
+async def spotify(
+    room_token: str = Query(...),
+    device_id: str = Query(...),
+    period: str = Query(default="week"),
+    service: SnapshotService = Depends(provide_snapshot_service_stub),
+) -> dict:
+    days = PERIODS.get(period, 7)
+    since = date.today() - timedelta(days=days - 1)
+
+    return await service.spotify_stats(room_token, device_id, period, since)
