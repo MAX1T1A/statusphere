@@ -10,6 +10,10 @@ import (
 )
 
 func ID() string {
+	if v := os.Getenv("DEVICE_ID"); v != "" {
+		return v
+	}
+
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return generateID()
