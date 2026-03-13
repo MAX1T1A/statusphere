@@ -2,23 +2,44 @@ package tui
 
 import (
 	"sort"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
 )
 
 type FeedMsg []map[string]any
 
-type Column struct {
-	Header string
-	Format func(data map[string]any) string
-	Style  func(value string) lipgloss.Style
+type Block struct {
+	Key    string
+	Render func(d map[string]any) string
 }
+
+const cardWidth = 44
+
+var (
+	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
+	dimStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+	cardBorder = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("8")).
+			Padding(0, 1)
+
+	innerBlock = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("8")).
+			Padding(0, 1)
+
+	outerBorder = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("12")).
+			Padding(0, 1)
+)
 
 type model struct {
 	devices map[string]map[string]any
-	columns []Column
+	blocks  []Block
 	width   int
 	height  int
 }
@@ -45,69 +66,54 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func renderCard(d map[string]any, blocks []Block) string {
+	var sections []string
+	for _, b := range blocks {
+		out := b.Render(d)
+		if out == "" {
+			continue
+		}
+		if b.Key == "header" {
+			sections = append(sections, out)
+		} else {
+			sections = append(sections, innerBlock.Render(out))
+		}
+	}
+	return cardBorder.Render(strings.Join(sections, "\n"))
+}
+
 func (m model) View() string {
-	headerStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("12")).
-		Align(lipgloss.Center)
-
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-
-	border := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("12")).
-		Padding(0, 1)
-
+	outer := outerBorder
 	if m.width > 0 {
-		border = border.Width(m.width - 2)
+		outer = outer.Width(m.width - 2)
 	}
 
-	headers := make([]string, len(m.columns))
-	for i, c := range m.columns {
-		headers[i] = c.Header
-	}
-
-	var rows [][]string
 	if len(m.devices) == 0 {
-		empty := make([]string, len(m.columns))
-		empty[0] = "waiting for devices…"
-		rows = append(rows, empty)
-	} else {
-		keys := make([]string, 0, len(m.devices))
-		for k := range m.devices {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-
-		for _, id := range keys {
-			dev := m.devices[id]
-			row := make([]string, len(m.columns))
-			for i, col := range m.columns {
-				row[i] = col.Format(dev)
-			}
-			rows = append(rows, row)
-		}
+		return outer.Render(
+			titleStyle.Render("statusphere") + "\n\n" +
+				dimStyle.Render("waiting for devices…") + "\n\n" +
+				dimStyle.Render("q to quit"),
+		)
 	}
 
-	cols := m.columns
-	t := table.New().
-		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))).
-		Headers(headers...).
-		Rows(rows...).
-		StyleFunc(func(row, col int) lipgloss.Style {
-			if row == table.HeaderRow {
-				return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")).Padding(0, 1)
-			}
-			if col < len(cols) && row < len(rows) {
-				return cols[col].Style(rows[row][col])
-			}
-			return lipgloss.NewStyle().Padding(0, 1)
-		})
+	keys := make([]string, 0, len(m.devices))
+	for k := range m.devices {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 
-	subtitle := dimStyle.Render("q to quit")
-	content := headerStyle.Render("statusphere") + "\n\n" + t.Render() + "\n\n" + subtitle
-	return border.Render(content)
+	var cards []string
+	for _, id := range keys {
+		cards = append(cards, renderCard(m.devices[id], m.blocks))
+	}
+
+	grid := lipgloss.JoinVertical(lipgloss.Left, cards...)
+
+	return outer.Render(
+		titleStyle.Render("statusphere") + "\n\n" +
+			grid + "\n\n" +
+			dimStyle.Render("q to quit"),
+	)
 }
 
 type TUI struct {
@@ -115,37 +121,15 @@ type TUI struct {
 }
 
 func New() *TUI {
-	columns := []Column{
-		// General
-
-		ColStatus(),
-		ColDevice(),
-
-		// -----------------
-
-		// Linux
-
-		// ColCPU(),
-		// ColMemory(),
-		ColUptime(),
-		ColSpotify(),
-		// ColLoad(),
-		// -----------------
-
-		// Arch
-		// ColPackages(),
-		// -----------------
-
-		// Hyprland
-
-		// ColWorkspace(),
-		ColApp(),
-		// -----------------
+	blocks := []Block{
+		BlockHeader(),
+		BlockSpotify(),
+		BlockApp(),
 	}
 
 	m := model{
 		devices: make(map[string]map[string]any),
-		columns: columns,
+		blocks:  blocks,
 	}
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	return &TUI{prog: p}
