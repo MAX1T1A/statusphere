@@ -17,6 +17,8 @@ import (
 	"statusphere-client/internal/stats"
 
 	linuxc "statusphere-client/internal/collector/linux"
+	spotifyc "statusphere-client/internal/collector/linux/spotify"
+
 	archc "statusphere-client/internal/collector/linux/arch"
 	hyprlandc "statusphere-client/internal/collector/linux/hyprland"
 
@@ -38,7 +40,7 @@ const (
 
 var (
 	uiMode    = flag.String("ui", "tui", "UI mode: tui, headless")
-	statsMode = flag.String("stats", "", "show stats: day, 3days, week, month")
+	statsMode = flag.String("stats", "", "show stats: day, 3days, week")
 )
 
 func buildProviders(ctx detector.Context) []collector.Provider {
@@ -47,11 +49,12 @@ func buildProviders(ctx detector.Context) []collector.Provider {
 	switch ctx.OSFamily {
 	case "linux":
 		providers = append(providers,
-			linuxc.CPUPercent(),
-			linuxc.Memory(),
-			linuxc.LoadAvg(),
+			// linuxc.CPUPercent(),
+			// linuxc.Memory(),
+			// linuxc.LoadAvg(),
 			linuxc.Uptime(),
-			linuxc.Music(),
+			// linuxc.Music(),
+			spotifyc.NowPlaying(),
 		)
 
 		switch ctx.Distro {

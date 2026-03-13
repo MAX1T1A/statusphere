@@ -120,6 +120,7 @@ func New() *TUI {
 
 		ColStatus(),
 		ColDevice(),
+
 		// -----------------
 
 		// Linux
@@ -127,12 +128,11 @@ func New() *TUI {
 		// ColCPU(),
 		// ColMemory(),
 		ColUptime(),
-		ColMusic(),
+		ColSpotify(),
 		// ColLoad(),
 		// -----------------
 
 		// Arch
-
 		// ColPackages(),
 		// -----------------
 
