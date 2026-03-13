@@ -2,6 +2,7 @@ package tui
 
 import (
 	"sort"
+	"statusphere-client/internal/stats"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -120,10 +121,10 @@ type TUI struct {
 	prog *tea.Program
 }
 
-func New() *TUI {
+func New(getStats func(string) *stats.SpotifyStats) *TUI {
 	blocks := []Block{
 		BlockHeader(),
-		BlockSpotify(),
+		BlockSpotify(getStats),
 		BlockApp(),
 	}
 

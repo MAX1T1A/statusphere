@@ -131,7 +131,8 @@ func main() {
 	var ui renderer.Renderer
 	switch *uiMode {
 	case "tui":
-		ui = tui.New()
+		spotifyCache := stats.NewSpotifyCache(serverURL, roomToken)
+		ui = tui.New(spotifyCache.Get)
 	case "headless":
 		noop := noop.NewNoop()
 		ui = noop
