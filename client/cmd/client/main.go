@@ -51,9 +51,6 @@ func buildProviders(ctx detector.Context) []collector.Provider {
 	case "linux":
 		providers = append(providers,
 			linuxc.Uptime(),
-			linuxc.Battery(),
-			linuxc.WiFi(),
-			linuxc.Weather(),
 			spotifyc.NowPlaying(),
 		)
 
@@ -164,7 +161,7 @@ func main() {
 					notify.Handle(devID, devName, nudge)
 				}
 				if nudges != nil {
-					nudges.Process(devID, devName, nudge)
+					nudges.Process(devID, nudge)
 				}
 			}
 

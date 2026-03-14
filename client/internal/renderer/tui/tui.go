@@ -49,6 +49,11 @@ const (
 	modeRename
 )
 
+const (
+	maxNudgeLen  = 60
+	maxRenameLen = 32
+)
+
 type model struct {
 	devices map[string]map[string]any
 	blocks  []Block
@@ -59,7 +64,6 @@ type model struct {
 	input    string
 	onNudge  func(string)
 	onRename func(string)
-	nudges   *NudgeHistory
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -96,7 +100,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			default:
 				r := []rune(msg.String())
 				if len(r) == 1 {
-					m.input += msg.String()
+					limit := maxNudgeLen
+					if m.mode == modeRename {
+						limit = maxRenameLen
+					}
+					if len([]rune(m.input)) < limit {
+						m.input += msg.String()
+					}
 				}
 			}
 			return m, nil
@@ -127,18 +137,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func renderCard(d map[string]any, blocks []Block) string {
-	var sections []string
+	rendered := make(map[string]string)
 	for _, b := range blocks {
 		out := b.Render(d)
-		if out == "" {
-			continue
-		}
-		if b.Key == "header" {
-			sections = append(sections, out)
-		} else {
-			sections = append(sections, innerBlock.Render(out))
+		if out != "" {
+			rendered[b.Key] = out
 		}
 	}
+
+	var sections []string
+
+	if h, ok := rendered["header"]; ok {
+		sections = append(sections, h)
+	}
+
+	spotifyOut := rendered["spotify"]
+	nudgeOut := rendered["nudge"]
+
+	if spotifyOut != "" && nudgeOut != "" {
+		left := innerBlock.Render(spotifyOut)
+		right := innerBlock.Render(nudgeOut)
+		sections = append(sections, lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right))
+	} else if spotifyOut != "" {
+		sections = append(sections, innerBlock.Render(spotifyOut))
+	} else if nudgeOut != "" {
+		sections = append(sections, innerBlock.Render(nudgeOut))
+	}
+
+	if a, ok := rendered["app"]; ok {
+		sections = append(sections, innerBlock.Render(a))
+	}
+
 	return cardBorder.Render(strings.Join(sections, "\n"))
 }
 
@@ -169,16 +198,6 @@ func (m model) View() string {
 
 	grid := lipgloss.JoinVertical(lipgloss.Left, cards...)
 
-	var sections []string
-	sections = append(sections, titleStyle.Render("statusphere"))
-	sections = append(sections, grid)
-
-	if m.nudges != nil {
-		if hist := m.nudges.Render(); hist != "" {
-			sections = append(sections, innerBlock.Render(hist))
-		}
-	}
-
 	var footer string
 	switch m.mode {
 	case modeNudge:
@@ -188,9 +207,12 @@ func (m model) View() string {
 	default:
 		footer = dimStyle.Render("n nudge · d rename · q quit")
 	}
-	sections = append(sections, footer)
 
-	return outer.Render(strings.Join(sections, "\n\n"))
+	return outer.Render(
+		titleStyle.Render("statusphere") + "\n\n" +
+			grid + "\n\n" +
+			footer,
+	)
 }
 
 type TUI struct {
@@ -205,6 +227,7 @@ func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string)
 		BlockHeader(),
 		BlockSpotify(spotifyCache),
 		BlockApp(summaryCache),
+		BlockNudge(nudges),
 	}
 
 	m := model{
@@ -212,7 +235,6 @@ func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string)
 		blocks:   blocks,
 		onNudge:  onNudge,
 		onRename: onRename,
-		nudges:   nudges,
 	}
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	return &TUI{prog: p, Nudges: nudges}
