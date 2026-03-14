@@ -23,6 +23,7 @@ import (
 	hyprlandc "statusphere-client/internal/collector/linux/hyprland"
 
 	"statusphere-client/internal/detector"
+	"statusphere-client/internal/notifier"
 	"statusphere-client/internal/renderer/noop"
 	"statusphere-client/internal/renderer/tui"
 
@@ -128,13 +129,16 @@ func main() {
 	}
 
 	f := feed.New()
+	notify := notifier.New(transport.ID())
 
 	var ui renderer.Renderer
 	switch *uiMode {
 	case "tui":
 		spotifyCache := stats.NewSpotifyCache(serverURL, roomToken)
 		summaryCache := stats.NewSummaryCache(serverURL, roomToken, "day")
-		ui = tui.New(spotifyCache, summaryCache)
+		ui = tui.New(spotifyCache, summaryCache, func(message string) {
+			w.InjectOnce("nudge_message", message)
+		})
 	case "headless":
 		noop := noop.NewNoop()
 		ui = noop
@@ -154,6 +158,13 @@ func main() {
 			if err := json.Unmarshal(data, &msg); err != nil {
 				return
 			}
+
+			if nudge, _ := msg["nudge_message"].(string); nudge != "" {
+				devID, _ := msg["device_id"].(string)
+				devName, _ := msg["device_name"].(string)
+				notify.Handle(devID, devName, nudge)
+			}
+
 			f.Update(msg)
 			ui.UpdateDevices(f.Snapshot())
 			w.Resume()
