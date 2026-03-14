@@ -101,6 +101,8 @@ func getCover(url string) string {
 	return art
 }
 
+var spotBarColors = []string{"#4ade80", "#34d399", "#2dd4bf", "#22d3ee", "#38bdf8", "#60a5fa", "#818cf8"}
+
 func renderSpotifyStats(s *stats.SpotifyStats) string {
 	if s == nil || s.TotalSeconds == 0 {
 		return ""
@@ -128,7 +130,9 @@ func renderSpotifyStats(s *stats.SpotifyStats) string {
 
 		barWidth := 8
 		weekdays := []string{"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"}
+		dimBar := lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
 
+		idx := 0
 		for _, d := range s.Daily {
 			if d.Seconds == 0 {
 				continue
@@ -153,8 +157,13 @@ func renderSpotifyStats(s *stats.SpotifyStats) string {
 				filled = 1
 			}
 
-			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-			lines = append(lines, fmt.Sprintf("%s %s %dm", label, spotDim.Render(bar), d.Seconds/60))
+			color := spotBarColors[idx%len(spotBarColors)]
+			barStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+			labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+
+			bar := barStyle.Render(strings.Repeat("█", filled)) + dimBar.Render(strings.Repeat("░", barWidth-filled))
+			lines = append(lines, labelStyle.Render(label)+" "+bar+" "+spotDim.Render(fmt.Sprintf("%dm", d.Seconds/60)))
+			idx++
 		}
 	}
 
