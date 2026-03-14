@@ -41,15 +41,24 @@ var (
 	inputCaret = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 )
 
+type inputMode int
+
+const (
+	modeNone inputMode = iota
+	modeNudge
+	modeRename
+)
+
 type model struct {
 	devices map[string]map[string]any
 	blocks  []Block
 	width   int
 	height  int
 
-	typing  bool
-	input   string
-	onNudge func(string)
+	mode     inputMode
+	input    string
+	onNudge  func(string)
+	onRename func(string)
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -57,17 +66,26 @@ func (m model) Init() tea.Cmd { return nil }
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if m.typing {
+		if m.mode != modeNone {
 			switch msg.String() {
 			case "enter":
 				text := strings.TrimSpace(m.input)
-				if text != "" && m.onNudge != nil {
-					m.onNudge(text)
+				if text != "" {
+					switch m.mode {
+					case modeNudge:
+						if m.onNudge != nil {
+							m.onNudge(text)
+						}
+					case modeRename:
+						if m.onRename != nil {
+							m.onRename(text)
+						}
+					}
 				}
-				m.typing = false
+				m.mode = modeNone
 				m.input = ""
 			case "esc":
-				m.typing = false
+				m.mode = modeNone
 				m.input = ""
 			case "backspace":
 				if len(m.input) > 0 {
@@ -87,7 +105,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "n":
-			m.typing = true
+			m.mode = modeNudge
+			m.input = ""
+		case "d":
+			m.mode = modeRename
 			m.input = ""
 		}
 	case tea.WindowSizeMsg:
@@ -148,10 +169,13 @@ func (m model) View() string {
 	grid := lipgloss.JoinVertical(lipgloss.Left, cards...)
 
 	var footer string
-	if m.typing {
+	switch m.mode {
+	case modeNudge:
 		footer = inputStyle.Render("nudge: ") + m.input + inputCaret.Render("█")
-	} else {
-		footer = dimStyle.Render("n to nudge · q to quit")
+	case modeRename:
+		footer = inputStyle.Render("name: ") + m.input + inputCaret.Render("█")
+	default:
+		footer = dimStyle.Render("n nudge · d rename · q quit")
 	}
 
 	return outer.Render(
@@ -165,7 +189,7 @@ type TUI struct {
 	prog *tea.Program
 }
 
-func New(spotifyCache, summaryCache *stats.Cache, onNudge func(string)) *TUI {
+func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string)) *TUI {
 	blocks := []Block{
 		BlockHeader(),
 		BlockSpotify(spotifyCache),
@@ -173,9 +197,10 @@ func New(spotifyCache, summaryCache *stats.Cache, onNudge func(string)) *TUI {
 	}
 
 	m := model{
-		devices: make(map[string]map[string]any),
-		blocks:  blocks,
-		onNudge: onNudge,
+		devices:  make(map[string]map[string]any),
+		blocks:   blocks,
+		onNudge:  onNudge,
+		onRename: onRename,
 	}
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	return &TUI{prog: p}

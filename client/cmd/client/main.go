@@ -138,6 +138,9 @@ func main() {
 		summaryCache := stats.NewSummaryCache(serverURL, roomToken, "day")
 		ui = tui.New(spotifyCache, summaryCache, func(message string) {
 			w.InjectOnce("nudge_message", message)
+		}, func(name string) {
+			transport.SetName(name)
+			ws.SetDeviceName(name)
 		})
 	case "headless":
 		noop := noop.NewNoop()

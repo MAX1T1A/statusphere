@@ -37,8 +37,34 @@ func Name() string {
 	if v := os.Getenv("DEVICE_NAME"); v != "" {
 		return v
 	}
+
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		hostname, _ := os.Hostname()
+		return hostname
+	}
+
+	path := filepath.Join(configDir, "statusphere", "device_name")
+
+	if data, err := os.ReadFile(path); err == nil {
+		if name := strings.TrimSpace(string(data)); name != "" {
+			return name
+		}
+	}
+
 	hostname, _ := os.Hostname()
 	return hostname
+}
+
+func SetName(name string) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return
+	}
+
+	dir := filepath.Join(configDir, "statusphere")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "device_name"), []byte(name), 0o644)
 }
 
 func generateID() string {
