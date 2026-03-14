@@ -15,10 +15,10 @@ var (
 	appLabel  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
 	sumHeader = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	sumApp    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
-	sumBar    = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
 	sumTime   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
+
+var barColors = []string{"#c084fc", "#a78bfa", "#818cf8", "#7dd3fc", "#67e8f9", "#5eead4", "#a5b4fc"}
 
 const (
 	sumBarWidth = 8
@@ -59,17 +59,24 @@ func renderSummaryStats(s *stats.Summary) string {
 		nameW = sumMaxName
 	}
 
-	for _, a := range s.Apps[:limit] {
+	for i, a := range s.Apps[:limit] {
 		name := a.App
 		if len(name) > nameW {
 			name = name[:nameW-1] + "…"
 		}
+		padded := name + strings.Repeat(" ", nameW-len(name))
 
 		filled := (a.Seconds * sumBarWidth) / maxSec
 		if filled < 1 {
 			filled = 1
 		}
-		bar := strings.Repeat("█", filled) + strings.Repeat("░", sumBarWidth-filled)
+
+		color := barColors[i%len(barColors)]
+		nameStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(color))
+		barStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+		dimBar := lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
+
+		bar := barStyle.Render(strings.Repeat("█", filled)) + dimBar.Render(strings.Repeat("░", sumBarWidth-filled))
 
 		h := a.Seconds / 3600
 		m := (a.Seconds % 3600) / 60
@@ -80,12 +87,7 @@ func renderSummaryStats(s *stats.Summary) string {
 			t = fmt.Sprintf("%dm", m)
 		}
 
-		lines = append(lines, fmt.Sprintf("%-*s %s %s",
-			nameW,
-			sumApp.Render(name),
-			sumBar.Render(bar),
-			sumTime.Render(t),
-		))
+		lines = append(lines, nameStyle.Render(padded)+" "+bar+" "+sumTime.Render(t))
 	}
 
 	return strings.Join(lines, "\n")
