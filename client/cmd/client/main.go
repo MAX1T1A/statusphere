@@ -50,11 +50,10 @@ func buildProviders(ctx detector.Context) []collector.Provider {
 	switch ctx.OSFamily {
 	case "linux":
 		providers = append(providers,
-			// linuxc.CPUPercent(),
-			// linuxc.Memory(),
-			// linuxc.LoadAvg(),
 			linuxc.Uptime(),
-			// linuxc.Music(),
+			linuxc.Battery(),
+			linuxc.WiFi(),
+			linuxc.Weather(),
 			spotifyc.NowPlaying(),
 		)
 
@@ -79,16 +78,6 @@ func buildProviders(ctx detector.Context) []collector.Provider {
 
 func main() {
 	flag.Parse()
-
-	if *statsMode != "" {
-		c := stats.NewSummaryCache(serverURL, roomToken, *statsMode)
-		s, ok := c.GetSync(transport.ID()).(*stats.Summary)
-		if !ok || s == nil {
-			log.Fatal("stats error: failed to fetch")
-		}
-		stats.PrintSummary(s)
-		return
-	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -129,22 +118,28 @@ func main() {
 	}
 
 	f := feed.New()
-	notify := notifier.New(transport.ID())
+	var notify *notifier.Notifier
+	var nudges *tui.NudgeHistory
 
 	var ui renderer.Renderer
 	switch *uiMode {
 	case "tui":
 		spotifyCache := stats.NewSpotifyCache(serverURL, roomToken)
 		summaryCache := stats.NewSummaryCache(serverURL, roomToken, "day")
-		ui = tui.New(spotifyCache, summaryCache, func(message string) {
+		tuiUI := tui.New(spotifyCache, summaryCache, func(message string) {
 			w.InjectOnce("nudge_message", message)
 		}, func(name string) {
 			transport.SetName(name)
 			ws.SetDeviceName(name)
-		})
+		}, transport.ID())
+		ui = tuiUI
+
+		notify = notifier.New(transport.ID())
+		nudges = tuiUI.Nudges
 	case "headless":
 		noop := noop.NewNoop()
 		ui = noop
+		notify = notifier.New(transport.ID())
 		go func() {
 			<-ctx.Done()
 			noop.Stop()
@@ -165,7 +160,12 @@ func main() {
 			if nudge, _ := msg["nudge_message"].(string); nudge != "" {
 				devID, _ := msg["device_id"].(string)
 				devName, _ := msg["device_name"].(string)
-				notify.Handle(devID, devName, nudge)
+				if notify != nil {
+					notify.Handle(devID, devName, nudge)
+				}
+				if nudges != nil {
+					nudges.Process(devID, devName, nudge)
+				}
 			}
 
 			f.Update(msg)
