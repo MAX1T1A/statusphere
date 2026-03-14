@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -99,15 +98,7 @@ func (h *NudgeHistory) RenderFor(deviceID string) string {
 
 	var lines []string
 	for _, e := range merged {
-		ago := time.Since(e.At)
-		var ts string
-		if ago < time.Minute {
-			ts = "now"
-		} else if ago < time.Hour {
-			ts = fmt.Sprintf("%dm", int(ago.Minutes()))
-		} else {
-			ts = fmt.Sprintf("%dh", int(ago.Hours()))
-		}
+		ts := e.At.Format("15:04")
 
 		if e.Self {
 			lines = append(lines, nudgeSelf.Render(e.Message)+" "+nudgeTime.Render("· "+ts))
