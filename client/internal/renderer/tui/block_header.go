@@ -11,8 +11,11 @@ var (
 	onlineDot  = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	idleDot    = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	offlineDot = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	deviceName = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	uptimeDim  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	hdrName    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+	hdrDim     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	hdrBatLow  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	hdrBatMid  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	hdrBatHi   = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 )
 
 func statusDot(d map[string]any) string {
@@ -45,6 +48,31 @@ func formatUptime(d map[string]any) string {
 	return fmt.Sprintf("%.0fd", v/24)
 }
 
+func formatBattery(d map[string]any) string {
+	pct, ok := d["battery_pct"].(int)
+	if !ok {
+		return ""
+	}
+
+	var style lipgloss.Style
+	switch {
+	case pct <= 20:
+		style = hdrBatLow
+	case pct <= 50:
+		style = hdrBatMid
+	default:
+		style = hdrBatHi
+	}
+
+	status, _ := d["battery_status"].(string)
+	icon := "🔋"
+	if status == "Charging" {
+		icon = "⚡"
+	}
+
+	return style.Render(fmt.Sprintf("%s%d%%", icon, pct))
+}
+
 func BlockHeader() Block {
 	return Block{
 		Key: "header",
@@ -56,10 +84,26 @@ func BlockHeader() Block {
 				name = id
 			}
 
-			line := statusDot(d) + " " + deviceName.Render(name)
+			line := statusDot(d) + " " + hdrName.Render(name)
 			if up := formatUptime(d); up != "" {
-				line += uptimeDim.Render(" · " + up)
+				line += hdrDim.Render(" · " + up)
 			}
+
+			var tags []string
+			if bat := formatBattery(d); bat != "" {
+				tags = append(tags, bat)
+			}
+			if ssid, ok := d["wifi_ssid"].(string); ok && ssid != "" {
+				tags = append(tags, hdrDim.Render("📶 "+ssid))
+			}
+			if w, ok := d["weather"].(string); ok && w != "" {
+				tags = append(tags, hdrDim.Render("🌍 "+w))
+			}
+
+			for _, tag := range tags {
+				line += hdrDim.Render(" · ") + tag
+			}
+
 			return line
 		},
 	}

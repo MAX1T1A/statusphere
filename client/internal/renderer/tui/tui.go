@@ -59,6 +59,7 @@ type model struct {
 	input    string
 	onNudge  func(string)
 	onRename func(string)
+	nudges   *NudgeHistory
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -168,6 +169,16 @@ func (m model) View() string {
 
 	grid := lipgloss.JoinVertical(lipgloss.Left, cards...)
 
+	var sections []string
+	sections = append(sections, titleStyle.Render("statusphere"))
+	sections = append(sections, grid)
+
+	if m.nudges != nil {
+		if hist := m.nudges.Render(); hist != "" {
+			sections = append(sections, innerBlock.Render(hist))
+		}
+	}
+
 	var footer string
 	switch m.mode {
 	case modeNudge:
@@ -177,19 +188,19 @@ func (m model) View() string {
 	default:
 		footer = dimStyle.Render("n nudge · d rename · q quit")
 	}
+	sections = append(sections, footer)
 
-	return outer.Render(
-		titleStyle.Render("statusphere") + "\n\n" +
-			grid + "\n\n" +
-			footer,
-	)
+	return outer.Render(strings.Join(sections, "\n\n"))
 }
 
 type TUI struct {
-	prog *tea.Program
+	prog   *tea.Program
+	Nudges *NudgeHistory
 }
 
-func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string)) *TUI {
+func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string), localID string) *TUI {
+	nudges := NewNudgeHistory(localID)
+
 	blocks := []Block{
 		BlockHeader(),
 		BlockSpotify(spotifyCache),
@@ -201,9 +212,10 @@ func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string)
 		blocks:   blocks,
 		onNudge:  onNudge,
 		onRename: onRename,
+		nudges:   nudges,
 	}
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	return &TUI{prog: p}
+	return &TUI{prog: p, Nudges: nudges}
 }
 
 func (t *TUI) Run() error {

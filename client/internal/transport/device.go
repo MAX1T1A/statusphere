@@ -10,10 +10,6 @@ import (
 )
 
 func ID() string {
-	if v := os.Getenv("DEVICE_ID"); v != "" {
-		return v
-	}
-
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return generateID()
@@ -34,10 +30,6 @@ func ID() string {
 }
 
 func Name() string {
-	if v := os.Getenv("DEVICE_NAME"); v != "" {
-		return v
-	}
-
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		hostname, _ := os.Hostname()

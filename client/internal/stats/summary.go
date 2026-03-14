@@ -1,7 +1,6 @@
 package stats
 
 import (
-	"fmt"
 	"net/url"
 )
 
@@ -34,27 +33,4 @@ func (f summaryFetcher) New() any { return &Summary{} }
 
 func NewSummaryCache(serverURL, token, period string) *Cache {
 	return NewCache(serverURL, token, summaryFetcher{period: period})
-}
-
-func PrintSummary(s *Summary) {
-	fmt.Printf("Статистика за %s (с %s)\n\n", s.Period, s.Since)
-
-	if len(s.Apps) == 0 {
-		fmt.Println("Нет данных")
-		return
-	}
-
-	for _, app := range s.Apps {
-		h := app.Seconds / 3600
-		m := (app.Seconds % 3600) / 60
-
-		var t string
-		if h > 0 {
-			t = fmt.Sprintf("%d ч %d мин", h, m)
-		} else {
-			t = fmt.Sprintf("%d мин", m)
-		}
-
-		fmt.Printf("  %-20s %s\n", app.App, t)
-	}
 }
