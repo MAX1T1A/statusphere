@@ -93,6 +93,8 @@ func renderSummaryStats(s *stats.Summary) string {
 	return strings.Join(lines, "\n")
 }
 
+const maxWindowTitle = 200
+
 func BlockApp(cache *stats.Cache) Block {
 	return Block{
 		Key: "app",
@@ -100,6 +102,13 @@ func BlockApp(cache *stats.Cache) Block {
 			app, _ := d["active_app"].(string)
 			win, _ := d["active_window"].(string)
 			deviceID, _ := d["device_id"].(string)
+
+			if len(win) > maxWindowTitle {
+				runes := []rune(win)
+				if len(runes) > maxWindowTitle {
+					win = string(runes[:maxWindowTitle-1]) + "…"
+				}
+			}
 
 			var parts []string
 

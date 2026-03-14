@@ -10,22 +10,20 @@ import (
 )
 
 var (
-	nudgeFrom = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
-	nudgeText = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	nudgeMsg  = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	nudgeTime = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
-const nudgeMaxHistory = 5
+const nudgeMax = 5
 
 type NudgeEntry struct {
-	From    string
 	Message string
 	At      time.Time
 }
 
 type NudgeHistory struct {
 	mu      sync.Mutex
-	entries []NudgeEntry
+	devices map[string][]NudgeEntry
 	localID string
 	seen    map[string]string
 }
@@ -33,11 +31,12 @@ type NudgeHistory struct {
 func NewNudgeHistory(localID string) *NudgeHistory {
 	return &NudgeHistory{
 		localID: localID,
+		devices: make(map[string][]NudgeEntry),
 		seen:    make(map[string]string),
 	}
 }
 
-func (h *NudgeHistory) Process(deviceID, deviceName, message string) {
+func (h *NudgeHistory) Process(deviceID, message string) {
 	if deviceID == h.localID || message == "" {
 		return
 	}
@@ -50,26 +49,27 @@ func (h *NudgeHistory) Process(deviceID, deviceName, message string) {
 	}
 	h.seen[deviceID] = message
 
-	h.entries = append(h.entries, NudgeEntry{
-		From:    deviceName,
+	entries := append(h.devices[deviceID], NudgeEntry{
 		Message: message,
 		At:      time.Now(),
 	})
-	if len(h.entries) > nudgeMaxHistory {
-		h.entries = h.entries[len(h.entries)-nudgeMaxHistory:]
+	if len(entries) > nudgeMax {
+		entries = entries[len(entries)-nudgeMax:]
 	}
+	h.devices[deviceID] = entries
 }
 
-func (h *NudgeHistory) Render() string {
+func (h *NudgeHistory) RenderFor(deviceID string) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if len(h.entries) == 0 {
+	entries := h.devices[deviceID]
+	if len(entries) == 0 {
 		return ""
 	}
 
 	var lines []string
-	for _, e := range h.entries {
+	for _, e := range entries {
 		ago := time.Since(e.At)
 		var ts string
 		if ago < time.Minute {
@@ -80,11 +80,7 @@ func (h *NudgeHistory) Render() string {
 			ts = fmt.Sprintf("%dh", int(ago.Hours()))
 		}
 
-		lines = append(lines, fmt.Sprintf("%s %s %s",
-			nudgeFrom.Render(e.From+":"),
-			nudgeText.Render(e.Message),
-			nudgeTime.Render("· "+ts),
-		))
+		lines = append(lines, nudgeMsg.Render(e.Message)+" "+nudgeTime.Render("· "+ts))
 	}
 
 	return strings.Join(lines, "\n")
@@ -94,7 +90,11 @@ func BlockNudge(history *NudgeHistory) Block {
 	return Block{
 		Key: "nudge",
 		Render: func(d map[string]any) string {
-			return ""
+			deviceID, _ := d["device_id"].(string)
+			if deviceID == "" || history == nil {
+				return ""
+			}
+			return history.RenderFor(deviceID)
 		},
 	}
 }
