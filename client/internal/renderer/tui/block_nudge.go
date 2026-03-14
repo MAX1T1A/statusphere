@@ -110,7 +110,7 @@ func (h *NudgeHistory) RenderFor(deviceID string) string {
 		}
 
 		if e.Self {
-			lines = append(lines, nudgeSelfLb.Render("you: ")+nudgeSelf.Render(e.Message)+" "+nudgeTime.Render("· "+ts))
+			lines = append(lines, nudgeSelf.Render(e.Message)+" "+nudgeTime.Render("· "+ts))
 		} else {
 			lines = append(lines, nudgeMsg.Render(e.Message)+" "+nudgeTime.Render("· "+ts))
 		}
