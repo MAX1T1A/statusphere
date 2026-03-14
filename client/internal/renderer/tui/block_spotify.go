@@ -153,15 +153,15 @@ func renderSpotifyStats(s *stats.SpotifyStats) string {
 				filled = 1
 			}
 
-			bar := strings.Repeat("=", filled) + strings.Repeat("-", barWidth-filled)
-			lines = append(lines, fmt.Sprintf("%s %s %dm", label, bar, d.Seconds/60))
+			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+			lines = append(lines, fmt.Sprintf("%s %s %dm", label, spotDim.Render(bar), d.Seconds/60))
 		}
 	}
 
 	return strings.Join(lines, "\n")
 }
 
-func BlockSpotify(getStats func(string) *stats.SpotifyStats) Block {
+func BlockSpotify(cache *stats.Cache) Block {
 	return Block{
 		Key: "spotify",
 		Render: func(d map[string]any) string {
@@ -210,8 +210,8 @@ func BlockSpotify(getStats func(string) *stats.SpotifyStats) Block {
 			art := getCover(artURL)
 
 			var statsText string
-			if getStats != nil && deviceID != "" {
-				if s := getStats(deviceID); s != nil {
+			if cache != nil && deviceID != "" {
+				if s, ok := cache.Get(deviceID).(*stats.SpotifyStats); ok && s != nil {
 					statsText = renderSpotifyStats(s)
 				}
 			}

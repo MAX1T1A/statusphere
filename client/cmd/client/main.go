@@ -80,11 +80,12 @@ func main() {
 	flag.Parse()
 
 	if *statsMode != "" {
-		s, err := stats.Fetch(serverURL, roomToken, *statsMode)
-		if err != nil {
-			log.Fatalf("stats error: %v", err)
+		c := stats.NewSummaryCache(serverURL, roomToken, *statsMode)
+		s, ok := c.GetSync(transport.ID()).(*stats.Summary)
+		if !ok || s == nil {
+			log.Fatal("stats error: failed to fetch")
 		}
-		stats.Print(s)
+		stats.PrintSummary(s)
 		return
 	}
 
@@ -132,7 +133,8 @@ func main() {
 	switch *uiMode {
 	case "tui":
 		spotifyCache := stats.NewSpotifyCache(serverURL, roomToken)
-		ui = tui.New(spotifyCache.Get)
+		summaryCache := stats.NewSummaryCache(serverURL, roomToken, "day")
+		ui = tui.New(spotifyCache, summaryCache)
 	case "headless":
 		noop := noop.NewNoop()
 		ui = noop
