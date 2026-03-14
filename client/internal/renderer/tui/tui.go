@@ -121,11 +121,11 @@ type TUI struct {
 	prog *tea.Program
 }
 
-func New(getStats func(string) *stats.SpotifyStats) *TUI {
+func New(spotifyCache, summaryCache *stats.Cache) *TUI {
 	blocks := []Block{
 		BlockHeader(),
-		BlockSpotify(getStats),
-		BlockApp(),
+		BlockSpotify(spotifyCache),
+		BlockApp(summaryCache),
 	}
 
 	m := model{
