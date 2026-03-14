@@ -115,10 +115,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "n":
+		case "n", "т":
 			m.mode = modeNudge
 			m.input = ""
-		case "d":
+		case "d", "д":
 			m.mode = modeRename
 			m.input = ""
 		}
