@@ -156,7 +156,16 @@ func renderCard(d map[string]any, blocks []Block) string {
 
 	if spotifyOut != "" && nudgeOut != "" {
 		left := innerBlock.Render(spotifyOut)
-		right := innerBlock.Render(nudgeOut)
+		h := lipgloss.Height(left)
+		nudgeLines := strings.Split(nudgeOut, "\n")
+		maxLines := h - 2
+		if maxLines < 1 {
+			maxLines = 1
+		}
+		if len(nudgeLines) > maxLines {
+			nudgeLines = nudgeLines[len(nudgeLines)-maxLines:]
+		}
+		right := innerBlock.Height(maxLines).Render(strings.Join(nudgeLines, "\n"))
 		sections = append(sections, lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right))
 	} else if spotifyOut != "" {
 		sections = append(sections, innerBlock.Render(spotifyOut))
