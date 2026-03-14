@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"statusphere-client/internal/collector"
@@ -15,6 +16,9 @@ type Watcher struct {
 	last      *models.Snapshot
 	paused    bool
 	pauseC    chan bool
+
+	injectMu sync.Mutex
+	inject   map[string]any
 }
 
 func New(c *collector.Collector, onChange func(models.Snapshot), interval time.Duration) *Watcher {
@@ -23,7 +27,14 @@ func New(c *collector.Collector, onChange func(models.Snapshot), interval time.D
 		onChange:  onChange,
 		interval:  interval,
 		pauseC:    make(chan bool, 1),
+		inject:    make(map[string]any),
 	}
+}
+
+func (w *Watcher) InjectOnce(key string, value any) {
+	w.injectMu.Lock()
+	w.inject[key] = value
+	w.injectMu.Unlock()
 }
 
 func (w *Watcher) Run(ctx context.Context) {
@@ -44,6 +55,14 @@ func (w *Watcher) Run(ctx context.Context) {
 				continue
 			}
 			snap := w.collector.Collect()
+
+			w.injectMu.Lock()
+			for k, v := range w.inject {
+				snap[k] = v
+			}
+			w.inject = make(map[string]any)
+			w.injectMu.Unlock()
+
 			if w.last == nil || !w.last.Equal(snap) {
 				w.last = &snap
 				w.onChange(snap)
