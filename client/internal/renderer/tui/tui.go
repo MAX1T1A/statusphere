@@ -118,7 +118,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "n", "т":
 			m.mode = modeNudge
 			m.input = ""
-		case "d", "д":
+		case "d", "в":
 			m.mode = modeRename
 			m.input = ""
 		}
