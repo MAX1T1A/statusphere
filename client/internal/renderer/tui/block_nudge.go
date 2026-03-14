@@ -16,7 +16,7 @@ var (
 	nudgeSelfLb = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
-const nudgeMax = 13
+const nudgeMax = 15
 
 type NudgeEntry struct {
 	Message string
