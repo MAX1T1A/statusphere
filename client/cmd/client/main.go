@@ -40,8 +40,7 @@ const (
 )
 
 var (
-	uiMode    = flag.String("ui", "tui", "UI mode: tui, headless")
-	statsMode = flag.String("stats", "", "show stats: day, 3days, week")
+	uiMode = flag.String("ui", "tui", "UI mode: tui, headless")
 )
 
 func buildProviders(ctx detector.Context) []collector.Provider {
@@ -125,6 +124,9 @@ func main() {
 		summaryCache := stats.NewSummaryCache(serverURL, roomToken, "day")
 		tuiUI := tui.New(spotifyCache, summaryCache, func(message string) {
 			w.InjectOnce("nudge_message", message)
+			if nudges != nil {
+				nudges.ProcessLocal(message)
+			}
 		}, func(name string) {
 			transport.SetName(name)
 			ws.SetDeviceName(name)

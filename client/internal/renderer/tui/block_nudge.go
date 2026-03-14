@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -10,15 +11,18 @@ import (
 )
 
 var (
-	nudgeMsg  = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	nudgeTime = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	nudgeMsg    = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	nudgeSelf   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	nudgeTime   = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
+	nudgeSelfLb = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
-const nudgeMax = 5
+const nudgeMax = 13
 
 type NudgeEntry struct {
 	Message string
 	At      time.Time
+	Self    bool
 }
 
 type NudgeHistory struct {
@@ -49,9 +53,20 @@ func (h *NudgeHistory) Process(deviceID, message string) {
 	}
 	h.seen[deviceID] = message
 
+	h.push(deviceID, message, false)
+}
+
+func (h *NudgeHistory) ProcessLocal(message string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.push("__self__", message, true)
+}
+
+func (h *NudgeHistory) push(deviceID, message string, self bool) {
 	entries := append(h.devices[deviceID], NudgeEntry{
 		Message: message,
 		At:      time.Now(),
+		Self:    self,
 	})
 	if len(entries) > nudgeMax {
 		entries = entries[len(entries)-nudgeMax:]
@@ -63,13 +78,27 @@ func (h *NudgeHistory) RenderFor(deviceID string) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	entries := h.devices[deviceID]
-	if len(entries) == 0 {
+	remote := h.devices[deviceID]
+	self := h.devices["__self__"]
+
+	if len(remote) == 0 && len(self) == 0 {
 		return ""
 	}
 
+	merged := make([]NudgeEntry, 0, len(remote)+len(self))
+	merged = append(merged, remote...)
+	merged = append(merged, self...)
+
+	sort.Slice(merged, func(i, j int) bool {
+		return merged[i].At.Before(merged[j].At)
+	})
+
+	if len(merged) > nudgeMax {
+		merged = merged[len(merged)-nudgeMax:]
+	}
+
 	var lines []string
-	for _, e := range entries {
+	for _, e := range merged {
 		ago := time.Since(e.At)
 		var ts string
 		if ago < time.Minute {
@@ -80,7 +109,11 @@ func (h *NudgeHistory) RenderFor(deviceID string) string {
 			ts = fmt.Sprintf("%dh", int(ago.Hours()))
 		}
 
-		lines = append(lines, nudgeMsg.Render(e.Message)+" "+nudgeTime.Render("· "+ts))
+		if e.Self {
+			lines = append(lines, nudgeSelfLb.Render("you: ")+nudgeSelf.Render(e.Message)+" "+nudgeTime.Render("· "+ts))
+		} else {
+			lines = append(lines, nudgeMsg.Render(e.Message)+" "+nudgeTime.Render("· "+ts))
+		}
 	}
 
 	return strings.Join(lines, "\n")
