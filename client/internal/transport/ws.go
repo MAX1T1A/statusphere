@@ -58,6 +58,12 @@ func (t *WSTransport) Close() error {
 	return nil
 }
 
+func (t *WSTransport) SetDeviceName(name string) {
+	t.mu.Lock()
+	t.deviceName = name
+	t.mu.Unlock()
+}
+
 func (t *WSTransport) Send(snap models.Snapshot) error {
 	t.mu.Lock()
 	conn := t.conn
