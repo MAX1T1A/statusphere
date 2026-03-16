@@ -6,7 +6,6 @@ import (
 	"flag"
 	"log"
 	"os"
-	"os/exec"
 	"os/signal"
 	"sync"
 	"time"
@@ -30,6 +29,8 @@ import (
 
 	"statusphere-client/internal/transport"
 	"statusphere-client/internal/watcher"
+
+	"github.com/godbus/dbus/v5"
 )
 
 const (
@@ -41,8 +42,7 @@ const (
 )
 
 var (
-	uiMode    = flag.String("ui", "tui", "UI mode: tui, headless")
-	statsMode = flag.String("stats", "", "show stats: day, 3days, week")
+	uiMode = flag.String("ui", "tui", "UI mode: tui, headless")
 )
 
 func buildProviders(ctx detector.Context) []collector.Provider {
@@ -133,7 +133,12 @@ func main() {
 			transport.SetName(name)
 			ws.SetDeviceName(name)
 		}, func(uri string) {
-			exec.Command("xdg-open", uri).Start()
+			conn, err := dbus.SessionBus()
+			if err != nil {
+				return
+			}
+			obj := conn.Object("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
+			obj.Call("org.mpris.MediaPlayer2.Player.OpenUri", 0, uri)
 		}, transport.ID())
 		ui = tuiUI
 
