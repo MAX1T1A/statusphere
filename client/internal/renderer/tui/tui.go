@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"sort"
 	"statusphere-client/internal/stats"
 	"strings"
@@ -47,12 +48,18 @@ const (
 	modeNone inputMode = iota
 	modeNudge
 	modeRename
+	modeSync
 )
 
 const (
-	maxNudgeLen  = 60
+	maxNudgeLen  = 128
 	maxRenameLen = 32
 )
+
+type syncCandidate struct {
+	name string
+	uri  string
+}
 
 type model struct {
 	devices map[string]map[string]any
@@ -64,6 +71,9 @@ type model struct {
 	input    string
 	onNudge  func(string)
 	onRename func(string)
+	onSync   func(uri string)
+	localID  string
+	syncList []syncCandidate
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -92,20 +102,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.mode = modeNone
 				m.input = ""
+				m.syncList = nil
 			case "backspace":
-				if len(m.input) > 0 {
+				if m.mode != modeSync && len(m.input) > 0 {
 					runes := []rune(m.input)
 					m.input = string(runes[:len(runes)-1])
 				}
 			default:
-				r := []rune(msg.String())
-				if len(r) == 1 {
-					limit := maxNudgeLen
-					if m.mode == modeRename {
-						limit = maxRenameLen
+				if m.mode == modeSync {
+					r := []rune(msg.String())
+					if len(r) == 1 && r[0] >= '1' && r[0] <= '9' {
+						idx := int(r[0] - '1')
+						if idx < len(m.syncList) && m.onSync != nil {
+							m.onSync(m.syncList[idx].uri)
+						}
+						m.mode = modeNone
+						m.syncList = nil
 					}
-					if len([]rune(m.input)) < limit {
-						m.input += msg.String()
+				} else {
+					r := []rune(msg.String())
+					if len(r) == 1 {
+						limit := maxNudgeLen
+						if m.mode == modeRename {
+							limit = maxRenameLen
+						}
+						if len([]rune(m.input)) < limit {
+							m.input += msg.String()
+						}
 					}
 				}
 			}
@@ -115,12 +138,44 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "n", "т":
+		case "n":
 			m.mode = modeNudge
 			m.input = ""
-		case "d", "в":
+		case "d":
 			m.mode = modeRename
 			m.input = ""
+		case "s":
+			if m.onSync == nil {
+				break
+			}
+			var candidates []syncCandidate
+			for id, dev := range m.devices {
+				if id == m.localID {
+					continue
+				}
+				uri, _ := dev["spotify_uri"].(string)
+				if uri == "" {
+					continue
+				}
+				name := id
+				if n, ok := dev["device_name"].(string); ok && n != "" {
+					name = n
+				}
+				display, _ := dev["spotify_display"].(string)
+				if display != "" {
+					name += " · " + display
+				}
+				candidates = append(candidates, syncCandidate{name: name, uri: uri})
+			}
+			sort.Slice(candidates, func(i, j int) bool {
+				return candidates[i].name < candidates[j].name
+			})
+			if len(candidates) == 1 {
+				m.onSync(candidates[0].uri)
+			} else if len(candidates) > 1 {
+				m.mode = modeSync
+				m.syncList = candidates
+			}
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -213,8 +268,14 @@ func (m model) View() string {
 		footer = inputStyle.Render("nudge: ") + m.input + inputCaret.Render("█")
 	case modeRename:
 		footer = inputStyle.Render("name: ") + m.input + inputCaret.Render("█")
+	case modeSync:
+		var opts []string
+		for i, c := range m.syncList {
+			opts = append(opts, inputStyle.Render(fmt.Sprintf("%d)", i+1))+" "+dimStyle.Render(c.name))
+		}
+		footer = inputStyle.Render("sync: ") + strings.Join(opts, "  ") + dimStyle.Render("  esc to cancel")
 	default:
-		footer = dimStyle.Render("n nudge · d rename · q quit")
+		footer = dimStyle.Render("n nudge · d rename · s sync · q quit")
 	}
 
 	return outer.Render(
@@ -229,7 +290,7 @@ type TUI struct {
 	Nudges *NudgeHistory
 }
 
-func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string), localID string) *TUI {
+func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string), onSync func(string), localID string) *TUI {
 	nudges := NewNudgeHistory(localID)
 
 	blocks := []Block{
@@ -244,6 +305,8 @@ func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string)
 		blocks:   blocks,
 		onNudge:  onNudge,
 		onRename: onRename,
+		onSync:   onSync,
+		localID:  localID,
 	}
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	return &TUI{prog: p, Nudges: nudges}

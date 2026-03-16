@@ -6,6 +6,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"sync"
 	"time"
@@ -40,7 +41,8 @@ const (
 )
 
 var (
-	uiMode = flag.String("ui", "tui", "UI mode: tui, headless")
+	uiMode    = flag.String("ui", "tui", "UI mode: tui, headless")
+	statsMode = flag.String("stats", "", "show stats: day, 3days, week")
 )
 
 func buildProviders(ctx detector.Context) []collector.Provider {
@@ -130,6 +132,8 @@ func main() {
 		}, func(name string) {
 			transport.SetName(name)
 			ws.SetDeviceName(name)
+		}, func(uri string) {
+			exec.Command("xdg-open", uri).Start()
 		}, transport.ID())
 		ui = tuiUI
 
