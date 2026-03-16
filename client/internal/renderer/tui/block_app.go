@@ -64,7 +64,7 @@ func renderSummaryStats(s *stats.Summary) string {
 		if len(name) > nameW {
 			name = name[:nameW-1] + "…"
 		}
-		padded := name + strings.Repeat(" ", nameW-len(name))
+		padded := name + strings.Repeat(" ", nameW-len([]rune(name)))
 
 		filled := (a.Seconds * sumBarWidth) / maxSec
 		if filled < 1 {
