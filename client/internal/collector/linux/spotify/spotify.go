@@ -23,7 +23,7 @@ func getProp(conn *dbus.Conn, prop string) (dbus.Variant, error) {
 	return result, err
 }
 
-func extractMetadata(conn *dbus.Conn) (artist, title, album, artURL string) {
+func extractMetadata(conn *dbus.Conn) (artist, title, album, artURL, trackID string) {
 	v, err := getProp(conn, "Metadata")
 	if err != nil {
 		return
@@ -63,6 +63,10 @@ func extractMetadata(conn *dbus.Conn) (artist, title, album, artURL string) {
 		artURL, _ = u.Value().(string)
 	}
 
+	if t, ok := meta["mpris:trackid"]; ok {
+		trackID, _ = t.Value().(string)
+	}
+
 	return
 }
 
@@ -89,7 +93,7 @@ func NowPlaying() func(models.Snapshot) {
 			return
 		}
 
-		artist, title, album, artURL := extractMetadata(conn)
+		artist, title, album, artURL, trackID := extractMetadata(conn)
 		if title == "" {
 			return
 		}
@@ -99,6 +103,12 @@ func NowPlaying() func(models.Snapshot) {
 		snap["spotify_artist"] = artist
 		snap["spotify_album"] = album
 		snap["spotify_art_url"] = artURL
+
+		if trackID != "" {
+			if id, ok := strings.CutPrefix(trackID, "/com/spotify/track/"); ok {
+				snap["spotify_uri"] = "spotify:track:" + id
+			}
+		}
 
 		if artist != "" {
 			snap["spotify_display"] = fmt.Sprintf("%s — %s", artist, title)
