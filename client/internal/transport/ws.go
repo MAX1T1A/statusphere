@@ -17,6 +17,7 @@ import (
 const (
 	reconnectDelay = 3 * time.Second
 	pingInterval   = 20 * time.Second
+	readTimeout    = 45 * time.Second
 )
 
 type WSTransport struct {
@@ -25,8 +26,9 @@ type WSTransport struct {
 	deviceID   string
 	deviceName string
 
-	mu   sync.Mutex
-	conn *websocket.Conn
+	mu     sync.Mutex
+	conn   *websocket.Conn
+	cancel context.CancelFunc
 }
 
 func NewWS(serverURL, token string) *WSTransport {
@@ -50,6 +52,9 @@ func (t *WSTransport) Connect(ctx context.Context) error {
 func (t *WSTransport) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.cancel != nil {
+		t.cancel()
+	}
 	if t.conn != nil {
 		err := t.conn.Close(websocket.StatusNormalClosure, "bye")
 		t.conn = nil
@@ -62,6 +67,19 @@ func (t *WSTransport) SetDeviceName(name string) {
 	t.mu.Lock()
 	t.deviceName = name
 	t.mu.Unlock()
+}
+
+func (t *WSTransport) drop() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.cancel != nil {
+		t.cancel()
+		t.cancel = nil
+	}
+	if t.conn != nil {
+		t.conn.CloseNow()
+		t.conn = nil
+	}
 }
 
 func (t *WSTransport) Send(snap models.Snapshot) error {
@@ -81,7 +99,15 @@ func (t *WSTransport) Send(snap models.Snapshot) error {
 		return err
 	}
 
-	return conn.Write(context.Background(), websocket.MessageText, data)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+		log.Printf("send error, dropping connection: %v", err)
+		t.drop()
+		return err
+	}
+	return nil
 }
 
 func (t *WSTransport) Listen(ctx context.Context, onEvent func(data []byte)) error {
@@ -99,12 +125,16 @@ func (t *WSTransport) Listen(ctx context.Context, onEvent func(data []byte)) err
 			continue
 		}
 
-		_, data, err := conn.Read(ctx)
+		readCtx, readCancel := context.WithTimeout(ctx, readTimeout)
+		_, data, err := conn.Read(readCtx)
+		readCancel()
+
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			log.Printf("ws read error: %v", err)
-			t.mu.Lock()
-			t.conn = nil
-			t.mu.Unlock()
+			t.drop()
 			t.reconnect(ctx)
 			continue
 		}
@@ -126,12 +156,38 @@ func (t *WSTransport) connect(ctx context.Context) error {
 		return err
 	}
 
+	pingCtx, pingCancel := context.WithCancel(ctx)
+
 	t.mu.Lock()
 	t.conn = conn
+	t.cancel = pingCancel
 	t.mu.Unlock()
+
+	go t.pinger(pingCtx, conn)
 
 	log.Println("ws connected")
 	return nil
+}
+
+func (t *WSTransport) pinger(ctx context.Context, conn *websocket.Conn) {
+	ticker := time.NewTicker(pingInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			err := conn.Ping(pingCtx)
+			cancel()
+			if err != nil {
+				log.Printf("ping failed: %v", err)
+				t.drop()
+				return
+			}
+		}
+	}
 }
 
 func (t *WSTransport) reconnect(ctx context.Context) {
