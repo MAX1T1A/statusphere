@@ -138,13 +138,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "n":
+		case "n", "т":
 			m.mode = modeNudge
 			m.input = ""
-		case "d":
+		case "d", "в":
 			m.mode = modeRename
 			m.input = ""
-		case "s":
+		case "s", "ы":
 			if m.onSync == nil {
 				break
 			}
