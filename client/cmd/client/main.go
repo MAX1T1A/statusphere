@@ -44,7 +44,7 @@ const (
 
 var (
 	uiMode       = flag.String("ui", "tui", "UI mode: tui, headless")
-	registerFlag = flag.String("register", "", "Register with server: --register <server_url> [room_id]")
+	registerFlag = flag.String("register", "", "Register with server: -register <server_url> [room_id]")
 	roomIDFlag   = flag.String("room", "", "Room ID for registration (omit to create new)")
 )
 
