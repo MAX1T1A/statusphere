@@ -39,7 +39,7 @@
 
 ```
 collector/       Провайдеры данных (подключаются в зависимости от ОС/DE/дистрибутива)
-  linux/         Linux: uptime, spotify, cpu, memory, battery, wifi, weather
+  linux/         Linux: uptime, spotify
     arch/        Arch Linux: количество пакетов
     hyprland/    Hyprland: активное окно, воркспейс
     spotify/     Spotify через D-Bus MPRIS
@@ -53,7 +53,7 @@ stats/           Интерфейс Fetcher + per-device Cache (async, stale-whi
   summary.go     Статистика использования приложений
 renderer/
   tui/           BubbleTea TUI с карточным лейаутом
-    block_header    Статус, имя, аптайм, батарея, wifi, погода
+    block_header    Статус, имя, аптайм
     block_spotify   Обложка, текущий трек, недельный график
     block_app       Активное приложение, бары экранного времени
     block_nudge     История сообщений per-device
