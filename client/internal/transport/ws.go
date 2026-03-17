@@ -146,7 +146,6 @@ func (t *WSTransport) Listen(ctx context.Context, onEvent func(data []byte)) err
 func (t *WSTransport) connect(ctx context.Context) error {
 	headers := http.Header{
 		"X-Room-Token": {t.token},
-		"X-Device-Id":  {t.deviceID},
 	}
 
 	conn, _, err := websocket.Dial(ctx, t.url, &websocket.DialOptions{

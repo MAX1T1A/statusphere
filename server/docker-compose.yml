@@ -4,14 +4,17 @@ services:
     restart: unless-stopped
     ports:
       - "8000"
+    volumes:
+      - ./src:/app/src
     environment:
       LOGGING_LEVEL: ${LOGGING_LEVEL}
-      POSTGRES_DB_HOST: ${POSTGRES_DB_HOST}
+      POSTGRES_DB_HOST: db
       POSTGRES_DB_PORT: ${POSTGRES_DB_PORT}
       POSTGRES_DB_LOGIN: ${POSTGRES_DB_LOGIN}
       POSTGRES_DB_PASSWORD: ${POSTGRES_DB_PASSWORD}
       POSTGRES_DB_NAME: ${POSTGRES_DB_NAME}
       POSTGRES_POOL_SIZE: ${POSTGRES_POOL_SIZE}
+      AUTH_SECRET: ${AUTH_SECRET}
       SAMPLER_INTERVAL: ${SAMPLER_INTERVAL}
     depends_on:
       db:
