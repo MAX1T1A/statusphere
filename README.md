@@ -149,7 +149,7 @@ go build -o statusphere ./cmd/client
 **Создать новую комнату:**
 
 ```bash
-./statusphere -register https://your-server.com
+./statusphere --register https://your-server.com
 ```
 
 Сервер сгенерирует `room_id` (128-бит random hex) и вернёт токен. Скопируй `room_id` из вывода и передай друзьям.
