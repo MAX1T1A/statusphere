@@ -12,8 +12,6 @@ class RegisterRequest(BaseModel):
 
 class RegisterResponse(BaseModel):
     token: str
-    room_id: str
-    device_id: str
 
 
 @router.post("/register")
@@ -22,4 +20,4 @@ async def register(request: Request, body: RegisterRequest) -> RegisterResponse:
     room_id = body.room_id or generate_room_id()
     device_id = generate_device_id()
     token = generate_token(room_id, device_id)
-    return RegisterResponse(token=token, room_id=room_id, device_id=device_id)
+    return RegisterResponse(token=token)
