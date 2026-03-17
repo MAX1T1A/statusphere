@@ -14,8 +14,22 @@ import (
 type Config struct {
 	ServerURL string `json:"server_url"`
 	Token     string `json:"token"`
-	RoomID    string `json:"room_id"`
-	DeviceID  string `json:"device_id"`
+}
+
+func (c *Config) RoomID() string {
+	parts := strings.Split(c.Token, ":")
+	if len(parts) >= 1 {
+		return parts[0]
+	}
+	return ""
+}
+
+func (c *Config) DeviceID() string {
+	parts := strings.Split(c.Token, ":")
+	if len(parts) >= 2 {
+		return parts[1]
+	}
+	return ""
 }
 
 func ConfigPath() string {
@@ -83,8 +97,6 @@ func Register(serverURL, roomID string) (*Config, error) {
 	cfg := &Config{
 		ServerURL: serverURL,
 		Token:     result.Token,
-		RoomID:    result.RoomID,
-		DeviceID:  result.DeviceID,
 	}
 	if err := cfg.Save(); err != nil {
 		return nil, fmt.Errorf("save config: %w", err)

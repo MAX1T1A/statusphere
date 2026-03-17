@@ -44,7 +44,7 @@ const (
 
 var (
 	uiMode       = flag.String("ui", "tui", "UI mode: tui, headless")
-	registerFlag = flag.String("register", "", "Register with server: -register <server_url> [room_id]")
+	registerFlag = flag.String("register", "", "Register with server: --register <server_url> [room_id]")
 	roomIDFlag   = flag.String("room", "", "Room ID for registration (omit to create new)")
 )
 
@@ -88,8 +88,8 @@ func main() {
 		}
 		fmt.Printf("Registered successfully!\n")
 		fmt.Printf("  Config: %s\n", auth.ConfigPath())
-		fmt.Printf("  Room:   %s\n", cfg.RoomID)
-		fmt.Printf("  Device: %s\n", cfg.DeviceID)
+		fmt.Printf("  Room:   %s\n", cfg.RoomID())
+		fmt.Printf("  Device: %s\n", cfg.DeviceID())
 		return
 	}
 
@@ -175,15 +175,15 @@ func main() {
 			}
 			obj := conn.Object("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
 			obj.Call("org.mpris.MediaPlayer2.Player.OpenUri", 0, uri)
-		}, cfg.DeviceID)
+		}, cfg.DeviceID())
 		ui = tuiUI
 
-		notify = notifier.New(cfg.DeviceID)
+		notify = notifier.New(cfg.DeviceID())
 		nudges = tuiUI.Nudges
 	case "headless":
 		noop := noop.NewNoop()
 		ui = noop
-		notify = notifier.New(cfg.DeviceID)
+		notify = notifier.New(cfg.DeviceID())
 		go func() {
 			<-ctx.Done()
 			noop.Stop()

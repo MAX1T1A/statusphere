@@ -43,20 +43,14 @@ collector/       Провайдеры данных (подключаются в 
     arch/        Arch Linux: количество пакетов
     hyprland/    Hyprland: активное окно, воркспейс
     spotify/     Spotify через D-Bus MPRIS
-
 detector/        Автоопределение ОС, дистрибутива, DE/WM, терминала
-
 transport/       WebSocket клиент с автореконнектом, идентификация устройства
-
 watcher/         Поллит коллекторы, сравнивает снапшоты, шлёт при изменении
                  InjectOnce() — одноразовые поля в следующий снапшот (nudge)
-
 feed/            Агрегирует входящие данные устройств из WebSocket
-
 stats/           Интерфейс Fetcher + per-device Cache (async, stale-while-revalidate)
   spotify.go     Статистика прослушивания Spotify
   summary.go     Статистика использования приложений
-
 renderer/
   tui/           BubbleTea TUI с карточным лейаутом
     block_header    Статус, имя, аптайм, батарея, wifi, погода
@@ -64,9 +58,8 @@ renderer/
     block_app       Активное приложение, бары экранного времени
     block_nudge     История сообщений per-device
   noop/          Headless режим (без UI, только сбор и отправка)
-
 notifier/        Десктопные уведомления через notify-send
-
+auth/            Регистрация и хранение токена авторизации
 models/          Тип Snapshot (map[string]any)
 ```
 
@@ -118,18 +111,85 @@ func NewMyCache(serverURL, token string) *Cache {
 - Десктопный Spotify (для текущего трека / синхронизации — опционально)
 - Запущенный сервер Statusphere
 
-## Запуск
+## Настройка сервера
+
+Сервер требует переменную окружения `AUTH_SECRET` — произвольная строка, используется для подписи токенов авторизации (HMAC-SHA256). Без неё сервер не запустится.
+
+```bash
+export AUTH_SECRET="$(openssl rand -hex 32)"
+export POSTGRES_DB_HOST=localhost
+export POSTGRES_DB_PORT=5432
+export POSTGRES_DB_LOGIN=postgres
+export POSTGRES_DB_PASSWORD=your-password
+export POSTGRES_DB_NAME=statusphere
+```
+
+Переменные для PostgreSQL **обязательны** — дефолтных значений нет, сервер упадёт с ошибкой если что-то не задано.
+
+### Docker
+
+```bash
+# Задай переменные в .env файле
+echo 'AUTH_SECRET=your-secret-here' >> .env
+echo 'POSTGRES_DB_LOGIN=postgres' >> .env
+echo 'POSTGRES_DB_PASSWORD=your-password' >> .env
+# ...
+
+docker compose up -d
+```
+
+## Регистрация и запуск клиента
 
 ```bash
 cd client
 go build -o statusphere ./cmd/client
+```
 
+При первом запуске клиент должен зарегистрироваться на сервере. Регистрация создаёт подписанный токен, который привязывает устройство к комнате.
+
+**Создать новую комнату:**
+
+```bash
+./statusphere -register https://your-server.com
+```
+
+Сервер сгенерирует `room_id` (128-бит random hex) и вернёт токен. Скопируй `room_id` из вывода и передай друзьям.
+
+**Присоединиться к существующей комнате:**
+
+```bash
+./statusphere --register https://your-server.com --room <room_id>
+```
+
+Конфигурация сохраняется в `~/.config/statusphere/config.json` (права `0600`):
+
+```json
+{
+  "server_url": "https://your-server.com",
+  "token": "room_id:device_id:hmac_signature",
+  "room_id": "a1b2c3...",
+  "device_id": "d4e5f6..."
+}
+```
+
+После регистрации просто запускай:
+
+```bash
 # TUI режим (по умолчанию)
 ./statusphere
 
 # Headless режим (только сбор и отправка, без UI)
-./statusphere -ui headless
+./statusphere --ui headless
 ```
+
+## Безопасность
+
+Все подключения (WebSocket и HTTP) авторизуются через HMAC-подписанный токен в заголовке `X-Room-Token`. Токен содержит `room_id`, `device_id` и подпись — подменить комнату или устройство невозможно без знания серверного секрета.
+
+- **Регистрация** — `POST /auth/register`, rate limit 5 запросов/мин на IP
+- **Stats API** — `GET /stats/summary`, `GET /stats/spotify`, rate limit 30 запросов/мин на IP, `room_id` берётся из токена
+- **WebSocket** — максимальный размер сообщения 16KB, rate limit 2 msg/sec на соединение, входящие данные фильтруются по whitelist ключей перед записью в БД
+- **Graceful shutdown** — при остановке сервера все WS-клиенты получают clean close (код 1001)
 
 ## Горячие клавиши
 
@@ -143,15 +203,10 @@ go build -o statusphere ./cmd/client
 
 ## Конфигурация
 
-URL сервера и токен комнаты задаются в `cmd/client/main.go`:
+Вся конфигурация клиента хранится в `~/.config/statusphere/`:
 
-```go
-const (
-    serverURL = "https://your-server-url.com"
-    roomToken = "your-room-token"
-)
-```
+- `config.json` — URL сервера, токен авторизации, room_id, device_id (создаётся при `--register`)
+- `device_id` — уникальный идентификатор устройства (legacy, теперь в config.json)
+- `device_name` — отображаемое имя (задаётся через `d`)
 
-Идентификация устройства хранится в `~/.config/statusphere/`:
-- `device_id` — уникальный идентификатор (генерируется автоматически)
-- `device_name` — отображаемое имя (задаётся через `d` или переменную `DEVICE_NAME`)
+Логи пишутся в `~/.cache/statusphere/statusphere.log`.
