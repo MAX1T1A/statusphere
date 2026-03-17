@@ -77,6 +77,12 @@ func buildProviders(ctx detector.Context) []collector.Provider {
 func main() {
 	flag.Parse()
 
+	logFile, err := os.OpenFile("/tmp/statusphere.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err == nil {
+		log.SetOutput(logFile)
+		defer logFile.Close()
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
