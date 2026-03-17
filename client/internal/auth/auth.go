@@ -66,9 +66,7 @@ func (c *Config) Save() error {
 }
 
 type registerResponse struct {
-	Token    string `json:"token"`
-	RoomID   string `json:"room_id"`
-	DeviceID string `json:"device_id"`
+	Token string `json:"token"`
 }
 
 func Register(serverURL, roomID string) (*Config, error) {
