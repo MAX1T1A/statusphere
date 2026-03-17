@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"time"
 
+	"statusphere-client/internal/auth"
 	"statusphere-client/internal/collector"
 	"statusphere-client/internal/feed"
 	"statusphere-client/internal/models"
@@ -37,12 +39,12 @@ const (
 	watchInterval = 2 * time.Second
 	idleTimeout   = 30 * time.Second
 	refreshRate   = 1 * time.Second
-	serverURL     = "https://your-server-url.com"
-	roomToken     = "your-room-token"
 )
 
 var (
-	uiMode = flag.String("ui", "tui", "UI mode: tui, headless")
+	uiMode       = flag.String("ui", "tui", "UI mode: tui, headless")
+	registerFlag = flag.String("register", "", "Register with server: --register <server_url> [room_id]")
+	roomIDFlag   = flag.String("room", "", "Room ID for registration (omit to create new)")
 )
 
 func buildProviders(ctx detector.Context) []collector.Provider {
@@ -76,6 +78,26 @@ func buildProviders(ctx detector.Context) []collector.Provider {
 
 func main() {
 	flag.Parse()
+	if *registerFlag != "" {
+		cfg, err := auth.Register(*registerFlag, *roomIDFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "registration failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Registered successfully!\n")
+		fmt.Printf("  Config: %s\n", auth.ConfigPath())
+		fmt.Printf("  Room:   %s\n", cfg.RoomID)
+		fmt.Printf("  Device: %s\n", cfg.DeviceID)
+		return
+	}
+
+	cfg, err := auth.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "No config found. Register first:\n")
+		fmt.Fprintf(os.Stderr, "  statusphere --register https://your-server.com\n")
+		fmt.Fprintf(os.Stderr, "  statusphere --register https://your-server.com --room <room_id>\n")
+		os.Exit(1)
+	}
 
 	logFile, err := os.OpenFile("/tmp/statusphere.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err == nil {
@@ -90,7 +112,7 @@ func main() {
 	providers := buildProviders(sysCtx)
 	coll := collector.New(providers...)
 
-	ws := transport.NewWS(serverURL, roomToken)
+	ws := transport.NewWS(cfg.ServerURL, cfg.Token)
 	if err := ws.Connect(ctx); err != nil {
 		log.Fatalf("connect failed: %v", err)
 	}
@@ -128,8 +150,8 @@ func main() {
 	var ui renderer.Renderer
 	switch *uiMode {
 	case "tui":
-		spotifyCache := stats.NewSpotifyCache(serverURL, roomToken)
-		summaryCache := stats.NewSummaryCache(serverURL, roomToken, "day")
+		spotifyCache := stats.NewSpotifyCache(cfg.ServerURL, cfg.Token)
+		summaryCache := stats.NewSummaryCache(cfg.ServerURL, cfg.Token, "day")
 		tuiUI := tui.New(spotifyCache, summaryCache, func(message string) {
 			w.InjectOnce("nudge_message", message)
 			if nudges != nil {
@@ -145,15 +167,15 @@ func main() {
 			}
 			obj := conn.Object("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
 			obj.Call("org.mpris.MediaPlayer2.Player.OpenUri", 0, uri)
-		}, transport.ID())
+		}, cfg.DeviceID)
 		ui = tuiUI
 
-		notify = notifier.New(transport.ID())
+		notify = notifier.New(cfg.DeviceID)
 		nudges = tuiUI.Nudges
 	case "headless":
 		noop := noop.NewNoop()
 		ui = noop
-		notify = notifier.New(transport.ID())
+		notify = notifier.New(cfg.DeviceID)
 		go func() {
 			<-ctx.Done()
 			noop.Stop()

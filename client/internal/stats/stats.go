@@ -110,10 +110,15 @@ func (c *Cache) doFetch(deviceID string) (any, error) {
 	u.Path = c.fetcher.Path()
 
 	q := c.fetcher.Query(deviceID)
-	q.Set("room_token", c.token)
 	u.RawQuery = q.Encode()
 
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Get(u.String())
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Room-Token", c.token)
+
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
 	if err != nil {
 		return nil, err
 	}
