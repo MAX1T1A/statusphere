@@ -147,8 +147,8 @@ URL сервера и токен комнаты задаются в `cmd/client/
 
 ```go
 const (
-    serverURL = "https://sphere.ug3n.com"
-    roomToken = "my-room-token"
+    serverURL = "https://your-server-url.com"
+    roomToken = "your-room-token"
 )
 ```
 
