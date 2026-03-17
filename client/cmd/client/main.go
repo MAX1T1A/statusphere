@@ -37,8 +37,8 @@ const (
 	watchInterval = 2 * time.Second
 	idleTimeout   = 30 * time.Second
 	refreshRate   = 1 * time.Second
-	serverURL     = "https://sphere.ug3n.com"
-	roomToken     = "my-room-token"
+	serverURL     = "https://your-server-url.com"
+	roomToken     = "your-room-token"
 )
 
 var (
