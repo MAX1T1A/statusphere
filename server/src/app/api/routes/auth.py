@@ -1,5 +1,5 @@
 from app.core.auth.auth import generate_device_id, generate_room_id, generate_token
-from app.core.ratelimit import limit
+from app.core.ratelimit.ratelimit import limit
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
