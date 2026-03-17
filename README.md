@@ -186,7 +186,7 @@ go build -o statusphere ./cmd/client
 
 - **Регистрация** — `POST /auth/register`, rate limit 5 запросов/мин на IP
 - **Stats API** — `GET /stats/summary`, `GET /stats/spotify`, rate limit 30 запросов/мин на IP, `room_id` берётся из токена
-- **WebSocket** — максимальный размер сообщения 16KB, rate limit 2 msg/sec на соединение, входящие данные фильтруются по whitelist ключей перед записью в БД
+- **WebSocket** — максимальный размер сообщения 16KB, rate limit 2 msg/sec на соединение
 - **Graceful shutdown** — при остановке сервера все WS-клиенты получают clean close (код 1001)
 
 ## Горячие клавиши
@@ -203,8 +203,7 @@ go build -o statusphere ./cmd/client
 
 Вся конфигурация клиента хранится в `~/.config/statusphere/`:
 
-- `config.json` — URL сервера, токен авторизации, room_id, device_id (создаётся при `--register`)
-- `device_id` — уникальный идентификатор устройства (legacy, теперь в config.json)
+- `config.json` — URL сервера, токен авторизации (создаётся при `--register`)
 - `device_name` — отображаемое имя (задаётся через `d`)
 
 Логи пишутся в `~/.cache/statusphere/statusphere.log`.
