@@ -5,7 +5,7 @@ from app.services.room.storage import Subscriber
 
 
 async def subscribe(self, token: str, device_id: str) -> AsyncGenerator[dict, None]:
-    queue: asyncio.Queue = asyncio.Queue()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=128)
     room = self._storage.get_or_create(token)
     room.subscribers.append(Subscriber(device_id=device_id, queue=queue))
     try:

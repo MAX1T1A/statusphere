@@ -24,8 +24,8 @@ func ID() string {
 	}
 
 	id := generateID()
-	os.MkdirAll(filepath.Dir(path), 0o755)
-	os.WriteFile(path, []byte(id), 0o644)
+	os.MkdirAll(filepath.Dir(path), 0o700)
+	os.WriteFile(path, []byte(id), 0o600)
 	return id
 }
 
@@ -55,8 +55,8 @@ func SetName(name string) {
 	}
 
 	dir := filepath.Join(configDir, "statusphere")
-	os.MkdirAll(dir, 0o755)
-	os.WriteFile(filepath.Join(dir, "device_name"), []byte(name), 0o644)
+	os.MkdirAll(dir, 0o700)
+	os.WriteFile(filepath.Join(dir, "device_name"), []byte(name), 0o600)
 }
 
 func generateID() string {

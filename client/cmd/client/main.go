@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -78,6 +79,7 @@ func buildProviders(ctx detector.Context) []collector.Provider {
 
 func main() {
 	flag.Parse()
+
 	if *registerFlag != "" {
 		cfg, err := auth.Register(*registerFlag, *roomIDFlag)
 		if err != nil {
@@ -99,7 +101,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	logFile, err := os.OpenFile("/tmp/statusphere.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		cacheDir = os.TempDir()
+	}
+	logDir := filepath.Join(cacheDir, "statusphere")
+	os.MkdirAll(logDir, 0o700)
+	logFile, err := os.OpenFile(filepath.Join(logDir, "statusphere.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err == nil {
 		log.SetOutput(logFile)
 		defer logFile.Close()
