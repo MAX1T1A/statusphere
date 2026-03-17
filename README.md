@@ -165,7 +165,7 @@ go build -o statusphere ./cmd/client
 ```json
 {
   "server_url": "https://your-server.com",
-  "token": "room_id:device_id:hmac_signature",
+  "token": "room_id:device_id:hmac_signature"
 }
 ```
 
