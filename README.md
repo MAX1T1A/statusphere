@@ -14,7 +14,7 @@
 curl -sSL https://raw.githubusercontent.com/MAX1T1A/statusphere/master/install.sh | bash
 ```
 
-Скрипт клонит репозиторий, собирает бинарник, ставит в `~/.local/bin/` и добавляет алиас `ss` в конфиг шелла. После установки перезапусти шелл или выполни `source ~/.bashrc` / `source ~/.zshrc`.
+Скрипт клонит репозиторий, собирает бинарник, ставит в `~/.local/bin/` и добавляет алиас `sstatus` в конфиг шелла. После установки перезапусти шелл или выполни `source ~/.bashrc` / `source ~/.zshrc`.
 
 Требования: `curl` или `wget`.
 
