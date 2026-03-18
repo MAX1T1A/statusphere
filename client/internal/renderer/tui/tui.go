@@ -40,6 +40,8 @@ var (
 
 	inputStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	inputCaret = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+
+	accentStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
 )
 
 type inputMode int
@@ -241,11 +243,12 @@ func (m model) View() string {
 		outer = outer.Width(m.width - 2)
 	}
 
+	header := titleStyle.Render("statu") + accentStyle.Render("ss") + titleStyle.Render("phere")
 	if len(m.devices) == 0 {
 		return outer.Render(
-			titleStyle.Render("statusphere") + "\n\n" +
+			header + "\n\n" +
 				dimStyle.Render("waiting for devices…") + "\n\n" +
-				dimStyle.Render("q to quit"),
+				accentStyle.Render("q") + dimStyle.Render("uit"),
 		)
 	}
 
@@ -275,11 +278,14 @@ func (m model) View() string {
 		}
 		footer = inputStyle.Render("sync: ") + strings.Join(opts, "  ") + dimStyle.Render("  esc to cancel")
 	default:
-		footer = dimStyle.Render("n nudge · d rename · s sync · q quit")
+		footer = accentStyle.Render("n") + dimStyle.Render("udge · ") +
+			accentStyle.Render("d") + dimStyle.Render("evice · ") +
+			accentStyle.Render("s") + dimStyle.Render("ync · ") +
+			accentStyle.Render("q") + dimStyle.Render("uit")
 	}
 
 	return outer.Render(
-		titleStyle.Render("statusphere") + "\n\n" +
+		header + "\n\n" +
 			grid + "\n\n" +
 			footer,
 	)
