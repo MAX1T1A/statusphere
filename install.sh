@@ -40,15 +40,15 @@ case "$(basename "$SHELL")" in
 esac
 
 if [ -n "$SHELL_RC" ] && [ -f "$SHELL_RC" ]; then
-    if ! grep -q "alias ss=" "$SHELL_RC" 2>/dev/null; then
+    if ! grep -q "alias sstatus=" "$SHELL_RC" 2>/dev/null; then
         echo "" >> "$SHELL_RC"
         echo "# statusphere" >> "$SHELL_RC"
         if [ "$(basename "$SHELL")" = "fish" ]; then
-            echo "alias ss '$INSTALL_DIR/$BINARY'" >> "$SHELL_RC"
+            echo "alias sstatus '$INSTALL_DIR/$BINARY'" >> "$SHELL_RC"
         else
-            echo "alias ss='$INSTALL_DIR/$BINARY'" >> "$SHELL_RC"
+            echo "alias sstatus='$INSTALL_DIR/$BINARY'" >> "$SHELL_RC"
         fi
-        echo "added alias ss → $SHELL_RC"
+        echo "added alias sstatus → $SHELL_RC"
     fi
 
     if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
@@ -65,4 +65,4 @@ echo "done! restart your shell or run:"
 echo "  source $SHELL_RC"
 echo ""
 echo "then:"
-echo "  ss --register https://your-server.com"
+echo "  sstatus --register https://your-server.com"
