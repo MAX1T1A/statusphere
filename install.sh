@@ -1,35 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="https://github.com/MAX1T1A/statusphere.git"
+REPO="MAX1T1A/statusphere"
 BINARY="statusphere"
 INSTALL_DIR="$HOME/.local/bin"
-TMP_DIR="$(mktemp -d)"
 
-cleanup() { rm -rf "$TMP_DIR"; }
-trap cleanup EXIT
+ARCH="$(uname -m)"
+case "$ARCH" in
+    x86_64)  ARCH="amd64" ;;
+    aarch64) ARCH="arm64" ;;
+    *)
+        echo "error: unsupported architecture: $ARCH"
+        exit 1
+        ;;
+esac
 
-if ! command -v go &>/dev/null; then
-    echo "error: go is not installed"
-    echo "install it: https://go.dev/dl/"
+ASSET="${BINARY}-linux-${ARCH}"
+URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
+
+echo "downloading ${ASSET}..."
+if command -v curl &>/dev/null; then
+    curl -fsSL -o "/tmp/${BINARY}" "$URL"
+elif command -v wget &>/dev/null; then
+    wget -qO "/tmp/${BINARY}" "$URL"
+else
+    echo "error: curl or wget required"
     exit 1
 fi
 
-if ! command -v git &>/dev/null; then
-    echo "error: git is not installed"
-    exit 1
-fi
-
-echo "cloning statusphere..."
-git clone --depth 1 "$REPO" "$TMP_DIR/statusphere"
-
-echo "building..."
-cd "$TMP_DIR/statusphere/client"
-go build -o "$BINARY" ./cmd/client
-
-echo "installing to $INSTALL_DIR..."
+chmod +x "/tmp/${BINARY}"
 mkdir -p "$INSTALL_DIR"
-mv "$BINARY" "$INSTALL_DIR/$BINARY"
+mv "/tmp/${BINARY}" "$INSTALL_DIR/$BINARY"
 
 SHELL_RC=""
 case "$(basename "$SHELL")" in
