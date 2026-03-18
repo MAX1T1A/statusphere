@@ -151,7 +151,7 @@ docker compose up -d
 
 ```bash
 cd client
-go build -o statusphere ./cmd/client
+go build -o sstatus ./cmd/client
 ```
 
 При первом запуске клиент должен зарегистрироваться на сервере. Регистрация создаёт подписанный токен, который привязывает устройство к комнате.
@@ -159,7 +159,7 @@ go build -o statusphere ./cmd/client
 **Создать новую комнату:**
 
 ```bash
-./statusphere --register https://your-server.com
+sstatus --register https://your-server.com
 ```
 
 Сервер сгенерирует `room_id` (128-бит random hex) и вернёт токен. Скопируй `room_id` из вывода и передай друзьям.
@@ -167,7 +167,7 @@ go build -o statusphere ./cmd/client
 **Присоединиться к существующей комнате:**
 
 ```bash
-./statusphere --register https://your-server.com --room <room_id>
+sstatus --register https://your-server.com --room <room_id>
 ```
 
 Конфигурация сохраняется в `~/.config/statusphere/config.json` (права `0600`):
@@ -183,10 +183,10 @@ go build -o statusphere ./cmd/client
 
 ```bash
 # TUI режим (по умолчанию)
-./statusphere
+sstatus
 
 # Headless режим (только сбор и отправка, без UI)
-./statusphere --ui headless
+sstatus --ui headless
 ```
 
 ## Безопасность
