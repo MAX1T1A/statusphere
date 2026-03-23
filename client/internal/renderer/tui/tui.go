@@ -3,8 +3,9 @@ package tui
 import (
 	"fmt"
 	"sort"
-	"statusphere-client/internal/stats"
 	"strings"
+
+	"statusphere-client/internal/stats"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -16,8 +17,6 @@ type Block struct {
 	Key    string
 	Render func(d map[string]any) string
 }
-
-const cardWidth = 44
 
 var (
 	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
