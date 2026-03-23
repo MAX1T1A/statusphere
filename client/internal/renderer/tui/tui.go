@@ -242,7 +242,7 @@ func (m model) View() string {
 		outer = outer.Width(m.width - 2)
 	}
 
-	header := titleStyle.Render("statu") + accentStyle.Render("ss") + titleStyle.Render("phere")
+	header := accentStyle.Render("s") + titleStyle.Render("tatu") + accentStyle.Render("s") + titleStyle.Render("phere")
 	if len(m.devices) == 0 {
 		return outer.Render(
 			header + "\n\n" +
