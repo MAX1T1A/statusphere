@@ -186,6 +186,12 @@ func main() {
 			}
 			obj := conn.Object("org.mpris.MediaPlayer2.spotify", "/org/mpris/MediaPlayer2")
 			obj.Call("org.mpris.MediaPlayer2.Player.OpenUri", 0, uri)
+		}, func(fields []string) {
+			raw := make([]any, len(fields))
+			for i, f := range fields {
+				raw[i] = f
+			}
+			customc.MergeKeys(raw)
 		}, cfg.DeviceID())
 		ui = tuiUI
 
