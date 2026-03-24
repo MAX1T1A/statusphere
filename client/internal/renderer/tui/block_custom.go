@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 var (
@@ -13,6 +14,14 @@ var (
 	customEmptyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	customSepStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
+
+func padRight(s string, w int) string {
+	sw := runewidth.StringWidth(s)
+	if sw >= w {
+		return s
+	}
+	return s + strings.Repeat(" ", w-sw)
+}
 
 func BlockCustom() Block {
 	return Block{
@@ -39,11 +48,9 @@ func BlockCustom() Block {
 						val = s
 					}
 				}
-				w := len(key)
-				if len(val) > w {
-					w = len(val)
-				}
-				cols = append(cols, col{key: key, val: val, w: w})
+				kw := runewidth.StringWidth(key)
+				vw := runewidth.StringWidth(val)
+				cols = append(cols, col{key: key, val: val, w: max(kw, vw)})
 			}
 
 			if len(cols) == 0 {
@@ -54,13 +61,11 @@ func BlockCustom() Block {
 
 			var keys, vals []string
 			for _, c := range cols {
-				keys = append(keys, customKeyStyle.Render(c.key+strings.Repeat(" ", c.w-len(c.key))))
-				raw := c.val
-				pad := strings.Repeat(" ", c.w-len(raw))
-				if raw == "—" {
-					vals = append(vals, customEmptyStyle.Render(raw+pad))
+				keys = append(keys, customKeyStyle.Render(padRight(c.key, c.w)))
+				if c.val == "—" {
+					vals = append(vals, customEmptyStyle.Render(padRight(c.val, c.w)))
 				} else {
-					vals = append(vals, customValueStyle.Render(raw+pad))
+					vals = append(vals, customValueStyle.Render(padRight(c.val, c.w)))
 				}
 			}
 
