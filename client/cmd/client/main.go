@@ -22,6 +22,8 @@ import (
 	linuxc "statusphere-client/internal/collector/linux"
 	spotifyc "statusphere-client/internal/collector/linux/spotify"
 
+	customc "statusphere-client/internal/collector/custom"
+
 	archc "statusphere-client/internal/collector/linux/arch"
 	hyprlandc "statusphere-client/internal/collector/linux/hyprland"
 
@@ -74,6 +76,10 @@ func buildProviders(ctx detector.Context) []collector.Provider {
 		}
 	}
 
+	for _, cProvider := range customc.Providers() {
+		providers = append(providers, cProvider)
+	}
+
 	return providers
 }
 
@@ -117,6 +123,8 @@ func main() {
 	defer cancel()
 
 	sysCtx := detector.Detect()
+	customc.EnsureConfig()
+
 	providers := buildProviders(sysCtx)
 	coll := collector.New(providers...)
 
@@ -130,6 +138,9 @@ func main() {
 	sendSnap := func(snap models.Snapshot) {
 		sendMu.Lock()
 		defer sendMu.Unlock()
+		if names := customc.FieldNames(); len(names) > 0 {
+			snap["custom_fields"] = names
+		}
 		if err := ws.Send(snap); err != nil {
 			log.Printf("send error: %v", err)
 		}
