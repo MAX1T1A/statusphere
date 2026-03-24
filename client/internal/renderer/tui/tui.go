@@ -18,6 +18,12 @@ type Block struct {
 	Render func(d map[string]any) string
 }
 
+type LayoutRow struct {
+	Blocks []Block
+	Bare   bool
+	Anchor int
+}
+
 var (
 	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
 	dimStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -67,7 +73,7 @@ type syncDevice struct {
 
 type model struct {
 	devices map[string]map[string]any
-	blocks  []Block
+	layout  []LayoutRow
 	width   int
 	height  int
 
@@ -250,59 +256,152 @@ func (m model) buildSyncDevices() []syncDevice {
 	return devices
 }
 
-func renderCard(d map[string]any, blocks []Block) string {
-	rendered := make(map[string]string)
-	for _, b := range blocks {
-		out := b.Render(d)
-		if out != "" {
-			rendered[b.Key] = out
-		}
+const minContentWidth = 40
+
+func renderCard(d map[string]any, layout []LayoutRow, cardWidth int) string {
+	cardPad := cardBorder.GetHorizontalBorderSize() + cardBorder.GetHorizontalPadding()
+	innerPad := innerBlock.GetHorizontalBorderSize() + innerBlock.GetHorizontalPadding()
+
+	cw := cardWidth - cardPad
+	if cw < minContentWidth {
+		cw = minContentWidth
 	}
 
 	var sections []string
 
-	if h, ok := rendered["header"]; ok {
-		sections = append(sections, h)
-	}
-
-	if c, ok := rendered["custom"]; ok {
-		sections = append(sections, innerBlock.Render(c))
-	}
-
-	spotifyOut := rendered["spotify"]
-	nudgeOut := rendered["nudge"]
-
-	if spotifyOut != "" && nudgeOut != "" {
-		left := innerBlock.Render(spotifyOut)
-		h := lipgloss.Height(left)
-		nudgeLines := strings.Split(nudgeOut, "\n")
-		maxLines := h - 2
-		if maxLines < 1 {
-			maxLines = 1
+	for _, row := range layout {
+		type activeBlock struct {
+			content string
+			origIdx int
 		}
-		if len(nudgeLines) > maxLines {
-			nudgeLines = nudgeLines[len(nudgeLines)-maxLines:]
+		var active []activeBlock
+		for i, b := range row.Blocks {
+			out := b.Render(d)
+			if out != "" {
+				active = append(active, activeBlock{content: out, origIdx: i})
+			}
 		}
-		right := innerBlock.Height(maxLines).Render(strings.Join(nudgeLines, "\n"))
-		sections = append(sections, lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right))
-	} else if spotifyOut != "" {
-		sections = append(sections, innerBlock.Render(spotifyOut))
-	} else if nudgeOut != "" {
-		sections = append(sections, innerBlock.Render(nudgeOut))
+		if len(active) == 0 {
+			continue
+		}
+
+		if row.Bare {
+			var texts []string
+			for _, a := range active {
+				texts = append(texts, a.content)
+			}
+			sections = append(sections, strings.Join(texts, "\n"))
+			continue
+		}
+
+		if len(active) == 1 {
+			iw := cw - innerPad
+			if iw < 1 {
+				iw = 1
+			}
+			sections = append(sections, innerBlock.Width(iw).Render(active[0].content))
+			continue
+		}
+
+		gap := 1
+		n := len(active)
+		totalOuter := cw - gap*(n-1)
+		base := totalOuter / n
+
+		innerVPad := innerBlock.GetVerticalBorderSize() + innerBlock.GetVerticalPadding()
+
+		iws := make([]int, n)
+		usedWidth := 0
+		rendered := make([]string, n)
+		for i, a := range active {
+			remaining := cw - usedWidth - gap*(n-1-i)
+			targetOuter := base
+			if i == n-1 {
+				targetOuter = remaining
+			} else if targetOuter > remaining {
+				targetOuter = remaining
+			}
+			iw := targetOuter - innerPad
+			if iw < 1 {
+				iw = 1
+			}
+			iws[i] = iw
+			r := innerBlock.Width(iw).Render(a.content)
+			rendered[i] = r
+			usedWidth += lipgloss.Width(r) + gap
+		}
+
+		anchorH := 0
+		anchorFound := false
+		for i, a := range active {
+			if a.origIdx == row.Anchor {
+				anchorH = lipgloss.Height(rendered[i])
+				anchorFound = true
+				break
+			}
+		}
+		if !anchorFound {
+			for _, r := range rendered {
+				if h := lipgloss.Height(r); h > anchorH {
+					anchorH = h
+				}
+			}
+		}
+
+		ih := anchorH - innerVPad
+		if ih < 1 {
+			ih = 1
+		}
+
+		var parts []string
+		usedWidth = 0
+		for i, a := range active {
+			iw := iws[i]
+			if i == n-1 {
+				remaining := cw - usedWidth - gap*(n-1-i)
+				iw = remaining - innerPad
+				if iw < 1 {
+					iw = 1
+				}
+			}
+			content := a.content
+			if anchorFound && a.origIdx != row.Anchor {
+				lines := strings.Split(content, "\n")
+				if len(lines) > ih {
+					lines = lines[len(lines)-ih:]
+					content = strings.Join(lines, "\n")
+				}
+			}
+			r := innerBlock.Width(iw).Height(ih).Render(content)
+			parts = append(parts, r)
+			usedWidth += lipgloss.Width(r) + gap
+		}
+
+		var joined []string
+		for i, p := range parts {
+			if i > 0 {
+				joined = append(joined, " ")
+			}
+			joined = append(joined, p)
+		}
+		sections = append(sections, lipgloss.JoinHorizontal(lipgloss.Top, joined...))
 	}
 
-	if a, ok := rendered["app"]; ok {
-		sections = append(sections, innerBlock.Render(a))
-	}
-
-	return cardBorder.Render(strings.Join(sections, "\n"))
+	return cardBorder.Width(cw).Render(strings.Join(sections, "\n"))
 }
 
 func (m model) View() string {
-	outer := outerBorder
-	if m.width > 0 {
-		outer = outer.Width(m.width - 2)
+	outerPad := outerBorder.GetHorizontalBorderSize() + outerBorder.GetHorizontalPadding()
+
+	totalW := m.width
+	if totalW < minContentWidth+outerPad {
+		totalW = minContentWidth + outerPad
 	}
+
+	outer := outerBorder.Width(totalW - outerPad)
+
+	contentW := totalW - outerPad
+	cardWidth := contentW
 
 	header := accentStyle.Render("s") + titleStyle.Render("tatu") + accentStyle.Render("s") + titleStyle.Render("phere")
 	if len(m.devices) == 0 {
@@ -321,7 +420,7 @@ func (m model) View() string {
 
 	var cards []string
 	for _, id := range keys {
-		cards = append(cards, renderCard(m.devices[id], m.blocks))
+		cards = append(cards, renderCard(m.devices[id], m.layout, cardWidth))
 	}
 
 	grid := lipgloss.JoinVertical(lipgloss.Left, cards...)
@@ -373,17 +472,16 @@ type TUI struct {
 func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string), onSync func(string), onSyncCustom func([]string), localID string) *TUI {
 	nudges := NewNudgeHistory(localID)
 
-	blocks := []Block{
-		BlockHeader(),
-		BlockSpotify(spotifyCache),
-		BlockApp(summaryCache),
-		BlockCustom(),
-		BlockNudge(nudges),
+	layout := []LayoutRow{
+		{Blocks: []Block{BlockHeader()}, Bare: true},
+		{Blocks: []Block{BlockCustom()}},
+		{Blocks: []Block{BlockSpotify(spotifyCache), BlockNudge(nudges)}, Anchor: 0},
+		{Blocks: []Block{BlockApp(summaryCache)}},
 	}
 
 	m := model{
 		devices:      make(map[string]map[string]any),
-		blocks:       blocks,
+		layout:       layout,
 		onNudge:      onNudge,
 		onRename:     onRename,
 		onSync:       onSync,
