@@ -192,7 +192,7 @@ func main() {
 				raw[i] = f
 			}
 			customc.MergeKeys(raw)
-		}, cfg.DeviceID())
+		}, cfg.DeviceID(), customc.FieldNames())
 		ui = tuiUI
 
 		notify = notifier.New(cfg.DeviceID())

@@ -8,6 +8,19 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
+// wcwidth measures visible terminal column width treating ambiguous-width
+// Unicode characters (e.g. weather symbols like ⛅) as width 1, matching
+// the behaviour of most modern western terminals.
+var wcCond = runewidth.NewCondition()
+
+func init() {
+	wcCond.EastAsianWidth = false
+}
+
+func wcswidth(s string) int {
+	return wcCond.StringWidth(s)
+}
+
 var (
 	customKeyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
 	customValueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
@@ -16,18 +29,20 @@ var (
 )
 
 func padRight(s string, w int) string {
-	sw := runewidth.StringWidth(s)
+	sw := wcswidth(s)
 	if sw >= w {
 		return s
 	}
 	return s + strings.Repeat(" ", w-sw)
 }
 
-func BlockCustom() Block {
+func BlockCustom(canonicalOrder []string) Block {
 	return Block{
 		Key: "custom",
 		Render: func(d map[string]any) string {
-			fields, _ := d["custom_fields"].([]any)
+			if len(canonicalOrder) == 0 {
+				return ""
+			}
 
 			type col struct {
 				key string
@@ -35,26 +50,17 @@ func BlockCustom() Block {
 				w   int
 			}
 
-			var cols []col
-			for _, f := range fields {
-				key, ok := f.(string)
-				if !ok || key == "" {
-					continue
-				}
+			cols := make([]col, 0, len(canonicalOrder))
+			for _, key := range canonicalOrder {
 				val := "—"
 				if v, ok := d[key]; ok {
-					s := fmt.Sprintf("%v", v)
-					if s != "" {
+					if s := fmt.Sprintf("%v", v); s != "" {
 						val = s
 					}
 				}
-				kw := runewidth.StringWidth(key)
-				vw := runewidth.StringWidth(val)
+				kw := wcswidth(key)
+				vw := wcswidth(val)
 				cols = append(cols, col{key: key, val: val, w: max(kw, vw)})
-			}
-
-			if len(cols) == 0 {
-				return ""
 			}
 
 			sep := customSepStyle.Render(" │ ")

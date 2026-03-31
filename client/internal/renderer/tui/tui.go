@@ -469,12 +469,12 @@ type TUI struct {
 	Nudges *NudgeHistory
 }
 
-func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string), onSync func(string), onSyncCustom func([]string), localID string) *TUI {
+func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string), onSync func(string), onSyncCustom func([]string), localID string, customOrder []string) *TUI {
 	nudges := NewNudgeHistory(localID)
 
 	layout := []LayoutRow{
 		{Blocks: []Block{BlockHeader()}, Bare: true},
-		{Blocks: []Block{BlockCustom()}},
+		{Blocks: []Block{BlockCustom(customOrder)}},
 		{Blocks: []Block{BlockSpotify(spotifyCache), BlockNudge(nudges)}, Anchor: 0},
 		{Blocks: []Block{BlockApp(summaryCache)}},
 	}

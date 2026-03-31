@@ -1,6 +1,7 @@
 package custom
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -22,16 +23,38 @@ func configPath() string {
 	return filepath.Join(dir, "statusphere", "custom.json")
 }
 
-func load() map[string]fieldConfig {
+// load parses custom.json and returns both the config map and the keys in
+// their original JSON order (Go maps do not preserve insertion order).
+func load() (map[string]fieldConfig, []string) {
 	data, err := os.ReadFile(configPath())
 	if err != nil {
-		return nil
+		return nil, nil
 	}
-	var fields map[string]fieldConfig
-	if err := json.Unmarshal(data, &fields); err != nil {
-		return nil
+
+	var order []string
+	configs := make(map[string]fieldConfig)
+
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return nil, nil
 	}
-	return fields
+	for dec.More() {
+		t, err := dec.Token()
+		if err != nil {
+			break
+		}
+		key, ok := t.(string)
+		if !ok {
+			break
+		}
+		var cfg fieldConfig
+		if err := dec.Decode(&cfg); err != nil {
+			break
+		}
+		order = append(order, key)
+		configs[key] = cfg
+	}
+	return configs, order
 }
 
 type cachedResult struct {
@@ -62,13 +85,14 @@ func (c *cachedResult) get(cmd string) string {
 }
 
 func Providers() []func(models.Snapshot) {
-	fields := load()
+	fields, order := load()
 	if len(fields) == 0 {
 		return nil
 	}
 
 	var providers []func(models.Snapshot)
-	for key, cfg := range fields {
+	for _, key := range order {
+		cfg := fields[key]
 		k, c := key, cfg
 		if c.Cmd == "" {
 			continue
@@ -86,19 +110,12 @@ func Providers() []func(models.Snapshot) {
 }
 
 func FieldNames() []string {
-	fields := load()
-	if len(fields) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(fields))
-	for k := range fields {
-		names = append(names, k)
-	}
-	return names
+	_, order := load()
+	return order
 }
 
 func MergeKeys(raw []any) {
-	current := load()
+	current, _ := load()
 	if current == nil {
 		current = make(map[string]fieldConfig)
 	}
