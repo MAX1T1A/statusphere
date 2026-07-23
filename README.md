@@ -22,8 +22,16 @@ curl -sSL https://raw.githubusercontent.com/MAX1T1A/statusphere/master/install.s
 
 **Присутствие и системная информация**
 - Статус онлайн/idle/офлайн с цветным индикатором
-- Аптайм системы
-- Активное приложение и заголовок окна (Hyprland)
+- Аптайм системы, загрузка CPU, память, load average
+- Количество пакетов (Arch)
+- Активное приложение, заголовок окна и воркспейс (Hyprland)
+
+**Кастомные поля**
+- Свои поля из произвольных shell-команд (`~/.config/statusphere/custom.json`)
+- Отображаются отдельным блоком в карточке
+- Синхронизация полей с другом через `s`
+
+> ⚠️ Кастомные поля выполняют произвольные команды через `sh -c`. Не добавляй в `custom.json` команды из недоверенных источников.
 
 **Spotify**
 - Текущий трек: исполнитель, название, альбом + пиксельная обложка (half-block рендеринг)
@@ -46,49 +54,79 @@ curl -sSL https://raw.githubusercontent.com/MAX1T1A/statusphere/master/install.s
 
 ## Архитектура
 
+Клиент (`client/internal/`):
+
 ```
-collector/       Провайдеры данных (подключаются в зависимости от ОС/DE/дистрибутива)
-  linux/         Linux: uptime, spotify
-    arch/        Arch Linux: количество пакетов
-    hyprland/    Hyprland: активное окно, воркспейс
-    spotify/     Spotify через D-Bus MPRIS
+app/             Жизненный цикл: сборка провайдеров, оркестрация горутин, реализация tui.Controller
+presence/        Типизированный Snapshot: реестр ключей (keys.go) + безопасные аксессоры (String/Int/Float/Strings)
+config/          Единые пути ~/.config/statusphere, ~/.cache/statusphere
+collector/       Реестр провайдеров: Provider{Name, Collect(ctx, snap) error} + Descriptor{Applies(detector.Context)}
+                 Провайдеры самрегистрируются в init(); Collect() гоняет каждого с пер-провайдерным таймаутом
+  linux/         uptime, cpu, memory, load, music (playerctl)
+    arch/        Количество пакетов (pacman)
+    hyprland/    Активное окно + воркспейс (hyprctl)
+    spotify/     Текущий трек через D-Bus MPRIS
+  custom/        Manager: поля из custom.json как провайдеры (кэш per-field, TTL)
 detector/        Автоопределение ОС, дистрибутива, DE/WM, терминала
-transport/       WebSocket клиент с автореконнектом, идентификация устройства
-watcher/         Поллит коллекторы, сравнивает снапшоты, шлёт при изменении
-                 InjectOnce() — одноразовые поля в следующий снапшот (nudge)
-feed/            Агрегирует входящие данные устройств из WebSocket
+transport/       WebSocket клиент с автореконнектом; Send клонирует снапшот и штампует device_id/name
+watcher/         Поллит коллекторы; шлёт при значимом изменении (волатильные метрики игнорируются) + heartbeat
+                 InjectOnce() — одноразовые поля + мгновенный триггер отправки (nudge)
+feed/            Агрегирует входящие устройства; отсекает «призраков» по TTL
+media/           Управление Spotify через MPRIS (синхронизация трека)
 stats/           Интерфейс Fetcher + per-device Cache (async, stale-while-revalidate)
-  spotify.go     Статистика прослушивания Spotify
-  summary.go     Статистика использования приложений
 renderer/
-  tui/           BubbleTea TUI с карточным лейаутом
-    block_header    Статус, имя, аптайм
+  tui/           BubbleTea TUI; Controller + Options вместо длинного конструктора
+    block_header    Статус, имя, аптайм, системные метрики
     block_spotify   Обложка, текущий трек, недельный график
-    block_app       Активное приложение, бары экранного времени
+    block_app       Активное приложение, воркспейс, бары экранного времени
     block_nudge     История сообщений per-device
+    block_custom    Кастомные поля
   noop/          Headless режим (без UI, только сбор и отправка)
 notifier/        Десктопные уведомления через notify-send
 auth/            Регистрация и хранение токена авторизации
-models/          Тип Snapshot (map[string]any)
+```
+
+Сервер (`server/src/app/`):
+
+```
+api/routes/      ws (broadcast), stats (summary/spotify), auth (register)
+services/room/   Комнаты и подписчики, fan-out по WebSocket
+services/sampler/Буфер снапшотов + периодический flush в БД (с re-queue при сбое)
+services/snapshot/Агрегация статистики
+repositories/    SQL по таблице snapshots (TimescaleDB)
+core/config/     Settings — единый источник env (postgres, auth_secret, sampler_interval, logging_level)
+core/auth/       HMAC-подпись и проверка токенов
+core/ratelimit/  Rate limiter per-IP
 ```
 
 ### Добавить новый провайдер
 
-Создай файл в `collector/linux/`, который возвращает `func(models.Snapshot)`:
+Создай файл в `collector/linux/` (или в новом пакете под платформу) — провайдер сам регистрируется в `init()`:
 
 ```go
 package linux
 
-import "statusphere-client/internal/models"
+import (
+    "context"
 
-func MyProvider() func(models.Snapshot) {
-    return func(snap models.Snapshot) {
-        snap["my_key"] = "my_value"
-    }
+    "statusphere-client/internal/collector"
+    "statusphere-client/internal/presence"
+)
+
+func init() {
+    collector.Register(collector.Descriptor{
+        Provider: collector.Provider{Name: "my-provider", Collect: myProvider},
+        Applies:  collector.OnOS("linux"),
+    })
+}
+
+func myProvider(ctx context.Context, snap presence.Snapshot) error {
+    snap.Set("my_key", "my_value")
+    return nil
 }
 ```
 
-Зарегистрируй его в `cmd/client/main.go` внутри `buildProviders()`.
+Ключ добавь в `presence/keys.go`. Никакого switch в wiring править не нужно — реестр подхватит провайдер автоматически (нужен blank-импорт пакета в `app/app.go`). `Applies` определяет, где провайдер активен: `OnOS`, `OnDistro`, `OnDEWM`, `When(...)`.
 
 ### Добавить новую статистику
 
@@ -191,8 +229,10 @@ sstatus --ui headless
 
 ## Безопасность
 
-Все подключения (WebSocket и HTTP) авторизуются через HMAC-подписанный токен в заголовке `X-Room-Token`. Токен содержит `room_id`, `device_id` и подпись — подменить комнату или устройство невозможно без знания серверного секрета.
+Все подключения (WebSocket и HTTP) авторизуются через HMAC-подписанный токен в заголовке `X-Room-Token`. Токен содержит `room_id`, `device_id` и подпись.
 
+- **Авторитетный `device_id`** — сервер проставляет `device_id` из проверенного токена как при вещании (`publish`), так и при записи в БД (`sampler`); значение из payload клиента игнорируется, подменить чужой `device_id` нельзя.
+- **`room_id`** — знание `room_id` = право войти в комнату (это шаринг-ссылка; передавай её только друзьям).
 - **Регистрация** — `POST /auth/register`, rate limit 5 запросов/мин на IP
 - **Stats API** — `GET /stats/summary`, `GET /stats/spotify`, rate limit 30 запросов/мин на IP, `room_id` берётся из токена
 - **WebSocket** — максимальный размер сообщения 16KB, rate limit 2 msg/sec на соединение
@@ -214,5 +254,38 @@ sstatus --ui headless
 
 - `config.json` — URL сервера, токен авторизации (создаётся при `--register`)
 - `device_name` — отображаемое имя (задаётся через `d`)
+- `custom.json` — кастомные поля (команды)
 
 Логи пишутся в `~/.cache/statusphere/statusphere.log`.
+
+### Кастомные поля
+
+`~/.config/statusphere/custom.json` — порядок ключей сохраняется как в файле:
+
+```json
+{
+  "weather": { "cmd": "curl -s wttr.in?format=%t", "repeat_seconds": 900 },
+  "git": { "cmd": "git -C ~/proj rev-parse --abbrev-ref HEAD", "repeat_seconds": 30 }
+}
+```
+
+`repeat_seconds` — TTL кэша значения (команда не запускается чаще).
+
+## Разработка
+
+Клиент:
+
+```bash
+cd client
+go build ./...
+go test ./...
+go vet ./...
+```
+
+Сервер:
+
+```bash
+cd server
+uv sync
+uv run pytest
+```
