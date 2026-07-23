@@ -1,19 +1,35 @@
 package linux
 
 import (
+	"context"
 	"os"
-	"statusphere-client/internal/models"
 	"strconv"
 	"strings"
+
+	"statusphere-client/internal/collector"
+	"statusphere-client/internal/presence"
 )
 
-func Uptime() func(models.Snapshot) {
-	return func(snap models.Snapshot) {
-		data, err := os.ReadFile("/proc/uptime")
-		if err != nil {
-			return
-		}
-		val, _ := strconv.ParseFloat(strings.Fields(string(data))[0], 64)
-		snap["uptime_hours"] = val / 3600
+func init() {
+	collector.Register(collector.Descriptor{
+		Provider: collector.Provider{Name: "uptime", Collect: uptime},
+		Applies:  collector.OnOS("linux"),
+	})
+}
+
+func uptime(_ context.Context, snap presence.Snapshot) error {
+	data, err := os.ReadFile("/proc/uptime")
+	if err != nil {
+		return err
 	}
+	fields := strings.Fields(string(data))
+	if len(fields) == 0 {
+		return nil
+	}
+	val, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return err
+	}
+	snap.Set(presence.KeyUptimeHours, val/3600)
+	return nil
 }

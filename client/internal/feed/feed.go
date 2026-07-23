@@ -1,13 +1,16 @@
 package feed
 
 import (
-	"maps"
 	"sync"
 	"time"
+
+	"statusphere-client/internal/presence"
 )
 
+const staleTTL = 5 * time.Minute
+
 type Device struct {
-	Data     map[string]any
+	Data     presence.Snapshot
 	LastSeen time.Time
 }
 
@@ -22,9 +25,9 @@ func New() *Feed {
 	}
 }
 
-func (f *Feed) Update(data map[string]any) {
-	id, ok := data["device_id"].(string)
-	if !ok {
+func (f *Feed) Update(data presence.Snapshot) {
+	id := data.DeviceID()
+	if id == "" {
 		return
 	}
 
@@ -37,15 +40,20 @@ func (f *Feed) Update(data map[string]any) {
 	}
 }
 
-func (f *Feed) Snapshot() []map[string]any {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
+func (f *Feed) Snapshot() []presence.Snapshot {
+	now := time.Now()
 
-	result := make([]map[string]any, 0, len(f.devices))
-	for _, dev := range f.devices {
-		out := make(map[string]any, len(dev.Data)+1)
-		maps.Copy(out, dev.Data)
-		out["last_seen"] = dev.LastSeen.Unix()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	result := make([]presence.Snapshot, 0, len(f.devices))
+	for id, dev := range f.devices {
+		if now.Sub(dev.LastSeen) > staleTTL {
+			delete(f.devices, id)
+			continue
+		}
+		out := dev.Data.Clone()
+		out.Set(presence.KeyLastSeen, dev.LastSeen.Unix())
 		result = append(result, out)
 	}
 	return result

@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"statusphere-client/internal/presence"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -112,9 +114,8 @@ func (h *NudgeHistory) RenderFor(deviceID string) string {
 
 func BlockNudge(history *NudgeHistory) Block {
 	return Block{
-		Key: "nudge",
-		Render: func(d map[string]any) string {
-			deviceID, _ := d["device_id"].(string)
+		Render: func(d presence.Snapshot) string {
+			deviceID := d.DeviceID()
 			if deviceID == "" || history == nil {
 				return ""
 			}

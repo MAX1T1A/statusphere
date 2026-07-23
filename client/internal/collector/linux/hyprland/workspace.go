@@ -1,25 +1,27 @@
 package hyprland
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"os/exec"
 
-	"statusphere-client/internal/models"
+	"statusphere-client/internal/collector"
+	"statusphere-client/internal/presence"
 )
 
-func ActiveWorkspace() func(models.Snapshot) {
-	return func(snap models.Snapshot) {
-		out, err := exec.Command("hyprctl", "activeworkspace", "-j").Output()
-		if err != nil {
-			return
-		}
-		var data map[string]any
-		if err := json.Unmarshal(out, &data); err != nil {
-			return
-		}
-		if v, ok := data["id"]; ok {
-			snap["active_workspace"] = fmt.Sprint(v)
-		}
+func init() {
+	collector.Register(collector.Descriptor{
+		Provider: collector.Provider{Name: "hyprland-workspace", Collect: activeWorkspace},
+		Applies:  collector.OnDEWM("hyprland"),
+	})
+}
+
+func activeWorkspace(ctx context.Context, snap presence.Snapshot) error {
+	data, err := hyprctl(ctx, "activeworkspace")
+	if err != nil {
+		return err
 	}
+	if v, ok := data["id"]; ok {
+		snap.Set(presence.KeyActiveWorkspace, fmt.Sprint(v))
+	}
+	return nil
 }

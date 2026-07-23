@@ -31,5 +31,11 @@ func (n *Notifier) Handle(deviceID, deviceName, message string) {
 	n.last[deviceID] = message
 	n.mu.Unlock()
 
-	exec.Command("notify-send", "statusphere · "+deviceName, message).Start()
+	title := "statusphere"
+	if deviceName != "" {
+		title += " · " + deviceName
+	}
+	go func() {
+		_ = exec.Command("notify-send", title, message).Run()
+	}()
 }

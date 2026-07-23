@@ -1,5 +1,7 @@
 package noop
 
+import "statusphere-client/internal/presence"
+
 type Noop struct {
 	done chan struct{}
 }
@@ -17,4 +19,4 @@ func (n *Noop) Stop() {
 	close(n.done)
 }
 
-func (n *Noop) UpdateDevices([]map[string]any) {}
+func (n *Noop) UpdateDevices([]presence.Snapshot) {}

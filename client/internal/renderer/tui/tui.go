@@ -5,17 +5,32 @@ import (
 	"sort"
 	"strings"
 
+	"statusphere-client/internal/presence"
 	"statusphere-client/internal/stats"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-type FeedMsg []map[string]any
+type FeedMsg []presence.Snapshot
+
+type Controller interface {
+	Nudge(message string)
+	Rename(name string)
+	SyncSpotify(uri string)
+	SyncCustom(fields []string)
+}
+
+type Options struct {
+	SpotifyCache *stats.Cache
+	SummaryCache *stats.Cache
+	LocalID      string
+	CustomOrder  []string
+	Controller   Controller
+}
 
 type Block struct {
-	Key    string
-	Render func(d map[string]any) string
+	Render func(d presence.Snapshot) string
 }
 
 type LayoutRow struct {
@@ -72,20 +87,17 @@ type syncDevice struct {
 }
 
 type model struct {
-	devices map[string]map[string]any
+	devices map[string]presence.Snapshot
 	layout  []LayoutRow
 	width   int
 	height  int
 
-	mode         inputMode
-	input        string
-	onNudge      func(string)
-	onRename     func(string)
-	onSync       func(uri string)
-	onSyncCustom func(fields []string)
-	localID      string
-	syncDevices  []syncDevice
-	syncTarget   *syncDevice
+	mode        inputMode
+	input       string
+	ctrl        Controller
+	localID     string
+	syncDevices []syncDevice
+	syncTarget  *syncDevice
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -94,89 +106,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if m.mode != modeNone {
-			switch msg.String() {
-			case "enter":
-				text := strings.TrimSpace(m.input)
-				if text != "" {
-					switch m.mode {
-					case modeNudge:
-						if m.onNudge != nil {
-							m.onNudge(text)
-						}
-					case modeRename:
-						if m.onRename != nil {
-							m.onRename(text)
-						}
-					}
-				}
-				m.mode = modeNone
-				m.input = ""
-			case "esc":
-				m.mode = modeNone
-				m.input = ""
-				m.syncDevices = nil
-				m.syncTarget = nil
-			case "backspace":
-				if m.mode == modeNudge || m.mode == modeRename {
-					if len(m.input) > 0 {
-						runes := []rune(m.input)
-						m.input = string(runes[:len(runes)-1])
-					}
-				}
-			default:
-				switch m.mode {
-				case modeSyncDevice:
-					r := []rune(msg.String())
-					if len(r) == 1 && r[0] >= '1' && r[0] <= '9' {
-						idx := int(r[0] - '1')
-						if idx < len(m.syncDevices) {
-							dev := m.syncDevices[idx]
-							if dev.uri != "" && len(dev.fields) > 0 {
-								m.syncTarget = &dev
-								m.mode = modeSyncAction
-							} else if dev.uri != "" {
-								if m.onSync != nil {
-									m.onSync(dev.uri)
-								}
-								m.mode = modeNone
-							} else if len(dev.fields) > 0 {
-								if m.onSyncCustom != nil {
-									m.onSyncCustom(dev.fields)
-								}
-								m.mode = modeNone
-							}
-							m.syncDevices = nil
-						}
-					}
-				case modeSyncAction:
-					switch msg.String() {
-					case "1":
-						if m.syncTarget != nil && m.syncTarget.uri != "" && m.onSync != nil {
-							m.onSync(m.syncTarget.uri)
-						}
-						m.mode = modeNone
-						m.syncTarget = nil
-					case "2":
-						if m.syncTarget != nil && len(m.syncTarget.fields) > 0 && m.onSyncCustom != nil {
-							m.onSyncCustom(m.syncTarget.fields)
-						}
-						m.mode = modeNone
-						m.syncTarget = nil
-					}
-				default:
-					r := []rune(msg.String())
-					if len(r) == 1 {
-						limit := maxNudgeLen
-						if m.mode == modeRename {
-							limit = maxRenameLen
-						}
-						if len([]rune(m.input)) < limit {
-							m.input += msg.String()
-						}
-					}
-				}
-			}
-			return m, nil
+			return m.updateInput(msg), nil
 		}
 
 		switch msg.String() {
@@ -189,41 +119,138 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mode = modeRename
 			m.input = ""
 		case "s", "ы":
-			devices := m.buildSyncDevices()
-			if len(devices) == 0 {
-				break
-			}
-			if len(devices) == 1 {
-				dev := devices[0]
-				if dev.uri != "" && len(dev.fields) > 0 {
-					m.syncTarget = &dev
-					m.mode = modeSyncAction
-				} else if dev.uri != "" {
-					if m.onSync != nil {
-						m.onSync(dev.uri)
-					}
-				} else if len(dev.fields) > 0 {
-					if m.onSyncCustom != nil {
-						m.onSyncCustom(dev.fields)
-					}
-				}
-			} else {
-				m.syncDevices = devices
-				m.mode = modeSyncDevice
-			}
+			m.startSync()
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 	case FeedMsg:
-		m.devices = make(map[string]map[string]any)
+		m.devices = make(map[string]presence.Snapshot, len(msg))
 		for _, dev := range msg {
-			if id, ok := dev["device_id"].(string); ok {
+			if id := dev.DeviceID(); id != "" {
 				m.devices[id] = dev
 			}
 		}
 	}
 	return m, nil
+}
+
+func (m model) updateInput(msg tea.KeyMsg) model {
+	switch msg.String() {
+	case "enter":
+		text := strings.TrimSpace(m.input)
+		if text != "" {
+			switch m.mode {
+			case modeNudge:
+				m.ctrl.Nudge(text)
+			case modeRename:
+				m.ctrl.Rename(text)
+			}
+		}
+		m.mode = modeNone
+		m.input = ""
+	case "esc":
+		m.mode = modeNone
+		m.input = ""
+		m.syncDevices = nil
+		m.syncTarget = nil
+	case "backspace":
+		if m.mode == modeNudge || m.mode == modeRename {
+			if runes := []rune(m.input); len(runes) > 0 {
+				m.input = string(runes[:len(runes)-1])
+			}
+		}
+	default:
+		switch m.mode {
+		case modeSyncDevice:
+			m.pickSyncDevice(msg.String())
+		case modeSyncAction:
+			m.pickSyncAction(msg.String())
+		default:
+			m.typeInput(msg.String())
+		}
+	}
+	return m
+}
+
+func (m *model) typeInput(s string) {
+	if r := []rune(s); len(r) != 1 {
+		return
+	}
+	limit := maxNudgeLen
+	if m.mode == modeRename {
+		limit = maxRenameLen
+	}
+	if len([]rune(m.input)) < limit {
+		m.input += s
+	}
+}
+
+func (m *model) startSync() {
+	devices := m.buildSyncDevices()
+	switch len(devices) {
+	case 0:
+		return
+	case 1:
+		m.applySync(devices[0])
+	default:
+		m.syncDevices = devices
+		m.mode = modeSyncDevice
+	}
+}
+
+func (m *model) applySync(dev syncDevice) {
+	switch {
+	case dev.uri != "" && len(dev.fields) > 0:
+		m.syncTarget = &dev
+		m.mode = modeSyncAction
+	case dev.uri != "":
+		m.ctrl.SyncSpotify(dev.uri)
+	case len(dev.fields) > 0:
+		m.ctrl.SyncCustom(dev.fields)
+	}
+}
+
+func (m *model) pickSyncDevice(key string) {
+	r := []rune(key)
+	if len(r) != 1 || r[0] < '1' || r[0] > '9' {
+		return
+	}
+	idx := int(r[0] - '1')
+	if idx >= len(m.syncDevices) {
+		return
+	}
+	dev := m.syncDevices[idx]
+	m.syncDevices = nil
+	if dev.uri != "" && len(dev.fields) > 0 {
+		m.syncTarget = &dev
+		m.mode = modeSyncAction
+		return
+	}
+	m.applySync(dev)
+	if m.mode == modeSyncDevice {
+		m.mode = modeNone
+	}
+}
+
+func (m *model) pickSyncAction(key string) {
+	if m.syncTarget == nil {
+		return
+	}
+	switch key {
+	case "1":
+		if m.syncTarget.uri != "" {
+			m.ctrl.SyncSpotify(m.syncTarget.uri)
+		}
+	case "2":
+		if len(m.syncTarget.fields) > 0 {
+			m.ctrl.SyncCustom(m.syncTarget.fields)
+		}
+	default:
+		return
+	}
+	m.mode = modeNone
+	m.syncTarget = nil
 }
 
 func (m model) buildSyncDevices() []syncDevice {
@@ -232,20 +259,13 @@ func (m model) buildSyncDevices() []syncDevice {
 		if id == m.localID {
 			continue
 		}
-		uri, _ := dev["spotify_uri"].(string)
-		var fields []string
-		if raw, ok := dev["custom_fields"].([]any); ok {
-			for _, v := range raw {
-				if s, ok := v.(string); ok && s != "" {
-					fields = append(fields, s)
-				}
-			}
-		}
+		uri := dev.String(presence.KeySpotifyURI)
+		fields := dev.Strings(presence.KeyCustomFields)
 		if uri == "" && len(fields) == 0 {
 			continue
 		}
 		name := id
-		if n, ok := dev["device_name"].(string); ok && n != "" {
+		if n := dev.DeviceName(); n != "" {
 			name = n
 		}
 		devices = append(devices, syncDevice{id: id, name: name, uri: uri, fields: fields})
@@ -258,7 +278,7 @@ func (m model) buildSyncDevices() []syncDevice {
 
 const minContentWidth = 40
 
-func renderCard(d map[string]any, layout []LayoutRow, cardWidth int) string {
+func renderCard(d presence.Snapshot, layout []LayoutRow, cardWidth int) string {
 	cardPad := cardBorder.GetHorizontalBorderSize() + cardBorder.GetHorizontalPadding()
 	innerPad := innerBlock.GetHorizontalBorderSize() + innerBlock.GetHorizontalPadding()
 
@@ -425,43 +445,40 @@ func (m model) View() string {
 
 	grid := lipgloss.JoinVertical(lipgloss.Left, cards...)
 
-	var footer string
+	return outer.Render(header + "\n\n" + grid + "\n\n" + m.footer())
+}
+
+func (m model) footer() string {
 	switch m.mode {
 	case modeNudge:
-		footer = inputStyle.Render("nudge: ") + m.input + inputCaret.Render("█")
+		return inputStyle.Render("nudge: ") + m.input + inputCaret.Render("█")
 	case modeRename:
-		footer = inputStyle.Render("name: ") + m.input + inputCaret.Render("█")
+		return inputStyle.Render("name: ") + m.input + inputCaret.Render("█")
 	case modeSyncDevice:
 		var opts []string
 		for i, d := range m.syncDevices {
 			opts = append(opts, inputStyle.Render(fmt.Sprintf("%d)", i+1))+" "+dimStyle.Render(d.name))
 		}
-		footer = inputStyle.Render("sync from: ") + strings.Join(opts, "  ") + dimStyle.Render("  esc to cancel")
+		return inputStyle.Render("sync from: ") + strings.Join(opts, "  ") + dimStyle.Render("  esc to cancel")
 	case modeSyncAction:
 		name := ""
+		var opts []string
 		if m.syncTarget != nil {
 			name = m.syncTarget.name
+			if m.syncTarget.uri != "" {
+				opts = append(opts, accentStyle.Render("1")+dimStyle.Render(") spotify"))
+			}
+			if len(m.syncTarget.fields) > 0 {
+				opts = append(opts, accentStyle.Render("2")+dimStyle.Render(") custom fields"))
+			}
 		}
-		var opts []string
-		if m.syncTarget != nil && m.syncTarget.uri != "" {
-			opts = append(opts, accentStyle.Render("1")+dimStyle.Render(") spotify"))
-		}
-		if m.syncTarget != nil && len(m.syncTarget.fields) > 0 {
-			opts = append(opts, accentStyle.Render("2")+dimStyle.Render(") custom fields"))
-		}
-		footer = inputStyle.Render(name+": ") + strings.Join(opts, "  ") + dimStyle.Render("  esc to cancel")
+		return inputStyle.Render(name+": ") + strings.Join(opts, "  ") + dimStyle.Render("  esc to cancel")
 	default:
-		footer = accentStyle.Render("n") + dimStyle.Render("udge · ") +
+		return accentStyle.Render("n") + dimStyle.Render("udge · ") +
 			accentStyle.Render("d") + dimStyle.Render("evice · ") +
 			accentStyle.Render("s") + dimStyle.Render("ync · ") +
 			accentStyle.Render("q") + dimStyle.Render("uit")
 	}
-
-	return outer.Render(
-		header + "\n\n" +
-			grid + "\n\n" +
-			footer,
-	)
 }
 
 type TUI struct {
@@ -469,24 +486,21 @@ type TUI struct {
 	Nudges *NudgeHistory
 }
 
-func New(spotifyCache, summaryCache *stats.Cache, onNudge, onRename func(string), onSync func(string), onSyncCustom func([]string), localID string, customOrder []string) *TUI {
-	nudges := NewNudgeHistory(localID)
+func New(opts Options) *TUI {
+	nudges := NewNudgeHistory(opts.LocalID)
 
 	layout := []LayoutRow{
 		{Blocks: []Block{BlockHeader()}, Bare: true},
-		{Blocks: []Block{BlockCustom(customOrder)}},
-		{Blocks: []Block{BlockSpotify(spotifyCache), BlockNudge(nudges)}, Anchor: 0},
-		{Blocks: []Block{BlockApp(summaryCache)}},
+		{Blocks: []Block{BlockCustom(opts.CustomOrder)}},
+		{Blocks: []Block{BlockSpotify(opts.SpotifyCache), BlockNudge(nudges)}, Anchor: 0},
+		{Blocks: []Block{BlockApp(opts.SummaryCache)}},
 	}
 
 	m := model{
-		devices:      make(map[string]map[string]any),
-		layout:       layout,
-		onNudge:      onNudge,
-		onRename:     onRename,
-		onSync:       onSync,
-		onSyncCustom: onSyncCustom,
-		localID:      localID,
+		devices: make(map[string]presence.Snapshot),
+		layout:  layout,
+		ctrl:    opts.Controller,
+		localID: opts.LocalID,
 	}
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	return &TUI{prog: p, Nudges: nudges}
@@ -497,6 +511,6 @@ func (t *TUI) Run() error {
 	return err
 }
 
-func (t *TUI) UpdateDevices(devices []map[string]any) {
+func (t *TUI) UpdateDevices(devices []presence.Snapshot) {
 	t.prog.Send(FeedMsg(devices))
 }
