@@ -31,7 +31,8 @@ func main() {
 	devices := []presence.Snapshot{
 		{
 			presence.KeyDeviceID:        "alice-0001",
-			presence.KeyDeviceName:      "alice",
+			presence.KeyAccountID:       "acc-alice",
+			presence.KeyDeviceName:      "alice-laptop",
 			presence.KeyLastSeen:        now,
 			presence.KeyUptimeHours:     5.3,
 			presence.KeyCPUPercent:      12.0,
@@ -52,7 +53,16 @@ func main() {
 			"git":                       "feature/tui",
 		},
 		{
+			presence.KeyDeviceID:    "alice-phone",
+			presence.KeyAccountID:   "acc-alice",
+			presence.KeyDeviceName:  "alice-phone",
+			presence.KeyLastSeen:    now - 40,
+			presence.KeyUptimeHours: 9.0,
+			presence.KeyActiveApp:   "Telegram",
+		},
+		{
 			presence.KeyDeviceID:       "bob-0002",
+			presence.KeyAccountID:      "acc-bob",
 			presence.KeyDeviceName:     "bob",
 			presence.KeyLastSeen:       now - 25,
 			presence.KeyUptimeHours:    52.0,
@@ -65,6 +75,7 @@ func main() {
 		},
 		{
 			presence.KeyDeviceID:     localID,
+			presence.KeyAccountID:    "acc-me",
 			presence.KeyDeviceName:   "me",
 			presence.KeyLastSeen:     now,
 			presence.KeyUptimeHours:  0.4,

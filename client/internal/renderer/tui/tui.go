@@ -86,11 +86,16 @@ type syncDevice struct {
 	fields []string
 }
 
+type deviceGroup struct {
+	key     string
+	devices []presence.Snapshot
+}
+
 type model struct {
-	devices map[string]presence.Snapshot
-	layout  []LayoutRow
-	width   int
-	height  int
+	groups []deviceGroup
+	layout []LayoutRow
+	width  int
+	height int
 
 	mode        inputMode
 	input       string
@@ -98,6 +103,37 @@ type model struct {
 	localID     string
 	syncDevices []syncDevice
 	syncTarget  *syncDevice
+}
+
+func groupDevices(snaps []presence.Snapshot) []deviceGroup {
+	byKey := make(map[string][]presence.Snapshot)
+	var order []string
+	for _, d := range snaps {
+		key := d.String(presence.KeyAccountID)
+		if key == "" {
+			key = d.DeviceID()
+		}
+		if key == "" {
+			continue
+		}
+		if _, ok := byKey[key]; !ok {
+			order = append(order, key)
+		}
+		byKey[key] = append(byKey[key], d)
+	}
+
+	groups := make([]deviceGroup, 0, len(order))
+	for _, key := range order {
+		devs := byKey[key]
+		sort.Slice(devs, func(i, j int) bool {
+			li, _ := devs[i].Int(presence.KeyLastSeen)
+			lj, _ := devs[j].Int(presence.KeyLastSeen)
+			return li > lj
+		})
+		groups = append(groups, deviceGroup{key: key, devices: devs})
+	}
+	sort.Slice(groups, func(i, j int) bool { return groups[i].key < groups[j].key })
+	return groups
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -125,12 +161,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case FeedMsg:
-		m.devices = make(map[string]presence.Snapshot, len(msg))
-		for _, dev := range msg {
-			if id := dev.DeviceID(); id != "" {
-				m.devices[id] = dev
-			}
-		}
+		m.groups = groupDevices(msg)
 	}
 	return m, nil
 }
@@ -255,20 +286,23 @@ func (m *model) pickSyncAction(key string) {
 
 func (m model) buildSyncDevices() []syncDevice {
 	var devices []syncDevice
-	for id, dev := range m.devices {
-		if id == m.localID {
-			continue
+	for _, g := range m.groups {
+		for _, dev := range g.devices {
+			id := dev.DeviceID()
+			if id == "" || id == m.localID {
+				continue
+			}
+			uri := dev.String(presence.KeySpotifyURI)
+			fields := dev.Strings(presence.KeyCustomFields)
+			if uri == "" && len(fields) == 0 {
+				continue
+			}
+			name := id
+			if n := dev.DeviceName(); n != "" {
+				name = n
+			}
+			devices = append(devices, syncDevice{id: id, name: name, uri: uri, fields: fields})
 		}
-		uri := dev.String(presence.KeySpotifyURI)
-		fields := dev.Strings(presence.KeyCustomFields)
-		if uri == "" && len(fields) == 0 {
-			continue
-		}
-		name := id
-		if n := dev.DeviceName(); n != "" {
-			name = n
-		}
-		devices = append(devices, syncDevice{id: id, name: name, uri: uri, fields: fields})
 	}
 	sort.Slice(devices, func(i, j int) bool {
 		return devices[i].name < devices[j].name
@@ -278,7 +312,7 @@ func (m model) buildSyncDevices() []syncDevice {
 
 const minContentWidth = 40
 
-func renderCard(d presence.Snapshot, layout []LayoutRow, cardWidth int) string {
+func renderCard(g deviceGroup, layout []LayoutRow, cardWidth int) string {
 	cardPad := cardBorder.GetHorizontalBorderSize() + cardBorder.GetHorizontalPadding()
 	innerPad := innerBlock.GetHorizontalBorderSize() + innerBlock.GetHorizontalPadding()
 
@@ -287,7 +321,8 @@ func renderCard(d presence.Snapshot, layout []LayoutRow, cardWidth int) string {
 		cw = minContentWidth
 	}
 
-	var sections []string
+	d := g.devices[0]
+	sections := []string{groupHeader(g)}
 
 	for _, row := range layout {
 		type activeBlock struct {
@@ -424,7 +459,7 @@ func (m model) View() string {
 	cardWidth := contentW
 
 	header := accentStyle.Render("s") + titleStyle.Render("tatu") + accentStyle.Render("s") + titleStyle.Render("phere")
-	if len(m.devices) == 0 {
+	if len(m.groups) == 0 {
 		return outer.Render(
 			header + "\n\n" +
 				dimStyle.Render("waiting for devices…") + "\n\n" +
@@ -432,15 +467,9 @@ func (m model) View() string {
 		)
 	}
 
-	keys := make([]string, 0, len(m.devices))
-	for k := range m.devices {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
 	var cards []string
-	for _, id := range keys {
-		cards = append(cards, renderCard(m.devices[id], m.layout, cardWidth))
+	for _, g := range m.groups {
+		cards = append(cards, renderCard(g, m.layout, cardWidth))
 	}
 
 	grid := lipgloss.JoinVertical(lipgloss.Left, cards...)
@@ -490,14 +519,12 @@ func New(opts Options) *TUI {
 	nudges := NewNudgeHistory(opts.LocalID)
 
 	layout := []LayoutRow{
-		{Blocks: []Block{BlockHeader()}, Bare: true},
 		{Blocks: []Block{BlockCustom(opts.CustomOrder)}},
 		{Blocks: []Block{BlockSpotify(opts.SpotifyCache), BlockNudge(nudges)}, Anchor: 0},
 		{Blocks: []Block{BlockApp(opts.SummaryCache)}},
 	}
 
 	m := model{
-		devices: make(map[string]presence.Snapshot),
 		layout:  layout,
 		ctrl:    opts.Controller,
 		localID: opts.LocalID,
