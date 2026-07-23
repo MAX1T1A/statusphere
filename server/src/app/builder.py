@@ -1,7 +1,7 @@
 import logging
-import os
 
 from app.api import register_routers
+from app.core.config import get_settings
 from app.repositories.providers import (
     provide_snapshot_repository,
     provide_snapshot_repository_stub,
@@ -27,7 +27,7 @@ class Application:
 
     def _configure_logging(self) -> None:
         logging.basicConfig(
-            level=int(os.environ.get("LOGGING_LEVEL", logging.DEBUG)),
+            level=get_settings().logging_level,
             format="%(levelname)s %(asctime)s %(filename)s:%(lineno)d %(message)s",
         )
 

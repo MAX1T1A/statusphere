@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -51,7 +52,6 @@ async def ws_endpoint(
 
     recv_task = None
     try:
-        import asyncio
 
         async def forward_to_client():
             async for data in room_manager.subscribe(room_id, device_id):

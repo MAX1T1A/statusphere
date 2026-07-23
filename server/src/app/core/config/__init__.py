@@ -1,12 +1,4 @@
-import os
-
 from app.core.config.postgres import PostgresConfig
+from app.core.config.settings import Settings, get_settings
 
-postgres_config = PostgresConfig(
-    host=os.environ["POSTGRES_DB_HOST"],
-    port=int(os.environ["POSTGRES_DB_PORT"]),
-    username=os.environ["POSTGRES_DB_LOGIN"],
-    password=os.environ["POSTGRES_DB_PASSWORD"],
-    dbname=os.environ["POSTGRES_DB_NAME"],
-    pool_size=int(os.environ["POSTGRES_POOL_SIZE"]),
-)
+__all__ = ["PostgresConfig", "Settings", "get_settings"]

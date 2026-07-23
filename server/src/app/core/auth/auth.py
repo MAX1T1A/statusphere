@@ -1,23 +1,13 @@
 import hashlib
 import hmac
-import os
 import secrets
 
-_secret: bytes | None = None
-
-
-def _get_secret() -> bytes:
-    global _secret
-    if _secret is None:
-        raw = os.environ.get("AUTH_SECRET", "")
-        if not raw:
-            raise RuntimeError("AUTH_SECRET env is not set")
-        _secret = raw.encode()
-    return _secret
+from app.core.config import get_settings
 
 
 def _sign(payload: str) -> str:
-    return hmac.new(_get_secret(), payload.encode(), hashlib.sha256).hexdigest()
+    secret = get_settings().auth_secret.encode()
+    return hmac.new(secret, payload.encode(), hashlib.sha256).hexdigest()
 
 
 def generate_device_id() -> str:

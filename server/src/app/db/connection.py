@@ -1,16 +1,17 @@
 import asyncpg
-from app.core.config import postgres_config
+from app.core.config import get_settings
 from asyncpg.pool import Pool
 
 
 async def provide_pool() -> Pool:
+    postgres = get_settings().postgres
     pool = await asyncpg.create_pool(
-        user=postgres_config.username,
-        password=postgres_config.password,
-        database=postgres_config.dbname,
-        host=postgres_config.host,
-        port=postgres_config.port,
-        max_size=postgres_config.pool_size,
+        user=postgres.username,
+        password=postgres.password,
+        database=postgres.dbname,
+        host=postgres.host,
+        port=postgres.port,
+        max_size=postgres.pool_size,
     )
 
     async with pool.acquire() as conn:
@@ -24,6 +25,13 @@ async def provide_pool() -> Pool:
                 device_name TEXT,
                 data JSONB NOT NULL
             )
+        """
+        )
+
+        await conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_snapshots_lookup
+            ON snapshots (room_token, device_id, created_at DESC)
         """
         )
 

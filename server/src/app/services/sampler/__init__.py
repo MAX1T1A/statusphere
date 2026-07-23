@@ -1,7 +1,7 @@
 import asyncio
 import logging
-import os
 
+from app.core.config import get_settings
 from app.repositories.snapshot import SnapshotRepository
 
 from .v1.put import put
@@ -12,8 +12,8 @@ from .v1.stop import stop
 class Sampler:
     def __init__(self, repository: SnapshotRepository) -> None:
         self._repository = repository
-        self._interval = int(os.environ.get("SAMPLER_INTERVAL", 30))
-        self._buffer: dict[tuple[str, str], tuple[str, str | None, dict]] = {}
+        self._interval = get_settings().sampler_interval
+        self._buffer: dict[tuple[str, str], tuple[str | None, dict]] = {}
         self._lock = asyncio.Lock()
         self._task: asyncio.Task | None = None
 
@@ -32,16 +32,19 @@ class Sampler:
         async with self._lock:
             if not self._buffer:
                 return
-            items = list(self._buffer.values())
+            pending = dict(self._buffer)
             self._buffer.clear()
 
-        rows = []
-        for room_token, device_name, data in items:
-            device_id = data.get("device_id", "")
-            rows.append((room_token, device_id, device_name, data))
+        rows = [
+            (room_token, device_id, device_name, data)
+            for (room_token, device_id), (device_name, data) in pending.items()
+        ]
 
         try:
             await self._repository.save_batch(rows)
             self._logger.debug("flushed %d snapshots", len(rows))
         except Exception:
-            self._logger.exception("flush failed")
+            self._logger.exception("flush failed; requeueing %d snapshots", len(pending))
+            async with self._lock:
+                for key, value in pending.items():
+                    self._buffer.setdefault(key, value)
