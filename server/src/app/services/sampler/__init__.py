@@ -13,7 +13,7 @@ class Sampler:
     def __init__(self, repository: SnapshotRepository) -> None:
         self._repository = repository
         self._interval = get_settings().sampler_interval
-        self._buffer: dict[tuple[str, str], dict] = {}
+        self._buffer: dict[tuple[str, str], tuple[str, dict]] = {}
         self._lock = asyncio.Lock()
         self._task: asyncio.Task | None = None
 
@@ -35,7 +35,10 @@ class Sampler:
             pending = dict(self._buffer)
             self._buffer.clear()
 
-        rows = [(room_token, device_id, data) for (room_token, device_id), data in pending.items()]
+        rows = [
+            (room_token, account_id, device_id, data)
+            for (room_token, device_id), (account_id, data) in pending.items()
+        ]
 
         try:
             await self._repository.save_batch(rows)

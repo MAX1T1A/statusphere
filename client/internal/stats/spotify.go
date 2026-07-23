@@ -17,12 +17,14 @@ type SpotifyStats struct {
 
 type spotifyFetcher struct {
 	period string
+	room   string
 }
 
 func (f spotifyFetcher) Path() string { return "/stats/spotify" }
 
 func (f spotifyFetcher) Query(deviceID string) url.Values {
 	q := url.Values{}
+	q.Set("room", f.room)
 	q.Set("device_id", deviceID)
 	q.Set("period", f.period)
 	return q
@@ -30,6 +32,6 @@ func (f spotifyFetcher) Query(deviceID string) url.Values {
 
 func (f spotifyFetcher) New() any { return &SpotifyStats{} }
 
-func NewSpotifyCache(serverURL, token string) *Cache {
-	return NewCache(serverURL, token, spotifyFetcher{period: "week"})
+func NewSpotifyCache(serverURL, token, room string) *Cache {
+	return NewCache(serverURL, token, spotifyFetcher{period: "week", room: room})
 }

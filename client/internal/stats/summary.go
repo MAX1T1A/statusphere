@@ -18,12 +18,14 @@ type Summary struct {
 
 type summaryFetcher struct {
 	period string
+	room   string
 }
 
 func (f summaryFetcher) Path() string { return "/stats/summary" }
 
 func (f summaryFetcher) Query(deviceID string) url.Values {
 	q := url.Values{}
+	q.Set("room", f.room)
 	q.Set("device_id", deviceID)
 	q.Set("period", f.period)
 	return q
@@ -31,6 +33,6 @@ func (f summaryFetcher) Query(deviceID string) url.Values {
 
 func (f summaryFetcher) New() any { return &Summary{} }
 
-func NewSummaryCache(serverURL, token, period string) *Cache {
-	return NewCache(serverURL, token, summaryFetcher{period: period})
+func NewSummaryCache(serverURL, token, period, room string) *Cache {
+	return NewCache(serverURL, token, summaryFetcher{period: period, room: room})
 }

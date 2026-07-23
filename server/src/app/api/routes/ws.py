@@ -3,8 +3,15 @@ import json
 import logging
 import time
 
-from app.core.auth.auth import verify_token
-from app.services.providers import provide_room_manager_stub, provide_sampler_stub
+from app.core.auth.auth import verify_account_token
+from app.services.account import AccountService
+from app.services.membership import MembershipService
+from app.services.providers import (
+    provide_account_service_stub,
+    provide_membership_service_stub,
+    provide_room_manager_stub,
+    provide_sampler_stub,
+)
 from app.services.room import RoomManager
 from app.services.sampler import Sampler
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
@@ -31,30 +38,36 @@ async def close_all() -> None:
 @router.websocket("/ws")
 async def ws_endpoint(
     websocket: WebSocket,
+    room: str = "",
     room_manager: RoomManager = Depends(provide_room_manager_stub),
     sampler: Sampler = Depends(provide_sampler_stub),
+    accounts: AccountService = Depends(provide_account_service_stub),
+    membership: MembershipService = Depends(provide_membership_service_stub),
 ) -> None:
-    raw_token = websocket.headers.get("x-room-token")
-    if not raw_token:
-        await websocket.close(code=1008, reason="missing token")
-        return
-
-    identity = verify_token(raw_token)
+    identity = verify_account_token(websocket.headers.get("x-room-token", ""))
     if identity is None:
         await websocket.close(code=1008, reason="invalid token")
         return
 
-    room_id, device_id = identity
+    account_id, device_id = identity
+
+    if not await accounts.is_device_active(account_id, device_id):
+        await websocket.close(code=1008, reason="device revoked")
+        return
+
+    if not room or not await membership.is_member(room, account_id):
+        await websocket.close(code=1008, reason="not a room member")
+        return
 
     await websocket.accept()
     _active.add(websocket)
-    logger.info("ws connected: device=%s", device_id)
+    logger.info("ws connected: account=%s device=%s room=%s", account_id, device_id, room)
 
     recv_task = None
     try:
 
         async def forward_to_client():
-            async for data in room_manager.subscribe(room_id, device_id):
+            async for data in room_manager.subscribe(room, device_id):
                 await websocket.send_text(json.dumps(data))
 
         recv_task = asyncio.create_task(forward_to_client())
@@ -79,8 +92,8 @@ async def ws_endpoint(
             if not isinstance(snapshot, dict):
                 continue
 
-            await room_manager.publish(room_id, device_id, snapshot)
-            await sampler.put(room_id, device_id, snapshot)
+            await room_manager.publish(room, account_id, device_id, snapshot)
+            await sampler.put(room, account_id, device_id, snapshot)
 
     except WebSocketDisconnect:
         logger.info("ws disconnected: device=%s", device_id)

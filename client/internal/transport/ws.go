@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -33,14 +34,14 @@ type WSTransport struct {
 	cancel     context.CancelFunc
 }
 
-func NewWS(serverURL, token, deviceID string) *WSTransport {
-	url := strings.TrimRight(serverURL, "/")
-	url = strings.Replace(url, "https://", "wss://", 1)
-	url = strings.Replace(url, "http://", "ws://", 1)
-	url += "/ws"
+func NewWS(serverURL, token, deviceID, roomID string) *WSTransport {
+	wsURL := strings.TrimRight(serverURL, "/")
+	wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
+	wsURL = strings.Replace(wsURL, "http://", "ws://", 1)
+	wsURL += "/ws?room=" + url.QueryEscape(roomID)
 
 	return &WSTransport{
-		url:        url,
+		url:        wsURL,
 		token:      token,
 		deviceID:   deviceID,
 		deviceName: loadName(),

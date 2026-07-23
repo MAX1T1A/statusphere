@@ -12,39 +12,164 @@ import (
 )
 
 var (
-	uiMode       = flag.String("ui", "tui", "UI mode: tui, headless")
-	registerFlag = flag.String("register", "", "Register with server: --register <server_url>")
-	roomIDFlag   = flag.String("room", "", "Room ID for registration (omit to create new)")
+	uiMode = flag.String("ui", "tui", "UI mode: tui, headless")
+
+	registerFlag  = flag.String("register", "", "Create a new account on <server_url>")
+	linkFlag      = flag.String("link", "", "Link this device to an existing account on <server_url> (needs --code)")
+	codeFlag      = flag.String("code", "", "Link code produced by --new-device")
+	newDeviceFlag = flag.Bool("new-device", false, "Print a link code to add another device to this account")
+	inviteFlag    = flag.Bool("invite", false, "Print an invite code for your room")
+	joinFlag      = flag.String("join", "", "Join a room using an invite <code>")
+	devicesFlag   = flag.Bool("devices", false, "List devices on this account")
+	revokeFlag    = flag.String("revoke", "", "Revoke a device by <device_id>")
+	membersFlag   = flag.Bool("members", false, "List members of your room")
+	kickFlag      = flag.String("kick", "", "Remove a member by <account_id>")
 )
 
 func main() {
 	flag.Parse()
 
-	if *registerFlag != "" {
-		if err := register(*registerFlag, *roomIDFlag); err != nil {
-			fmt.Fprintf(os.Stderr, "registration failed: %v\n", err)
-			os.Exit(1)
-		}
-		return
-	}
-
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancel()
-
-	if err := app.Run(ctx, *uiMode); err != nil {
+	if err := dispatch(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
 
-func register(serverURL, roomID string) error {
-	cfg, err := auth.Register(serverURL, roomID)
+func dispatch() error {
+	switch {
+	case *registerFlag != "":
+		return register(*registerFlag)
+	case *linkFlag != "":
+		return linkDevice(*linkFlag, *codeFlag)
+	case *newDeviceFlag:
+		return withConfig(func(c *auth.Config) error {
+			code, err := c.NewDeviceCode()
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Run on the new device:\n  statusphere --link %s --code %s\n", c.ServerURL, code)
+			return nil
+		})
+	case *inviteFlag:
+		return withConfig(func(c *auth.Config) error {
+			code, err := c.Invite()
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Share with a friend:\n  statusphere --join %s\n", code)
+			return nil
+		})
+	case *joinFlag != "":
+		return withConfig(func(c *auth.Config) error {
+			if err := c.Join(*joinFlag); err != nil {
+				return err
+			}
+			fmt.Printf("Joined room %s\n", c.RoomID)
+			return nil
+		})
+	case *devicesFlag:
+		return withConfig(listDevices)
+	case *revokeFlag != "":
+		return withConfig(func(c *auth.Config) error {
+			if err := c.Revoke(*revokeFlag); err != nil {
+				return err
+			}
+			fmt.Printf("Revoked device %s\n", *revokeFlag)
+			return nil
+		})
+	case *membersFlag:
+		return withConfig(listMembers)
+	case *kickFlag != "":
+		return withConfig(func(c *auth.Config) error {
+			if err := c.Kick(*kickFlag); err != nil {
+				return err
+			}
+			fmt.Printf("Removed %s\n", *kickFlag)
+			return nil
+		})
+	default:
+		return run()
+	}
+}
+
+func run() error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	return app.Run(ctx, *uiMode)
+}
+
+func withConfig(fn func(*auth.Config) error) error {
+	cfg, err := auth.Load()
+	if err != nil {
+		return fmt.Errorf("no account found; register first: statusphere --register <server_url>")
+	}
+	return fn(cfg)
+}
+
+func register(serverURL string) error {
+	cfg, err := auth.Register(serverURL)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Registered successfully!\n")
-	fmt.Printf("  Config: %s\n", auth.ConfigPath())
-	fmt.Printf("  Room:   %s\n", cfg.RoomID())
-	fmt.Printf("  Device: %s\n", cfg.DeviceID())
+	fmt.Printf("Account created.\n")
+	fmt.Printf("  Config:  %s\n", auth.ConfigPath())
+	fmt.Printf("  Account: %s\n", cfg.AccountID)
+	fmt.Printf("  Room:    %s\n", cfg.RoomID)
+	fmt.Printf("  Device:  %s\n", cfg.DeviceID)
+	fmt.Printf("\nInvite friends:      statusphere --invite\n")
+	fmt.Printf("Add another device:  statusphere --new-device\n")
+	return nil
+}
+
+func linkDevice(serverURL, code string) error {
+	if code == "" {
+		return fmt.Errorf("--link requires --code <code> (get one with --new-device on an existing device)")
+	}
+	cfg, err := auth.LinkDevice(serverURL, code)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Device linked.\n")
+	fmt.Printf("  Account: %s\n", cfg.AccountID)
+	fmt.Printf("  Room:    %s\n", cfg.RoomID)
+	fmt.Printf("  Device:  %s\n", cfg.DeviceID)
+	return nil
+}
+
+func listDevices(c *auth.Config) error {
+	devices, err := c.Devices()
+	if err != nil {
+		return err
+	}
+	for _, d := range devices {
+		marker := ""
+		if d.DeviceID == c.DeviceID {
+			marker = " (this device)"
+		}
+		state := "active"
+		if d.Revoked {
+			state = "revoked"
+		}
+		name := d.Name
+		if name == "" {
+			name = "—"
+		}
+		fmt.Printf("%s  %-16s  %s%s\n", d.DeviceID, name, state, marker)
+	}
+	return nil
+}
+
+func listMembers(c *auth.Config) error {
+	members, err := c.Members()
+	if err != nil {
+		return err
+	}
+	for _, m := range members {
+		marker := ""
+		if m.AccountID == c.AccountID {
+			marker = " (you)"
+		}
+		fmt.Printf("%s  %s%s\n", m.AccountID, m.Role, marker)
+	}
 	return nil
 }

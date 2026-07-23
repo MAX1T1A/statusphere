@@ -1,14 +1,7 @@
-from app.core.auth.auth import verify_account_token, verify_token
+from app.core.auth.auth import verify_account_token
 from app.services.account import AccountService
 from app.services.providers import provide_account_service_stub
 from fastapi import Depends, Header, HTTPException
-
-
-async def require_auth(x_room_token: str = Header(...)) -> tuple[str, str]:
-    result = verify_token(x_room_token)
-    if result is None:
-        raise HTTPException(401, "invalid token")
-    return result
 
 
 async def require_account(
