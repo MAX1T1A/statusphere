@@ -1,5 +1,7 @@
-from app.core.auth.auth import verify_token
-from fastapi import Header, HTTPException
+from app.core.auth.auth import verify_account_token, verify_token
+from app.services.account import AccountService
+from app.services.providers import provide_account_service_stub
+from fastapi import Depends, Header, HTTPException
 
 
 async def require_auth(x_room_token: str = Header(...)) -> tuple[str, str]:
@@ -7,3 +9,16 @@ async def require_auth(x_room_token: str = Header(...)) -> tuple[str, str]:
     if result is None:
         raise HTTPException(401, "invalid token")
     return result
+
+
+async def require_account(
+    x_room_token: str = Header(...),
+    service: AccountService = Depends(provide_account_service_stub),
+) -> tuple[str, str]:
+    identity = verify_account_token(x_room_token)
+    if identity is None:
+        raise HTTPException(401, "invalid token")
+    account_id, device_id = identity
+    if not await service.is_device_active(account_id, device_id):
+        raise HTTPException(401, "device revoked")
+    return account_id, device_id

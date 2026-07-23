@@ -44,4 +44,41 @@ async def provide_pool() -> Pool:
         except asyncpg.UndefinedFunctionError:
             pass
 
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS accounts (
+                account_id TEXT PRIMARY KEY,
+                secret_verifier TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """
+        )
+
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS devices (
+                device_id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+                name TEXT,
+                revoked BOOLEAN NOT NULL DEFAULT FALSE,
+                linked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """
+        )
+
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS room_members (
+                room_id TEXT NOT NULL,
+                account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+                role TEXT NOT NULL DEFAULT 'member',
+                joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                PRIMARY KEY (room_id, account_id)
+            )
+        """
+        )
+
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_devices_account ON devices (account_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_room_members_account ON room_members (account_id)")
+
     return pool
