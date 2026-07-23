@@ -99,6 +99,34 @@ async def test_link_rejects_code_from_revoked_issuer():
     assert await acc.link_device(code, "phone") is None
 
 
+async def test_link_uses_provided_room():
+    acc, _, _, _ = _service()
+    reg = await acc.register("s")
+    code = await acc.link_code(reg["account_id"], reg["device_id"], "room-X")
+    linked = await acc.link_device(code, "phone")
+    assert linked["room_id"] == "room-X"
+
+
+async def test_recover_with_secret():
+    acc, _, _, _ = _service()
+    reg = await acc.register("correct-secret")
+
+    bad = await acc.recover(reg["account_id"], "wrong", None)
+    assert bad is None
+
+    ok = await acc.recover(reg["account_id"], "correct-secret", "restored")
+    assert ok is not None
+    assert ok["account_id"] == reg["account_id"]
+    assert ok["device_id"] != reg["device_id"]
+    assert ok["room_id"] == reg["room_id"]
+    assert await acc.is_device_active(reg["account_id"], ok["device_id"]) is True
+
+
+async def test_recover_unknown_account():
+    acc, _, _, _ = _service()
+    assert await acc.recover("ghost", "whatever", None) is None
+
+
 async def test_revoke_makes_device_inactive():
     acc, _, _, _ = _service()
     reg = await acc.register("s")

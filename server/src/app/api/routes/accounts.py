@@ -1,7 +1,7 @@
 from app.core.ratelimit.ratelimit import limit
 from app.services.account import AccountService
 from app.services.providers import provide_account_service_stub
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
@@ -11,7 +11,13 @@ class RegisterRequest(BaseModel):
     secret: str
 
 
-class RegisterResponse(BaseModel):
+class RecoverRequest(BaseModel):
+    account_id: str
+    secret: str
+    name: str | None = None
+
+
+class AccountResponse(BaseModel):
     account_id: str
     device_id: str
     room_id: str
@@ -24,6 +30,19 @@ async def register(
     request: Request,
     body: RegisterRequest,
     service: AccountService = Depends(provide_account_service_stub),
-) -> RegisterResponse:
+) -> AccountResponse:
     result = await service.register(body.secret)
-    return RegisterResponse(**result)
+    return AccountResponse(**result)
+
+
+@router.post("/recover")
+@limit(5)
+async def recover(
+    request: Request,
+    body: RecoverRequest,
+    service: AccountService = Depends(provide_account_service_stub),
+) -> AccountResponse:
+    result = await service.recover(body.account_id, body.secret, body.name)
+    if result is None:
+        raise HTTPException(401, "invalid account or secret")
+    return AccountResponse(**result)

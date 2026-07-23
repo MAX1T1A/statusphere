@@ -17,6 +17,9 @@ var (
 	registerFlag  = flag.String("register", "", "Create a new account on <server_url>")
 	linkFlag      = flag.String("link", "", "Link this device to an existing account on <server_url> (needs --code)")
 	codeFlag      = flag.String("code", "", "Link code produced by --new-device")
+	recoverFlag   = flag.String("recover", "", "Recover an account on <server_url> (needs --account and --secret)")
+	accountFlag   = flag.String("account", "", "Account id for --recover")
+	secretFlag    = flag.String("secret", "", "Account secret for --recover")
 	newDeviceFlag = flag.Bool("new-device", false, "Print a link code to add another device to this account")
 	inviteFlag    = flag.Bool("invite", false, "Print an invite code for your room")
 	joinFlag      = flag.String("join", "", "Join a room using an invite <code>")
@@ -41,6 +44,8 @@ func dispatch() error {
 		return register(*registerFlag)
 	case *linkFlag != "":
 		return linkDevice(*linkFlag, *codeFlag)
+	case *recoverFlag != "":
+		return recoverAccount(*recoverFlag, *accountFlag, *secretFlag)
 	case *newDeviceFlag:
 		return withConfig(func(c *auth.Config) error {
 			code, err := c.NewDeviceCode()
@@ -126,6 +131,21 @@ func register(serverURL string) error {
 	fmt.Printf("  Device:  %s\n", cfg.DeviceID)
 	fmt.Printf("\nInvite friends:      statusphere --invite\n")
 	fmt.Printf("Add another device:  statusphere --new-device\n")
+	return nil
+}
+
+func recoverAccount(serverURL, accountID, secret string) error {
+	if accountID == "" || secret == "" {
+		return fmt.Errorf("--recover requires --account <account_id> and --secret <account_secret>")
+	}
+	cfg, err := auth.Recover(serverURL, accountID, secret)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Account recovered on a new device.\n")
+	fmt.Printf("  Account: %s\n", cfg.AccountID)
+	fmt.Printf("  Room:    %s\n", cfg.RoomID)
+	fmt.Printf("  Device:  %s\n", cfg.DeviceID)
 	return nil
 }
 

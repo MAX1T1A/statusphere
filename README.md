@@ -89,13 +89,16 @@ auth/            Регистрация и хранение токена авт�
 Сервер (`server/src/app/`):
 
 ```
-api/routes/      ws (broadcast), stats (summary/spotify), auth (register)
-services/room/   Комнаты и подписчики, fan-out по WebSocket
-services/sampler/Буфер снапшотов + периодический flush в БД (с re-queue при сбое)
-services/snapshot/Агрегация статистики
-repositories/    SQL по таблице snapshots (TimescaleDB)
-core/config/     Settings — единый источник env (postgres, auth_secret, sampler_interval, logging_level)
-core/auth/       HMAC-подпись и проверка токенов
+api/routes/      ws (broadcast + membership/revocation checks), stats, accounts, devices, rooms
+services/account/    register, device link/revoke, recover
+services/membership/ invite, join, members, kick (owner-only)
+services/room/       Live-комнаты и подписчики, fan-out по WebSocket
+services/sampler/    Буфер снапшотов + периодический flush в БД (re-queue при сбое)
+services/snapshot/   Агрегация статистики (decrypt + aggregate в Python)
+repositories/    SQL: snapshots (TimescaleDB, зашифрованный BYTEA), accounts, devices, room_members
+core/config/     Settings — единый источник env (+ presence_key)
+core/auth/       HMAC токены v2, коды приглашений/привязки с TTL, верификатор секрета
+core/crypto/     AES-256-GCM шифрование payload'а
 core/ratelimit/  Rate limiter per-IP
 ```
 
@@ -188,59 +191,72 @@ echo 'POSTGRES_DB_PASSWORD=your-password' >> .env
 docker compose up -d
 ```
 
-## Регистрация и запуск клиента
+## Аккаунты, устройства, комнаты
+
+Модель авторизации — **аккаунты** (без паролей). Аккаунту принадлежат **устройства**, комнаты состоят из аккаунтов. Токен устройства: `v2:account_id:device_id:HMAC` в заголовке `X-Room-Token`.
 
 ```bash
 cd client
 go build -o sstatus ./cmd/client
 ```
 
-При первом запуске клиент должен зарегистрироваться на сервере. Регистрация создаёт подписанный токен, который привязывает устройство к комнате.
-
-**Создать новую комнату:**
+**Создать аккаунт** (генерит секрет клиента, создаёт личную комнату, ты — владелец):
 
 ```bash
 sstatus --register https://your-server.com
 ```
 
-Сервер сгенерирует `room_id` (128-бит random hex) и вернёт токен. Скопируй `room_id` из вывода и передай друзьям.
-
-**Присоединиться к существующей комнате:**
+**Позвать друзей / войти в общую комнату:**
 
 ```bash
-sstatus --register https://your-server.com --room <room_id>
+sstatus --invite            # у себя: код-приглашение (TTL 1 ч)
+sstatus --join <code>       # у друга: войти в твою комнату
 ```
 
-Конфигурация сохраняется в `~/.config/statusphere/config.json` (права `0600`):
-
-```json
-{
-  "server_url": "https://your-server.com",
-  "token": "room_id:device_id:hmac_signature"
-}
-```
-
-После регистрации просто запускай:
+**Добавить второе устройство** (без пароля, по коду с авторизованного):
 
 ```bash
-# TUI режим (по умолчанию)
-sstatus
+sstatus --new-device                       # на старом устройстве -> печатает код
+sstatus --link https://your-server.com --code <code>   # на новом устройстве
+```
 
-# Headless режим (только сбор и отправка, без UI)
-sstatus --ui headless
+Новое устройство попадает в ту же комнату, где сейчас основное.
+
+**Управление:**
+
+```bash
+sstatus --devices           # список устройств аккаунта
+sstatus --revoke <device_id># отозвать устройство (рвёт и живую сессию)
+sstatus --members           # кто в твоей комнате
+sstatus --kick <account_id> # выгнать участника (только владелец)
+```
+
+**Восстановление** (если потерял все устройства — нужны сохранённые `account_id` и `account_secret`):
+
+```bash
+sstatus --recover https://your-server.com --account <account_id> --secret <account_secret>
+```
+
+Конфигурация — `~/.config/statusphere/config.json` (права `0600`): `server_url`, `account_secret`, `account_id`, `device_id`, `token`, `room_id`.
+
+Запуск:
+
+```bash
+sstatus                # TUI (по умолчанию)
+sstatus --ui headless  # только сбор и отправка, без UI
 ```
 
 ## Безопасность
 
-Все подключения (WebSocket и HTTP) авторизуются через HMAC-подписанный токен в заголовке `X-Room-Token`. Токен содержит `room_id`, `device_id` и подпись.
+Все подключения авторизуются v2-токеном устройства (`X-Room-Token`), подписанным HMAC-SHA256 серверным `AUTH_SECRET`.
 
-- **Шифрование данных в БД (at-rest)** — payload снапшотов (`data`) хранится зашифрованным AES-256-GCM; ключ `PRESENCE_KEY` живёт только в приложении и никогда не попадает в БД. Дамп/чтение БД без ключа = бесполезный шифртекст. Сервер расшифровывает данные в памяти для вещания и статистики (это не end-to-end: серверу в рантайме доверяем). В открытом виде остаются только непереборные `room_id`/`device_id`/время — они нужны для маршрутизации и retention.
-- **Авторитетный `device_id`** — сервер проставляет `device_id` из проверенного токена как при вещании (`publish`), так и при записи в БД (`sampler`); значение из payload клиента игнорируется, подменить чужой `device_id` нельзя.
-- **`room_id`** — знание `room_id` = право войти в комнату (это шаринг-ссылка; передавай её только друзьям).
-- **Регистрация** — `POST /auth/register`, rate limit 5 запросов/мин на IP
-- **Stats API** — `GET /stats/summary`, `GET /stats/spotify`, rate limit 30 запросов/мин на IP, `room_id` берётся из токена
-- **WebSocket** — максимальный размер сообщения 16KB, rate limit 2 msg/sec на соединение
-- **Graceful shutdown** — при остановке сервера все WS-клиенты получают clean close (код 1001)
+- **Аккаунт** идентифицируется секретом клиента; сервер хранит только его HMAC-**верификатор**, не сам секрет — дамп БД учётки не выдаёт.
+- **Устройства и членство** — WS-подключение (`/ws?room=<room_id>`) проверяет: валидность токена → устройство не отозвано → аккаунт состоит в комнате. Проверки повторяются на живой сессии (watchdog ~10с), поэтому **отзыв устройства и кик участника рвут активное соединение**, а не только новые.
+- **Шифрование данных в БД (at-rest)** — payload снапшотов (`data`) шифруется AES-256-GCM; ключ `PRESENCE_KEY` живёт только в приложении и в БД не попадает. Дамп без ключа = бесполезный шифртекст. Это не end-to-end: серверу в рантайме доверяем.
+- **Авторитетные `account_id`/`device_id`** — сервер проставляет их из проверенного токена при вещании и записи; значения из payload игнорируются.
+- **Приглашения** — код в комнату с TTL 1 ч; **link-код** привязан к выдавшему устройству и протухает при его отзыве.
+- **Rate limits** — регистрация/восстановление 5/мин на IP, stats 30/мин на IP, WS 2 msg/sec на соединение, max сообщение 16KB.
+- **Graceful shutdown** — при остановке сервера все WS-клиенты получают clean close (1001).
 
 ## Горячие клавиши
 
