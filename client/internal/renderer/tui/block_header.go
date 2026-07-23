@@ -69,24 +69,29 @@ func systemLine(d presence.Snapshot) string {
 	return strings.Join(parts, " · ")
 }
 
-func BlockHeader() Block {
-	return Block{
-		Render: func(d presence.Snapshot) string {
-			name := "unknown"
-			if n := d.DeviceName(); n != "" {
-				name = n
-			} else if id := d.DeviceID(); id != "" {
-				name = id
-			}
-
-			line := statusDot(d) + " " + deviceName.Render(name)
-			if up := formatUptime(d); up != "" {
-				line += uptimeDim.Render(" · " + up)
-			}
-			if sys := systemLine(d); sys != "" {
-				line += "\n" + sysDim.Render(sys)
-			}
-			return line
-		},
+func deviceLine(d presence.Snapshot) string {
+	name := "unknown"
+	if n := d.DeviceName(); n != "" {
+		name = n
+	} else if id := d.DeviceID(); id != "" {
+		name = id
 	}
+	line := statusDot(d) + " " + deviceName.Render(name)
+	if up := formatUptime(d); up != "" {
+		line += uptimeDim.Render(" · " + up)
+	}
+	return line
+}
+
+func groupHeader(g deviceGroup) string {
+	lines := make([]string, 0, len(g.devices)+1)
+	for i, d := range g.devices {
+		lines = append(lines, deviceLine(d))
+		if i == 0 {
+			if sys := systemLine(d); sys != "" {
+				lines = append(lines, sysDim.Render(sys))
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
 }

@@ -2,6 +2,7 @@ package presence
 
 const (
 	KeyDeviceID     = "device_id"
+	KeyAccountID    = "account_id"
 	KeyDeviceName   = "device_name"
 	KeyLastSeen     = "last_seen"
 	KeyNudge        = "nudge_message"
