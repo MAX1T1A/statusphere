@@ -115,11 +115,14 @@ func (h *NudgeHistory) RenderFor(deviceID string) string {
 func BlockNudge(history *NudgeHistory) Block {
 	return Block{
 		Render: func(d presence.Snapshot) string {
-			deviceID := d.DeviceID()
-			if deviceID == "" || history == nil {
+			key := d.String(presence.KeyAccountID)
+			if key == "" {
+				key = d.DeviceID()
+			}
+			if key == "" || history == nil {
 				return ""
 			}
-			return history.RenderFor(deviceID)
+			return history.RenderFor(key)
 		},
 	}
 }
