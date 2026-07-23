@@ -50,8 +50,7 @@ func Run(ctx context.Context, uiMode string) error {
 	cfg, err := auth.Load()
 	if err != nil {
 		return fmt.Errorf("no config found; register first:\n"+
-			"  statusphere --register https://your-server.com\n"+
-			"  statusphere --register https://your-server.com --room <room_id>\n%w", err)
+			"  statusphere --register https://your-server.com\n%w", err)
 	}
 
 	setupLogging()
@@ -65,7 +64,7 @@ func Run(ctx context.Context, uiMode string) error {
 	providers = append(providers, cm.FieldsProvider())
 	coll := collector.New(providers...)
 
-	ws := transport.NewWS(cfg.ServerURL, cfg.Token, cfg.DeviceID())
+	ws := transport.NewWS(cfg.ServerURL, cfg.Token, cfg.DeviceID, cfg.RoomID)
 	if err := ws.Connect(ctx); err != nil {
 		return fmt.Errorf("connect failed: %w", err)
 	}
@@ -75,16 +74,16 @@ func Run(ctx context.Context, uiMode string) error {
 		ws:       ws,
 		feed:     feed.New(),
 		custom:   cm,
-		notifier: notifier.New(cfg.DeviceID()),
+		notifier: notifier.New(cfg.DeviceID),
 	}
 	a.watcher = watcher.New(coll, a.send, watchInterval)
 
 	switch uiMode {
 	case "tui":
 		t := tui.New(tui.Options{
-			SpotifyCache: stats.NewSpotifyCache(cfg.ServerURL, cfg.Token),
-			SummaryCache: stats.NewSummaryCache(cfg.ServerURL, cfg.Token, "day"),
-			LocalID:      cfg.DeviceID(),
+			SpotifyCache: stats.NewSpotifyCache(cfg.ServerURL, cfg.Token, cfg.RoomID),
+			SummaryCache: stats.NewSummaryCache(cfg.ServerURL, cfg.Token, "day", cfg.RoomID),
+			LocalID:      cfg.DeviceID,
 			CustomOrder:  cm.FieldNames(),
 			Controller:   a,
 		})

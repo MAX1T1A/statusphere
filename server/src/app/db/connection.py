@@ -21,6 +21,7 @@ async def provide_pool() -> Pool:
                 id BIGSERIAL,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 room_token TEXT NOT NULL,
+                account_id TEXT NOT NULL,
                 device_id TEXT NOT NULL,
                 data BYTEA NOT NULL
             )

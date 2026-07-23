@@ -37,23 +37,6 @@ def check_secret(secret: str, stored_verifier: str) -> bool:
     return hmac.compare_digest(verifier(secret), stored_verifier)
 
 
-def generate_token(room_id: str, device_id: str) -> str:
-    payload = f"{room_id}:{device_id}"
-    return f"{payload}:{_sign(payload)}"
-
-
-def verify_token(token: str) -> tuple[str, str] | None:
-    parts = token.split(":")
-    if len(parts) != 3:
-        return None
-    room_id, device_id, sig = parts
-    if not room_id or not device_id:
-        return None
-    if not hmac.compare_digest(sig, _sign(f"{room_id}:{device_id}")):
-        return None
-    return room_id, device_id
-
-
 def generate_account_token(account_id: str, device_id: str) -> str:
     payload = f"account:{account_id}:{device_id}"
     return f"{TOKEN_V2}:{account_id}:{device_id}:{_sign(payload)}"

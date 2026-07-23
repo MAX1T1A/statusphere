@@ -8,17 +8,11 @@ def test_account_token_roundtrip():
     assert auth.verify_account_token(token) == (aid, did)
 
 
-def test_account_token_rejects_v1_and_tamper():
-    v1 = auth.generate_token("room", "dev")
-    assert auth.verify_account_token(v1) is None
+def test_account_token_rejects_non_v2_and_tamper():
+    assert auth.verify_account_token("room:dev:sig") is None
+    assert auth.verify_account_token("") is None
     token = auth.generate_account_token("acc", "dev")
     assert auth.verify_account_token(token[:-1] + ("0" if token[-1] != "0" else "1")) is None
-
-
-def test_v1_token_still_works_alongside_v2():
-    token = auth.generate_token("room", "dev")
-    assert auth.verify_token(token) == ("room", "dev")
-    assert auth.verify_account_token(token) is None
 
 
 def test_secret_verifier():
