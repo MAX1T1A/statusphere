@@ -22,11 +22,12 @@ type Controller interface {
 }
 
 type Options struct {
-	SpotifyCache *stats.Cache
-	SummaryCache *stats.Cache
-	LocalID      string
-	CustomOrder  []string
-	Controller   Controller
+	SpotifyCache   *stats.Cache
+	SummaryCache   *stats.Cache
+	LocalID        string
+	LocalAccountID string
+	CustomOrder    []string
+	Controller     Controller
 }
 
 type Block struct {
@@ -70,6 +71,7 @@ const (
 	modeNone inputMode = iota
 	modeNudge
 	modeRename
+	modeRenameConfirm
 	modeSyncDevice
 	modeSyncAction
 )
@@ -169,17 +171,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) updateInput(msg tea.KeyMsg) model {
 	switch msg.String() {
 	case "enter":
-		text := strings.TrimSpace(m.input)
-		if text != "" {
-			switch m.mode {
-			case modeNudge:
-				m.ctrl.Nudge(text)
-			case modeRename:
-				m.ctrl.Rename(text)
-			}
+		if m.mode == modeRenameConfirm {
+			m.ctrl.Rename(m.input)
+			m.mode = modeNone
+			m.input = ""
+			return m
 		}
-		m.mode = modeNone
-		m.input = ""
+		text := strings.TrimSpace(m.input)
+		if text == "" {
+			m.mode = modeNone
+			m.input = ""
+			return m
+		}
+		switch m.mode {
+		case modeNudge:
+			m.ctrl.Nudge(text)
+			m.mode = modeNone
+			m.input = ""
+		case modeRename:
+			m.input = text
+			m.mode = modeRenameConfirm
+		}
 	case "esc":
 		m.mode = modeNone
 		m.input = ""
@@ -197,7 +209,13 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 			m.pickSyncDevice(msg.String())
 		case modeSyncAction:
 			m.pickSyncAction(msg.String())
-		default:
+		case modeRenameConfirm:
+			if s := msg.String(); s == "y" || s == "Y" || s == "д" {
+				m.ctrl.Rename(m.input)
+				m.mode = modeNone
+				m.input = ""
+			}
+		case modeNudge, modeRename:
 			m.typeInput(msg.String())
 		}
 	}
@@ -482,7 +500,11 @@ func (m model) footer() string {
 	case modeNudge:
 		return inputStyle.Render("nudge: ") + m.input + inputCaret.Render("█")
 	case modeRename:
-		return inputStyle.Render("name: ") + m.input + inputCaret.Render("█")
+		return inputStyle.Render("rename device: ") + m.input + inputCaret.Render("█")
+	case modeRenameConfirm:
+		return accentStyle.Render("rename device to ") + inputStyle.Render("«"+m.input+"»") +
+			dimStyle.Render("?  ") + accentStyle.Render("enter") + dimStyle.Render(" yes · ") +
+			accentStyle.Render("esc") + dimStyle.Render(" cancel")
 	case modeSyncDevice:
 		var opts []string
 		for i, d := range m.syncDevices {
@@ -516,7 +538,7 @@ type TUI struct {
 }
 
 func New(opts Options) *TUI {
-	nudges := NewNudgeHistory(opts.LocalID)
+	nudges := NewNudgeHistory(opts.LocalAccountID)
 
 	layout := []LayoutRow{
 		{Blocks: []Block{BlockCustom(opts.CustomOrder)}},
