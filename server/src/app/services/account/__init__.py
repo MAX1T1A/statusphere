@@ -26,14 +26,17 @@ class AccountService:
             "token": auth.generate_account_token(account_id, device_id),
         }
 
-    async def link_code(self, account_id: str) -> str:
-        return auth.sign_code("link", account_id, LINK_TTL)
+    async def link_code(self, account_id: str, device_id: str) -> str:
+        return auth.sign_code("link", f"{account_id}:{device_id}", LINK_TTL)
 
     async def link_device(self, code: str, name: str | None) -> dict | None:
-        account_id = auth.verify_code("link", code)
-        if account_id is None:
+        subject = auth.verify_code("link", code)
+        if subject is None or ":" not in subject:
             return None
+        account_id, issuer_device_id = subject.split(":", 1)
         if await self._accounts.get_verifier(account_id) is None:
+            return None
+        if not await self._accounts.is_device_active(account_id, issuer_device_id):
             return None
 
         device_id = auth.generate_device_id()

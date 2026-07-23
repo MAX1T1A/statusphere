@@ -202,8 +202,14 @@ func (c *Config) Devices() ([]DeviceInfo, error) {
 	return resp.Devices, nil
 }
 
-func (c *Config) Revoke(deviceID string) error {
-	return do(http.MethodPost, c.endpoint("/devices/revoke"), c.Token, map[string]string{"device_id": deviceID}, nil)
+func (c *Config) Revoke(deviceID string) (bool, error) {
+	var resp struct {
+		OK bool `json:"ok"`
+	}
+	if err := do(http.MethodPost, c.endpoint("/devices/revoke"), c.Token, map[string]string{"device_id": deviceID}, &resp); err != nil {
+		return false, err
+	}
+	return resp.OK, nil
 }
 
 type MemberInfo struct {
@@ -221,6 +227,12 @@ func (c *Config) Members() ([]MemberInfo, error) {
 	return resp.Members, nil
 }
 
-func (c *Config) Kick(accountID string) error {
-	return do(http.MethodPost, c.endpoint("/rooms/kick"), c.Token, map[string]string{"account_id": accountID}, nil)
+func (c *Config) Kick(accountID string) (bool, error) {
+	var resp struct {
+		OK bool `json:"ok"`
+	}
+	if err := do(http.MethodPost, c.endpoint("/rooms/kick"), c.Token, map[string]string{"account_id": accountID}, &resp); err != nil {
+		return false, err
+	}
+	return resp.OK, nil
 }

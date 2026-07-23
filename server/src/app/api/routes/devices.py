@@ -22,8 +22,8 @@ async def link_code(
     auth: tuple[str, str] = Depends(require_account),
     service: AccountService = Depends(provide_account_service_stub),
 ) -> dict:
-    account_id, _ = auth
-    return {"code": await service.link_code(account_id)}
+    account_id, device_id = auth
+    return {"code": await service.link_code(account_id, device_id)}
 
 
 @router.post("/link")

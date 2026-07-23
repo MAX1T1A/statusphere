@@ -61,15 +61,16 @@ def sign_code(kind: str, subject: str, ttl_seconds: int) -> str:
 
 
 def verify_code(kind: str, code: str) -> str | None:
-    parts = code.split(":")
-    if len(parts) != 4 or parts[0] != kind:
+    prefix = f"{kind}:"
+    if not code.startswith(prefix):
         return None
-    _, subject, exp_raw, sig = parts
     try:
+        body, sig = code[len(prefix):].rsplit(":", 1)
+        subject, exp_raw = body.rsplit(":", 1)
         exp = int(exp_raw)
     except ValueError:
         return None
-    if exp < int(time.time()):
+    if not subject or exp < int(time.time()):
         return None
     if not hmac.compare_digest(sig, _sign(f"{kind}:{subject}:{exp}")):
         return None

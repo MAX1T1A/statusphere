@@ -71,8 +71,12 @@ func dispatch() error {
 		return withConfig(listDevices)
 	case *revokeFlag != "":
 		return withConfig(func(c *auth.Config) error {
-			if err := c.Revoke(*revokeFlag); err != nil {
+			ok, err := c.Revoke(*revokeFlag)
+			if err != nil {
 				return err
+			}
+			if !ok {
+				return fmt.Errorf("no such device on your account: %s", *revokeFlag)
 			}
 			fmt.Printf("Revoked device %s\n", *revokeFlag)
 			return nil
@@ -81,8 +85,12 @@ func dispatch() error {
 		return withConfig(listMembers)
 	case *kickFlag != "":
 		return withConfig(func(c *auth.Config) error {
-			if err := c.Kick(*kickFlag); err != nil {
+			ok, err := c.Kick(*kickFlag)
+			if err != nil {
 				return err
+			}
+			if !ok {
+				return fmt.Errorf("not a removable member of your room: %s", *kickFlag)
 			}
 			fmt.Printf("Removed %s\n", *kickFlag)
 			return nil

@@ -29,6 +29,11 @@ def test_code_roundtrip_and_kind_isolation():
     assert auth.verify_code("invite", code) is None
 
 
+def test_code_subject_may_contain_colons():
+    code = auth.sign_code("link", "account123:device456", ttl_seconds=300)
+    assert auth.verify_code("link", code) == "account123:device456"
+
+
 def test_expired_code_rejected():
     expired = auth.sign_code("invite", "room123", ttl_seconds=-1)
     assert auth.verify_code("invite", expired) is None
