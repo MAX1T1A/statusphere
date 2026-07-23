@@ -75,7 +75,7 @@ async def test_register_creates_account_device_and_owner_room():
 async def test_link_device_adds_device_under_same_account():
     acc, _, _, _ = _service()
     reg = await acc.register("s")
-    code = await acc.link_code(reg["account_id"])
+    code = await acc.link_code(reg["account_id"], reg["device_id"])
 
     linked = await acc.link_device(code, "phone")
     assert linked is not None
@@ -87,8 +87,16 @@ async def test_link_device_adds_device_under_same_account():
 
 async def test_link_rejects_expired_and_unknown():
     acc, _, _, _ = _service()
-    assert await acc.link_device(auth.sign_code("link", "acc", -1), None) is None
-    assert await acc.link_device(auth.sign_code("link", "ghost", 300), None) is None
+    assert await acc.link_device(auth.sign_code("link", "acc:dev", -1), None) is None
+    assert await acc.link_device(auth.sign_code("link", "ghost:dev", 300), None) is None
+
+
+async def test_link_rejects_code_from_revoked_issuer():
+    acc, _, _, _ = _service()
+    reg = await acc.register("s")
+    code = await acc.link_code(reg["account_id"], reg["device_id"])
+    await acc.revoke_device(reg["account_id"], reg["device_id"])
+    assert await acc.link_device(code, "phone") is None
 
 
 async def test_revoke_makes_device_inactive():

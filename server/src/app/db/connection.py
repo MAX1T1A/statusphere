@@ -28,6 +28,8 @@ async def provide_pool() -> Pool:
         """
         )
 
+        await conn.execute("ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS account_id TEXT NOT NULL DEFAULT ''")
+
         await conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_snapshots_lookup

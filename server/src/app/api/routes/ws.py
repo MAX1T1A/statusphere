@@ -22,6 +22,7 @@ router = APIRouter(tags=["ws"])
 
 MAX_MESSAGE_SIZE = 16 * 1024
 MIN_MESSAGE_INTERVAL = 0.5
+AUTHZ_RECHECK = 10.0
 
 _active: set[WebSocket] = set()
 
@@ -64,13 +65,25 @@ async def ws_endpoint(
     logger.info("ws connected: account=%s device=%s room=%s", account_id, device_id, room)
 
     recv_task = None
+    authz_task = None
     try:
 
         async def forward_to_client():
             async for data in room_manager.subscribe(room, device_id):
                 await websocket.send_text(json.dumps(data))
 
+        async def watch_authz():
+            while True:
+                await asyncio.sleep(AUTHZ_RECHECK)
+                active = await accounts.is_device_active(account_id, device_id)
+                member = await membership.is_member(room, account_id)
+                if not active or not member:
+                    logger.info("ws access revoked: account=%s device=%s", account_id, device_id)
+                    await websocket.close(code=1008, reason="access revoked")
+                    return
+
         recv_task = asyncio.create_task(forward_to_client())
+        authz_task = asyncio.create_task(watch_authz())
 
         last_msg_at = 0.0
         while True:
@@ -101,5 +114,6 @@ async def ws_endpoint(
         logger.exception("ws error: device=%s", device_id)
     finally:
         _active.discard(websocket)
-        if recv_task:
-            recv_task.cancel()
+        for task in (recv_task, authz_task):
+            if task:
+                task.cancel()
