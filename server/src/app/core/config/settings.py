@@ -1,3 +1,4 @@
+import base64
 import logging
 import os
 from dataclasses import dataclass
@@ -26,8 +27,19 @@ def _resolve_level(raw: str) -> int:
 class Settings:
     postgres: PostgresConfig
     auth_secret: str
+    presence_key: bytes
     sampler_interval: int
     logging_level: int
+
+
+def _load_presence_key() -> bytes:
+    raw = os.environ.get("PRESENCE_KEY", "")
+    if not raw:
+        raise RuntimeError("PRESENCE_KEY env is not set")
+    key = base64.b64decode(raw)
+    if len(key) not in (16, 24, 32):
+        raise RuntimeError("PRESENCE_KEY must be base64 of 16, 24 or 32 bytes")
+    return key
 
 
 @lru_cache
@@ -37,6 +49,7 @@ def get_settings() -> Settings:
         raise RuntimeError("AUTH_SECRET env is not set")
 
     return Settings(
+        presence_key=_load_presence_key(),
         postgres=PostgresConfig(
             host=os.environ["POSTGRES_DB_HOST"],
             port=int(os.environ["POSTGRES_DB_PORT"]),

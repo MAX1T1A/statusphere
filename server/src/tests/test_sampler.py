@@ -19,10 +19,9 @@ async def test_flush_uses_token_device_id_not_payload():
     await sampler._flush()
 
     assert len(repo.batches) == 1
-    room_token, device_id, device_name, data = repo.batches[0][0]
+    room_token, device_id, data = repo.batches[0][0]
     assert room_token == "room1"
     assert device_id == "token-dev"
-    assert device_name == "n"
     assert data["x"] == 1
 
 
@@ -46,4 +45,4 @@ async def test_put_keeps_only_latest_per_device():
     await sampler.put("room1", "dev1", {"n": 2})
     await sampler._flush()
     assert len(repo.batches[0]) == 1
-    assert repo.batches[0][0][3]["n"] == 2
+    assert repo.batches[0][0][2]["n"] == 2
