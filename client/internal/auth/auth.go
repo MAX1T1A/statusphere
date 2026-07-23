@@ -5,43 +5,36 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
+
+	"statusphere-client/internal/config"
 )
+
+const fileName = "config.json"
 
 type Config struct {
 	ServerURL string `json:"server_url"`
 	Token     string `json:"token"`
 }
 
-func (c *Config) RoomID() string {
+func (c *Config) tokenPart(i int) string {
 	parts := strings.Split(c.Token, ":")
-	if len(parts) >= 1 {
-		return parts[0]
+	if len(parts) != 3 {
+		return ""
 	}
-	return ""
+	return parts[i]
 }
 
-func (c *Config) DeviceID() string {
-	parts := strings.Split(c.Token, ":")
-	if len(parts) >= 2 {
-		return parts[1]
-	}
-	return ""
-}
+func (c *Config) RoomID() string   { return c.tokenPart(0) }
+func (c *Config) DeviceID() string { return c.tokenPart(1) }
 
 func ConfigPath() string {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		dir = os.TempDir()
-	}
-	return filepath.Join(dir, "statusphere", "config.json")
+	return config.File(fileName)
 }
 
 func Load() (*Config, error) {
-	data, err := os.ReadFile(ConfigPath())
+	data, err := config.Read(fileName)
 	if err != nil {
 		return nil, err
 	}
@@ -56,13 +49,11 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) Save() error {
-	path := ConfigPath()
-	os.MkdirAll(filepath.Dir(path), 0o700)
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o600)
+	return config.Write(fileName, data, 0o600)
 }
 
 type registerResponse struct {
@@ -83,7 +74,7 @@ func Register(serverURL, roomID string) (*Config, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("register failed: status %d", resp.StatusCode)
 	}
 
@@ -92,10 +83,7 @@ func Register(serverURL, roomID string) (*Config, error) {
 		return nil, fmt.Errorf("bad response: %w", err)
 	}
 
-	cfg := &Config{
-		ServerURL: serverURL,
-		Token:     result.Token,
-	}
+	cfg := &Config{ServerURL: serverURL, Token: result.Token}
 	if err := cfg.Save(); err != nil {
 		return nil, fmt.Errorf("save config: %w", err)
 	}

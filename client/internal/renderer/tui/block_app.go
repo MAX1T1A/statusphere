@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"statusphere-client/internal/presence"
 	"statusphere-client/internal/stats"
 )
 
@@ -97,11 +98,11 @@ const maxWindowTitle = 200
 
 func BlockApp(cache *stats.Cache) Block {
 	return Block{
-		Key: "app",
-		Render: func(d map[string]any) string {
-			app, _ := d["active_app"].(string)
-			win, _ := d["active_window"].(string)
-			deviceID, _ := d["device_id"].(string)
+		Render: func(d presence.Snapshot) string {
+			app := d.String(presence.KeyActiveApp)
+			win := d.String(presence.KeyActiveWindow)
+			workspace := d.String(presence.KeyActiveWorkspace)
+			deviceID := d.DeviceID()
 
 			if len(win) > maxWindowTitle {
 				runes := []rune(win)
@@ -120,6 +121,9 @@ func BlockApp(cache *stats.Cache) Block {
 					line = appLabel.Render("app ") + appName.Render(app)
 				} else {
 					line = appLabel.Render("app ") + appName.Render(app) + appWindow.Render(" · "+win)
+				}
+				if workspace != "" {
+					line += appLabel.Render(" · ws " + workspace)
 				}
 				parts = append(parts, line)
 			}

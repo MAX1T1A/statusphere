@@ -1,12 +1,15 @@
 package spotify
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/godbus/dbus/v5"
 
-	"statusphere-client/internal/models"
+	"statusphere-client/internal/collector"
+	"statusphere-client/internal/presence"
 )
 
 const (
@@ -16,15 +19,28 @@ const (
 	playerProp = "org.mpris.MediaPlayer2.Player"
 )
 
-func getProp(conn *dbus.Conn, prop string) (dbus.Variant, error) {
+func init() {
+	p := &player{}
+	collector.Register(collector.Descriptor{
+		Provider: collector.Provider{Name: "spotify", Collect: p.collect},
+		Applies:  collector.OnOS("linux"),
+	})
+}
+
+type player struct {
+	mu   sync.Mutex
+	conn *dbus.Conn
+}
+
+func getProp(ctx context.Context, conn *dbus.Conn, prop string) (dbus.Variant, error) {
 	obj := conn.Object(dest, objectPath)
 	var result dbus.Variant
-	err := obj.Call(propIface+".Get", 0, playerProp, prop).Store(&result)
+	err := obj.CallWithContext(ctx, propIface+".Get", 0, playerProp, prop).Store(&result)
 	return result, err
 }
 
-func extractMetadata(conn *dbus.Conn) (artist, title, album, artURL, trackID string) {
-	v, err := getProp(conn, "Metadata")
+func extractMetadata(ctx context.Context, conn *dbus.Conn) (artist, title, album, artURL, trackID string) {
+	v, err := getProp(ctx, conn, "Metadata")
 	if err != nil {
 		return
 	}
@@ -70,50 +86,50 @@ func extractMetadata(conn *dbus.Conn) (artist, title, album, artURL, trackID str
 	return
 }
 
-func NowPlaying() func(models.Snapshot) {
-	var conn *dbus.Conn
+func (p *player) collect(ctx context.Context, snap presence.Snapshot) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	return func(snap models.Snapshot) {
-		if conn == nil {
-			var err error
-			conn, err = dbus.SessionBus()
-			if err != nil {
-				return
-			}
-		}
-
-		v, err := getProp(conn, "PlaybackStatus")
+	if p.conn == nil {
+		conn, err := dbus.SessionBus()
 		if err != nil {
-			conn = nil
-			return
+			return err
 		}
+		p.conn = conn
+	}
 
-		status, _ := v.Value().(string)
-		if status == "" || status == "Stopped" {
-			return
-		}
+	v, err := getProp(ctx, p.conn, "PlaybackStatus")
+	if err != nil {
+		p.conn = nil
+		return err
+	}
 
-		artist, title, album, artURL, trackID := extractMetadata(conn)
-		if title == "" {
-			return
-		}
+	status, _ := v.Value().(string)
+	if status == "" || status == "Stopped" {
+		return nil
+	}
 
-		snap["spotify_status"] = strings.ToLower(status)
-		snap["spotify_track"] = title
-		snap["spotify_artist"] = artist
-		snap["spotify_album"] = album
-		snap["spotify_art_url"] = artURL
+	artist, title, album, artURL, trackID := extractMetadata(ctx, p.conn)
+	if title == "" {
+		return nil
+	}
 
-		if trackID != "" {
-			if id, ok := strings.CutPrefix(trackID, "/com/spotify/track/"); ok {
-				snap["spotify_uri"] = "spotify:track:" + id
-			}
-		}
+	snap.Set(presence.KeySpotifyStatus, strings.ToLower(status))
+	snap.Set(presence.KeySpotifyTrack, title)
+	snap.Set(presence.KeySpotifyArtist, artist)
+	snap.Set(presence.KeySpotifyAlbum, album)
+	snap.Set(presence.KeySpotifyArtURL, artURL)
 
-		if artist != "" {
-			snap["spotify_display"] = fmt.Sprintf("%s — %s", artist, title)
-		} else {
-			snap["spotify_display"] = title
+	if trackID != "" {
+		if id, ok := strings.CutPrefix(trackID, "/com/spotify/track/"); ok {
+			snap.Set(presence.KeySpotifyURI, "spotify:track:"+id)
 		}
 	}
+
+	if artist != "" {
+		snap.Set(presence.KeySpotifyDisplay, fmt.Sprintf("%s — %s", artist, title))
+	} else {
+		snap.Set(presence.KeySpotifyDisplay, title)
+	}
+	return nil
 }

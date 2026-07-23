@@ -1,6 +1,8 @@
 package renderer
 
+import "statusphere-client/internal/presence"
+
 type Renderer interface {
 	Run() error
-	UpdateDevices(devices []map[string]any)
+	UpdateDevices(devices []presence.Snapshot)
 }

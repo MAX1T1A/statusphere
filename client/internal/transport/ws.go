@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"statusphere-client/internal/models"
 	"strings"
 	"sync"
 	"time"
+
+	"statusphere-client/internal/presence"
 
 	"github.com/coder/websocket"
 )
@@ -18,20 +19,21 @@ const (
 	reconnectDelay = 3 * time.Second
 	pingInterval   = 20 * time.Second
 	readTimeout    = 45 * time.Second
+	writeTimeout   = 5 * time.Second
 )
 
 type WSTransport struct {
-	url        string
-	token      string
-	deviceID   string
-	deviceName string
+	url      string
+	token    string
+	deviceID string
 
-	mu     sync.Mutex
-	conn   *websocket.Conn
-	cancel context.CancelFunc
+	mu         sync.Mutex
+	deviceName string
+	conn       *websocket.Conn
+	cancel     context.CancelFunc
 }
 
-func NewWS(serverURL, token string) *WSTransport {
+func NewWS(serverURL, token, deviceID string) *WSTransport {
 	url := strings.TrimRight(serverURL, "/")
 	url = strings.Replace(url, "https://", "wss://", 1)
 	url = strings.Replace(url, "http://", "ws://", 1)
@@ -40,8 +42,8 @@ func NewWS(serverURL, token string) *WSTransport {
 	return &WSTransport{
 		url:        url,
 		token:      token,
-		deviceID:   ID(),
-		deviceName: Name(),
+		deviceID:   deviceID,
+		deviceName: loadName(),
 	}
 }
 
@@ -67,6 +69,7 @@ func (t *WSTransport) SetDeviceName(name string) {
 	t.mu.Lock()
 	t.deviceName = name
 	t.mu.Unlock()
+	saveName(name)
 }
 
 func (t *WSTransport) drop() {
@@ -82,24 +85,26 @@ func (t *WSTransport) drop() {
 	}
 }
 
-func (t *WSTransport) Send(snap models.Snapshot) error {
+func (t *WSTransport) Send(snap presence.Snapshot) error {
 	t.mu.Lock()
 	conn := t.conn
+	name := t.deviceName
 	t.mu.Unlock()
 
 	if conn == nil {
 		return fmt.Errorf("not connected")
 	}
 
-	snap["device_id"] = t.deviceID
-	snap["device_name"] = t.deviceName
+	out := snap.Clone()
+	out[presence.KeyDeviceID] = t.deviceID
+	out[presence.KeyDeviceName] = name
 
-	data, err := json.Marshal(map[string]any(snap))
+	data, err := json.Marshal(map[string]any(out))
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
 	defer cancel()
 
 	if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
@@ -177,7 +182,7 @@ func (t *WSTransport) pinger(ctx context.Context, conn *websocket.Conn) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			pingCtx, cancel := context.WithTimeout(ctx, writeTimeout)
 			err := conn.Ping(pingCtx)
 			cancel()
 			if err != nil {

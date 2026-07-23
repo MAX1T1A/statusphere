@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/image/draw"
 
+	"statusphere-client/internal/presence"
 	"statusphere-client/internal/stats"
 )
 
@@ -172,23 +173,22 @@ func renderSpotifyStats(s *stats.SpotifyStats) string {
 
 func BlockSpotify(cache *stats.Cache) Block {
 	return Block{
-		Key: "spotify",
-		Render: func(d map[string]any) string {
-			display, _ := d["spotify_display"].(string)
+		Render: func(d presence.Snapshot) string {
+			display := d.String(presence.KeySpotifyDisplay)
 			if display == "" {
-				music, _ := d["music"].(string)
+				music := d.String("music")
 				if music == "" {
 					return ""
 				}
 				return spotDim.Render("♪ " + music)
 			}
 
-			status, _ := d["spotify_status"].(string)
-			artist, _ := d["spotify_artist"].(string)
-			track, _ := d["spotify_track"].(string)
-			album, _ := d["spotify_album"].(string)
-			artURL, _ := d["spotify_art_url"].(string)
-			deviceID, _ := d["device_id"].(string)
+			status := d.String(presence.KeySpotifyStatus)
+			artist := d.String(presence.KeySpotifyArtist)
+			track := d.String(presence.KeySpotifyTrack)
+			album := d.String(presence.KeySpotifyAlbum)
+			artURL := d.String(presence.KeySpotifyArtURL)
+			deviceID := d.DeviceID()
 
 			var icon string
 			switch status {

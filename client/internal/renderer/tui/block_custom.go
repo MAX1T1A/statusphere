@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"statusphere-client/internal/presence"
+
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 )
 
-// wcwidth measures visible terminal column width treating ambiguous-width
-// Unicode characters (e.g. weather symbols like ⛅) as width 1, matching
-// the behaviour of most modern western terminals.
 var wcCond = runewidth.NewCondition()
 
 func init() {
@@ -38,8 +37,7 @@ func padRight(s string, w int) string {
 
 func BlockCustom(canonicalOrder []string) Block {
 	return Block{
-		Key: "custom",
-		Render: func(d map[string]any) string {
+		Render: func(d presence.Snapshot) string {
 			if len(canonicalOrder) == 0 {
 				return ""
 			}

@@ -1,13 +1,22 @@
 package linux
 
 import (
+	"context"
 	"math"
 	"os"
 	"strconv"
 	"strings"
 
-	"statusphere-client/internal/models"
+	"statusphere-client/internal/collector"
+	"statusphere-client/internal/presence"
 )
+
+func init() {
+	collector.Register(collector.Descriptor{
+		Provider: collector.Provider{Name: "memory", Collect: memory},
+		Applies:  collector.OnOS("linux"),
+	})
+}
 
 func parseMeminfo() (map[string]int64, error) {
 	data, err := os.ReadFile("/proc/meminfo")
@@ -31,15 +40,17 @@ func parseMeminfo() (map[string]int64, error) {
 	return result, nil
 }
 
-func Memory() func(models.Snapshot) {
-	return func(snap models.Snapshot) {
-		info, err := parseMeminfo()
-		if err != nil {
-			return
-		}
-		total := info["MemTotal"]
-		available := info["MemAvailable"]
-		snap["memory_used_mb"] = math.Round(float64(total-available)/1024*10) / 10
-		snap["memory_total_mb"] = math.Round(float64(total)/1024*10) / 10
+func memory(_ context.Context, snap presence.Snapshot) error {
+	info, err := parseMeminfo()
+	if err != nil {
+		return err
 	}
+	total := info["MemTotal"]
+	available := info["MemAvailable"]
+	if total == 0 {
+		return nil
+	}
+	snap.Set(presence.KeyMemUsedMB, math.Round(float64(total-available)/1024*10)/10)
+	snap.Set(presence.KeyMemTotalMB, math.Round(float64(total)/1024*10)/10)
+	return nil
 }
