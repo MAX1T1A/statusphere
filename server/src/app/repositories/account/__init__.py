@@ -17,6 +17,14 @@ class AccountRepository:
         async with self.pool.acquire() as conn:
             return await conn.fetchval("SELECT secret_verifier FROM accounts WHERE account_id = $1", account_id)
 
+    async def set_name(self, account_id: str, name: str) -> None:
+        async with self.pool.acquire() as conn:
+            await conn.execute("UPDATE accounts SET name = $2 WHERE account_id = $1", account_id, name)
+
+    async def name_of(self, account_id: str) -> str | None:
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval("SELECT name FROM accounts WHERE account_id = $1", account_id)
+
     async def create_device(self, device_id: str, account_id: str, name: str | None) -> None:
         async with self.pool.acquire() as conn:
             await conn.execute(

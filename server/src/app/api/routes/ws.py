@@ -60,6 +60,8 @@ async def ws_endpoint(
         await websocket.close(code=1008, reason="not a room member")
         return
 
+    account_name = await accounts.name_of(account_id)
+
     await websocket.accept()
     _active.add(websocket)
     logger.info("ws connected: account=%s device=%s room=%s", account_id, device_id, room)
@@ -105,7 +107,7 @@ async def ws_endpoint(
             if not isinstance(snapshot, dict):
                 continue
 
-            await room_manager.publish(room, account_id, device_id, snapshot)
+            await room_manager.publish(room, account_id, account_name, device_id, snapshot)
             await sampler.put(room, account_id, device_id, snapshot)
 
     except WebSocketDisconnect:

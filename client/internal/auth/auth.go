@@ -251,6 +251,10 @@ func (c *Config) Members() ([]MemberInfo, error) {
 	return resp.Members, nil
 }
 
+func (c *Config) SetAccountName(name string) error {
+	return do(http.MethodPost, c.endpoint("/accounts/name"), c.Token, map[string]string{"name": name}, nil)
+}
+
 func (c *Config) Kick(accountID string) (bool, error) {
 	var resp struct {
 		OK bool `json:"ok"`

@@ -24,7 +24,7 @@ func main() {
 		Controller:  noopController{},
 	})
 
-	t.Nudges.Process("alice-0001", "pizza tonight?")
+	t.Nudges.Process("acc-alice", "pizza tonight?")
 	t.Nudges.ProcessLocal("sure, 8pm")
 
 	now := time.Now().Unix()
@@ -32,6 +32,7 @@ func main() {
 		{
 			presence.KeyDeviceID:        "alice-0001",
 			presence.KeyAccountID:       "acc-alice",
+			presence.KeyAccountName:     "Alice",
 			presence.KeyDeviceName:      "alice-laptop",
 			presence.KeyLastSeen:        now,
 			presence.KeyUptimeHours:     5.3,
@@ -55,6 +56,7 @@ func main() {
 		{
 			presence.KeyDeviceID:    "alice-phone",
 			presence.KeyAccountID:   "acc-alice",
+			presence.KeyAccountName: "Alice",
 			presence.KeyDeviceName:  "alice-phone",
 			presence.KeyLastSeen:    now - 40,
 			presence.KeyUptimeHours: 9.0,
@@ -63,6 +65,7 @@ func main() {
 		{
 			presence.KeyDeviceID:       "bob-0002",
 			presence.KeyAccountID:      "acc-bob",
+			presence.KeyAccountName:    "Bob",
 			presence.KeyDeviceName:     "bob",
 			presence.KeyLastSeen:       now - 25,
 			presence.KeyUptimeHours:    52.0,
@@ -76,6 +79,7 @@ func main() {
 		{
 			presence.KeyDeviceID:     localID,
 			presence.KeyAccountID:    "acc-me",
+			presence.KeyAccountName:  "Me",
 			presence.KeyDeviceName:   "me",
 			presence.KeyLastSeen:     now,
 			presence.KeyUptimeHours:  0.4,

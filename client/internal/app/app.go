@@ -74,18 +74,19 @@ func Run(ctx context.Context, uiMode string) error {
 		ws:       ws,
 		feed:     feed.New(),
 		custom:   cm,
-		notifier: notifier.New(cfg.DeviceID),
+		notifier: notifier.New(cfg.AccountID),
 	}
 	a.watcher = watcher.New(coll, a.send, watchInterval)
 
 	switch uiMode {
 	case "tui":
 		t := tui.New(tui.Options{
-			SpotifyCache: stats.NewSpotifyCache(cfg.ServerURL, cfg.Token, cfg.RoomID),
-			SummaryCache: stats.NewSummaryCache(cfg.ServerURL, cfg.Token, "day", cfg.RoomID),
-			LocalID:      cfg.DeviceID,
-			CustomOrder:  cm.FieldNames(),
-			Controller:   a,
+			SpotifyCache:   stats.NewSpotifyCache(cfg.ServerURL, cfg.Token, cfg.RoomID),
+			SummaryCache:   stats.NewSummaryCache(cfg.ServerURL, cfg.Token, "day", cfg.RoomID),
+			LocalID:        cfg.DeviceID,
+			LocalAccountID: cfg.AccountID,
+			CustomOrder:    cm.FieldNames(),
+			Controller:     a,
 		})
 		a.ui = t
 		a.nudges = t.Nudges
@@ -126,11 +127,16 @@ func (a *App) listen(ctx context.Context) {
 		snap := presence.Snapshot(msg)
 
 		if nudge := snap.String(presence.KeyNudge); nudge != "" {
+			accountID := snap.String(presence.KeyAccountID)
+			name := snap.String(presence.KeyAccountName)
+			if name == "" {
+				name = snap.DeviceName()
+			}
 			if a.notifier != nil {
-				a.notifier.Handle(snap.DeviceID(), snap.DeviceName(), nudge)
+				a.notifier.Handle(accountID, name, nudge)
 			}
 			if a.nudges != nil {
-				a.nudges.Process(snap.DeviceID(), nudge)
+				a.nudges.Process(accountID, nudge)
 			}
 		}
 

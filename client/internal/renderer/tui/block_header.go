@@ -11,12 +11,13 @@ import (
 )
 
 var (
-	onlineDot  = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	idleDot    = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	offlineDot = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	deviceName = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	uptimeDim  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	sysDim     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	onlineDot   = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	idleDot     = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	offlineDot  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	accountName = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
+	deviceName  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+	uptimeDim   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	sysDim      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
 func statusDot(d presence.Snapshot) string {
@@ -84,7 +85,12 @@ func deviceLine(d presence.Snapshot) string {
 }
 
 func groupHeader(g deviceGroup) string {
-	lines := make([]string, 0, len(g.devices)+1)
+	lines := make([]string, 0, len(g.devices)+2)
+
+	if name := g.devices[0].String(presence.KeyAccountName); name != "" {
+		lines = append(lines, accountName.Render(name))
+	}
+
 	for i, d := range g.devices {
 		lines = append(lines, deviceLine(d))
 		if i == 0 {

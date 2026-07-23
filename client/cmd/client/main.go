@@ -27,6 +27,7 @@ var (
 	revokeFlag    = flag.String("revoke", "", "Revoke a device by <device_id>")
 	membersFlag   = flag.Bool("members", false, "List members of your room")
 	kickFlag      = flag.String("kick", "", "Remove a member by <account_id>")
+	setNameFlag   = flag.String("set-name", "", "Set your account's display name")
 )
 
 func main() {
@@ -84,6 +85,14 @@ func dispatch() error {
 				return fmt.Errorf("no such device on your account: %s", *revokeFlag)
 			}
 			fmt.Printf("Revoked device %s\n", *revokeFlag)
+			return nil
+		})
+	case *setNameFlag != "":
+		return withConfig(func(c *auth.Config) error {
+			if err := c.SetAccountName(*setNameFlag); err != nil {
+				return err
+			}
+			fmt.Printf("Account name set to %q (visible to your room on reconnect)\n", *setNameFlag)
 			return nil
 		})
 	case *membersFlag:
