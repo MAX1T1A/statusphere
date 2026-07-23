@@ -159,10 +159,34 @@ func (c *Config) NewDeviceCode() (string, error) {
 	var resp struct {
 		Code string `json:"code"`
 	}
-	if err := do(http.MethodPost, c.endpoint("/devices/link-code"), c.Token, nil, &resp); err != nil {
+	body := map[string]string{"room": c.RoomID}
+	if err := do(http.MethodPost, c.endpoint("/devices/link-code"), c.Token, body, &resp); err != nil {
 		return "", err
 	}
 	return resp.Code, nil
+}
+
+func Recover(serverURL, accountID, secret string) (*Config, error) {
+	serverURL = strings.TrimRight(serverURL, "/")
+
+	var resp accountResponse
+	body := map[string]string{"account_id": accountID, "secret": secret, "name": deviceName()}
+	if err := do(http.MethodPost, serverURL+"/accounts/recover", "", body, &resp); err != nil {
+		return nil, fmt.Errorf("recover: %w", err)
+	}
+
+	cfg := &Config{
+		ServerURL:     serverURL,
+		AccountSecret: secret,
+		AccountID:     resp.AccountID,
+		DeviceID:      resp.DeviceID,
+		Token:         resp.Token,
+		RoomID:        resp.RoomID,
+	}
+	if err := cfg.Save(); err != nil {
+		return nil, fmt.Errorf("save config: %w", err)
+	}
+	return cfg, nil
 }
 
 func (c *Config) Invite() (string, error) {
