@@ -1,16 +1,25 @@
+import json
 from datetime import date
+
+from app.core.crypto import decrypt
+
+QUERY = """
+    SELECT data FROM snapshots
+    WHERE room_token = $1 AND device_id = $2 AND created_at::date >= $3
+"""
 
 
 async def spotify_total(self, room_token: str, device_id: str, since: date) -> int:
-    query = """
-        SELECT COUNT(*) * $4 AS seconds
-        FROM snapshots
-        WHERE room_token = $1
-            AND device_id = $2
-            AND created_at::date >= $3
-            AND data->>'spotify_status' = 'playing'
-    """
-
     async with self.pool.acquire() as conn:
-        row = await conn.fetchrow(query, room_token, device_id, since, self.sample_interval)
-        return row["seconds"] if row else 0
+        rows = await conn.fetch(QUERY, room_token, device_id, since)
+
+    playing = 0
+    for row in rows:
+        try:
+            payload = json.loads(decrypt(row["data"]))
+        except Exception:
+            continue
+        if payload.get("spotify_status") == "playing":
+            playing += 1
+
+    return playing * self.sample_interval

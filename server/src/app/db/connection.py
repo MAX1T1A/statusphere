@@ -22,8 +22,7 @@ async def provide_pool() -> Pool:
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 room_token TEXT NOT NULL,
                 device_id TEXT NOT NULL,
-                device_name TEXT,
-                data JSONB NOT NULL
+                data BYTEA NOT NULL
             )
         """
         )

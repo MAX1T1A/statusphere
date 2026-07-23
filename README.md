@@ -164,12 +164,15 @@ func NewMyCache(serverURL, token string) *Cache {
 
 ```bash
 export AUTH_SECRET="$(openssl rand -hex 32)"
+export PRESENCE_KEY="$(openssl rand -base64 32)"   # ключ шифрования данных в БД (base64 32 байт)
 export POSTGRES_DB_HOST=localhost
 export POSTGRES_DB_PORT=5432
 export POSTGRES_DB_LOGIN=postgres
 export POSTGRES_DB_PASSWORD=your-password
 export POSTGRES_DB_NAME=statusphere
 ```
+
+`PRESENCE_KEY` **обязателен** — им шифруется payload снапшотов в БД (AES-256-GCM). Потеря ключа = данные не расшифровать (для эфемерного presence это приемлемо, retention 7 дней). Не меняй ключ на работающей базе — старые записи станут нечитаемыми.
 
 Переменные для PostgreSQL **обязательны** — дефолтных значений нет, сервер упадёт с ошибкой если что-то не задано.
 
@@ -231,6 +234,7 @@ sstatus --ui headless
 
 Все подключения (WebSocket и HTTP) авторизуются через HMAC-подписанный токен в заголовке `X-Room-Token`. Токен содержит `room_id`, `device_id` и подпись.
 
+- **Шифрование данных в БД (at-rest)** — payload снапшотов (`data`) хранится зашифрованным AES-256-GCM; ключ `PRESENCE_KEY` живёт только в приложении и никогда не попадает в БД. Дамп/чтение БД без ключа = бесполезный шифртекст. Сервер расшифровывает данные в памяти для вещания и статистики (это не end-to-end: серверу в рантайме доверяем). В открытом виде остаются только непереборные `room_id`/`device_id`/время — они нужны для маршрутизации и retention.
 - **Авторитетный `device_id`** — сервер проставляет `device_id` из проверенного токена как при вещании (`publish`), так и при записи в БД (`sampler`); значение из payload клиента игнорируется, подменить чужой `device_id` нельзя.
 - **`room_id`** — знание `room_id` = право войти в комнату (это шаринг-ссылка; передавай её только друзьям).
 - **Регистрация** — `POST /auth/register`, rate limit 5 запросов/мин на IP
