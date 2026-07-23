@@ -52,10 +52,13 @@ async def provide_pool() -> Pool:
             CREATE TABLE IF NOT EXISTS accounts (
                 account_id TEXT PRIMARY KEY,
                 secret_verifier TEXT NOT NULL,
+                name TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """
         )
+
+        await conn.execute("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS name TEXT")
 
         await conn.execute(
             """

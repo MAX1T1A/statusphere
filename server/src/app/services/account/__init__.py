@@ -69,6 +69,12 @@ class AccountService:
             "token": auth.generate_account_token(account_id, device_id),
         }
 
+    async def set_name(self, account_id: str, name: str) -> None:
+        await self._accounts.set_name(account_id, name)
+
+    async def name_of(self, account_id: str) -> str:
+        return await self._accounts.name_of(account_id) or ""
+
     async def list_devices(self, account_id: str) -> list[dict]:
         return await self._accounts.list_devices(account_id)
 
