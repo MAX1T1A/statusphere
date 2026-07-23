@@ -1,7 +1,7 @@
 from datetime import date
 
 
-async def summary(self, room_token: str, device_id: str, period: str, since: date) -> list[dict]:
+async def summary(self, room_token: str, device_id: str, period: str, since: date) -> dict:
     rows = await self._repository.summary(room_token, device_id, since)
 
     return {
