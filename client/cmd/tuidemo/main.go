@@ -16,15 +16,14 @@ func (noopController) SyncCustom([]string) {}
 
 func main() {
 	const localID = "me-device-0001"
-	customOrder := []string{"weather", "git"}
 
 	t := tui.New(tui.Options{
-		LocalID:     localID,
-		CustomOrder: customOrder,
-		Controller:  noopController{},
+		LocalID:        localID,
+		LocalAccountID: "acc-me",
+		Controller:     noopController{},
 	})
 
-	t.Nudges.Process("acc-alice", "pizza tonight?")
+	t.Nudges.Process("acc-alice", "Alice", "pizza tonight?")
 	t.Nudges.ProcessLocal("sure, 8pm")
 
 	now := time.Now().Unix()
@@ -50,7 +49,8 @@ func main() {
 			presence.KeySpotifyAlbum:    "Music Has the Right to Children",
 			presence.KeySpotifyDisplay:  "Boards of Canada — Roygbiv",
 			presence.KeySpotifyURI:      "spotify:track:xxxxxxxxxxxxxxxxxxxxxx",
-			"weather":                   "⛅ +14°C",
+			presence.KeyCustomFields:    []string{"weather", "git"},
+			"weather":                   "partly cloudy +14°",
 			"git":                       "feature/tui",
 		},
 		{
@@ -73,7 +73,8 @@ func main() {
 			presence.KeyActiveWindow:   "GitHub — pull requests",
 			presence.KeySpotifyStatus:  "paused",
 			presence.KeySpotifyDisplay: "Aphex Twin — Xtal",
-			"weather":                  "☀ +21°C",
+			presence.KeyCustomFields:   []string{"weather", "git"},
+			"weather":                  "sunny +21°",
 			"git":                      "master",
 		},
 		{
@@ -85,7 +86,8 @@ func main() {
 			presence.KeyUptimeHours:  0.4,
 			presence.KeyActiveApp:    "VS Code",
 			presence.KeyActiveWindow: "tui.go — statusphere",
-			"weather":                "🌧 +9°C",
+			presence.KeyCustomFields: []string{"weather", "git"},
+			"weather":                "rain +9°",
 			"git":                    "refactor/architecture",
 		},
 	}

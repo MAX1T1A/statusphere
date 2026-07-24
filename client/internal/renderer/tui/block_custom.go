@@ -7,73 +7,41 @@ import (
 	"statusphere-client/internal/presence"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-runewidth"
 )
-
-var wcCond = runewidth.NewCondition()
-
-func init() {
-	wcCond.EastAsianWidth = false
-}
-
-func wcswidth(s string) int {
-	return wcCond.StringWidth(s)
-}
 
 var (
 	customKeyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
 	customValueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	customEmptyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	customSepStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
-func padRight(s string, w int) string {
-	sw := wcswidth(s)
-	if sw >= w {
-		return s
+func fieldValue(d presence.Snapshot, key string) string {
+	if v, ok := d[key]; ok {
+		return strings.TrimSpace(fmt.Sprintf("%v", v))
 	}
-	return s + strings.Repeat(" ", w-sw)
+	return ""
 }
 
-func BlockCustom(canonicalOrder []string) Block {
+func BlockCustom() Block {
 	return Block{
 		Render: func(d presence.Snapshot) string {
-			if len(canonicalOrder) == 0 {
+			fields := d.Strings(presence.KeyCustomFields)
+			if len(fields) == 0 {
 				return ""
 			}
 
-			type col struct {
-				key string
-				val string
-				w   int
-			}
-
-			cols := make([]col, 0, len(canonicalOrder))
-			for _, key := range canonicalOrder {
-				val := "—"
-				if v, ok := d[key]; ok {
-					if s := fmt.Sprintf("%v", v); s != "" {
-						val = s
-					}
+			var parts []string
+			for _, key := range fields {
+				val := fieldValue(d, key)
+				if val == "" {
+					continue
 				}
-				kw := wcswidth(key)
-				vw := wcswidth(val)
-				cols = append(cols, col{key: key, val: val, w: max(kw, vw)})
+				parts = append(parts, customKeyStyle.Render(key)+" "+customValueStyle.Render(val))
 			}
-
-			sep := customSepStyle.Render(" │ ")
-
-			var keys, vals []string
-			for _, c := range cols {
-				keys = append(keys, customKeyStyle.Render(padRight(c.key, c.w)))
-				if c.val == "—" {
-					vals = append(vals, customEmptyStyle.Render(padRight(c.val, c.w)))
-				} else {
-					vals = append(vals, customValueStyle.Render(padRight(c.val, c.w)))
-				}
+			if len(parts) == 0 {
+				return ""
 			}
-
-			return strings.Join(keys, sep) + "\n" + strings.Join(vals, sep)
+			return sectionLabel("cfg") + strings.Join(parts, customSepStyle.Render("  ·  "))
 		},
 	}
 }

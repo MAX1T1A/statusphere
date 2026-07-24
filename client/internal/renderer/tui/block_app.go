@@ -102,41 +102,67 @@ func BlockApp(cache *stats.Cache) Block {
 			app := d.String(presence.KeyActiveApp)
 			win := d.String(presence.KeyActiveWindow)
 			workspace := d.String(presence.KeyActiveWorkspace)
-			deviceID := d.DeviceID()
 
-			if len(win) > maxWindowTitle {
-				runes := []rune(win)
-				if len(runes) > maxWindowTitle {
-					win = string(runes[:maxWindowTitle-1]) + "…"
-				}
+			if app == "" && win == "" {
+				return sectionLabel("app") + appWindow.Render("—")
 			}
 
-			var parts []string
-
-			if app != "" || win != "" {
-				var line string
-				if app == "" {
-					line = appLabel.Render("app ") + appWindow.Render(win)
-				} else if win == "" {
-					line = appLabel.Render("app ") + appName.Render(app)
-				} else {
-					line = appLabel.Render("app ") + appName.Render(app) + appWindow.Render(" · "+win)
-				}
-				if workspace != "" {
-					line += appLabel.Render(" · ws " + workspace)
-				}
-				parts = append(parts, line)
+			var val string
+			switch {
+			case app == "":
+				val = appWindow.Render(win)
+			case win == "":
+				val = appName.Render(app)
+			default:
+				val = appName.Render(app) + appWindow.Render(" · "+win)
+			}
+			if workspace != "" {
+				val += appLabel.Render(" · ws " + workspace)
 			}
 
-			if cache != nil && deviceID != "" {
-				if s, ok := cache.Get(deviceID).(*stats.Summary); ok && s != nil {
-					if st := renderSummaryStats(s); st != "" {
-						parts = append(parts, st)
+			line := sectionLabel("app") + val
+			if cache != nil && d.DeviceID() != "" {
+				if s, ok := cache.Get(d.DeviceID()).(*stats.Summary); ok && s != nil {
+					total := 0
+					for _, a := range s.Apps {
+						total += a.Seconds
+					}
+					if total > 0 {
+						line += sumTime.Render("  ·  " + durShort(total) + " today")
 					}
 				}
 			}
-
-			return strings.Join(parts, "\n\n")
+			return line
 		},
 	}
+}
+
+func appDetail(d presence.Snapshot, cache *stats.Cache) string {
+	var parts []string
+
+	app := d.String(presence.KeyActiveApp)
+	win := d.String(presence.KeyActiveWindow)
+	if len(win) > maxWindowTitle {
+		runes := []rune(win)
+		win = string(runes[:maxWindowTitle-1]) + "…"
+	}
+	if app != "" || win != "" {
+		line := appName.Render(app)
+		if win != "" {
+			if app != "" {
+				line += appWindow.Render(" · ")
+			}
+			line += appWindow.Render(win)
+		}
+		parts = append(parts, line)
+	}
+
+	if cache != nil && d.DeviceID() != "" {
+		if s, ok := cache.Get(d.DeviceID()).(*stats.Summary); ok && s != nil {
+			if st := renderSummaryStats(s); st != "" {
+				parts = append(parts, st)
+			}
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }

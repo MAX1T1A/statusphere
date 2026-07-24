@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type FeedMsg []presence.Snapshot
@@ -26,18 +27,11 @@ type Options struct {
 	SummaryCache   *stats.Cache
 	LocalID        string
 	LocalAccountID string
-	CustomOrder    []string
 	Controller     Controller
 }
 
 type Block struct {
 	Render func(d presence.Snapshot) string
-}
-
-type LayoutRow struct {
-	Blocks []Block
-	Bare   bool
-	Anchor int
 }
 
 var (
@@ -47,31 +41,26 @@ var (
 	cardBorder = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("8")).
-			Padding(0, 1)
-
-	innerBlock = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("8")).
-			Padding(0, 1)
-
-	outerBorder = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("12")).
-			Padding(0, 1)
+			Padding(0, 2)
 
 	inputStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	inputCaret = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 
 	accentStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
+
+	modalBox = lipgloss.NewStyle().
+			Border(lipgloss.DoubleBorder()).
+			BorderForeground(lipgloss.Color("11")).
+			Padding(1, 4)
+	modalTitle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
 )
 
 type inputMode int
 
 const (
 	modeNone inputMode = iota
-	modeNudge
+	modeChat
 	modeRename
-	modeRenameConfirm
 	modeSyncDevice
 	modeSyncAction
 )
@@ -95,7 +84,8 @@ type deviceGroup struct {
 
 type model struct {
 	groups []deviceGroup
-	layout []LayoutRow
+	blocks []Block
+	nudges *NudgeHistory
 	width  int
 	height int
 
@@ -150,8 +140,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "n", "т":
-			m.mode = modeNudge
+		case "n", "т", "c", "с":
+			m.mode = modeChat
 			m.input = ""
 		case "d", "в":
 			m.mode = modeRename
@@ -171,26 +161,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) updateInput(msg tea.KeyMsg) model {
 	switch msg.String() {
 	case "enter":
-		if m.mode == modeRenameConfirm {
-			m.ctrl.Rename(m.input)
-			m.mode = modeNone
-			m.input = ""
-			return m
-		}
 		text := strings.TrimSpace(m.input)
-		if text == "" {
-			m.mode = modeNone
-			m.input = ""
-			return m
-		}
 		switch m.mode {
-		case modeNudge:
-			m.ctrl.Nudge(text)
-			m.mode = modeNone
+		case modeChat:
+			if text != "" {
+				m.ctrl.Nudge(text)
+			}
 			m.input = ""
 		case modeRename:
-			m.input = text
-			m.mode = modeRenameConfirm
+			if text != "" {
+				m.ctrl.Rename(text)
+			}
+			m.mode = modeNone
+			m.input = ""
+		default:
+			m.mode = modeNone
+			m.input = ""
 		}
 	case "esc":
 		m.mode = modeNone
@@ -198,7 +184,7 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 		m.syncDevices = nil
 		m.syncTarget = nil
 	case "backspace":
-		if m.mode == modeNudge || m.mode == modeRename {
+		if m.mode == modeChat || m.mode == modeRename {
 			if runes := []rune(m.input); len(runes) > 0 {
 				m.input = string(runes[:len(runes)-1])
 			}
@@ -209,13 +195,7 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 			m.pickSyncDevice(msg.String())
 		case modeSyncAction:
 			m.pickSyncAction(msg.String())
-		case modeRenameConfirm:
-			if s := msg.String(); s == "y" || s == "Y" || s == "д" {
-				m.ctrl.Rename(m.input)
-				m.mode = modeNone
-				m.input = ""
-			}
-		case modeNudge, modeRename:
+		case modeChat, modeRename:
 			m.typeInput(msg.String())
 		}
 	}
@@ -330,10 +310,23 @@ func (m model) buildSyncDevices() []syncDevice {
 
 const minContentWidth = 40
 
-func renderCard(g deviceGroup, layout []LayoutRow, cardWidth int) string {
-	cardPad := cardBorder.GetHorizontalBorderSize() + cardBorder.GetHorizontalPadding()
-	innerPad := innerBlock.GetHorizontalBorderSize() + innerBlock.GetHorizontalPadding()
+var sectionLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
+func sectionLabel(s string) string {
+	return sectionLabelStyle.Render(fmt.Sprintf("%-5s ", s))
+}
+
+func durShort(sec int) string {
+	h := sec / 3600
+	m := (sec % 3600) / 60
+	if h > 0 {
+		return fmt.Sprintf("%dh%dm", h, m)
+	}
+	return fmt.Sprintf("%dm", m)
+}
+
+func renderCard(g deviceGroup, blocks []Block, cardWidth int) string {
+	cardPad := cardBorder.GetHorizontalBorderSize() + cardBorder.GetHorizontalPadding()
 	cw := cardWidth - cardPad
 	if cw < minContentWidth {
 		cw = minContentWidth
@@ -341,170 +334,98 @@ func renderCard(g deviceGroup, layout []LayoutRow, cardWidth int) string {
 
 	d := g.devices[0]
 	sections := []string{groupHeader(g)}
-
-	for _, row := range layout {
-		type activeBlock struct {
-			content string
-			origIdx int
+	for _, b := range blocks {
+		if out := strings.TrimRight(b.Render(d), "\n"); out != "" {
+			sections = append(sections, out)
 		}
-		var active []activeBlock
-		for i, b := range row.Blocks {
-			out := b.Render(d)
-			if out != "" {
-				active = append(active, activeBlock{content: out, origIdx: i})
-			}
-		}
-		if len(active) == 0 {
-			continue
-		}
-
-		if row.Bare {
-			var texts []string
-			for _, a := range active {
-				texts = append(texts, a.content)
-			}
-			sections = append(sections, strings.Join(texts, "\n"))
-			continue
-		}
-
-		if len(active) == 1 {
-			iw := cw - innerPad
-			if iw < 1 {
-				iw = 1
-			}
-			sections = append(sections, innerBlock.Width(iw).Render(active[0].content))
-			continue
-		}
-
-		gap := 1
-		n := len(active)
-		totalOuter := cw - gap*(n-1)
-		base := totalOuter / n
-
-		innerVPad := innerBlock.GetVerticalBorderSize() + innerBlock.GetVerticalPadding()
-
-		iws := make([]int, n)
-		usedWidth := 0
-		rendered := make([]string, n)
-		for i, a := range active {
-			remaining := cw - usedWidth - gap*(n-1-i)
-			targetOuter := base
-			if i == n-1 {
-				targetOuter = remaining
-			} else if targetOuter > remaining {
-				targetOuter = remaining
-			}
-			iw := targetOuter - innerPad
-			if iw < 1 {
-				iw = 1
-			}
-			iws[i] = iw
-			r := innerBlock.Width(iw).Render(a.content)
-			rendered[i] = r
-			usedWidth += lipgloss.Width(r) + gap
-		}
-
-		anchorH := 0
-		anchorFound := false
-		for i, a := range active {
-			if a.origIdx == row.Anchor {
-				anchorH = lipgloss.Height(rendered[i])
-				anchorFound = true
-				break
-			}
-		}
-		if !anchorFound {
-			for _, r := range rendered {
-				if h := lipgloss.Height(r); h > anchorH {
-					anchorH = h
-				}
-			}
-		}
-
-		ih := anchorH - innerVPad
-		if ih < 1 {
-			ih = 1
-		}
-
-		var parts []string
-		usedWidth = 0
-		for i, a := range active {
-			iw := iws[i]
-			if i == n-1 {
-				remaining := cw - usedWidth - gap*(n-1-i)
-				iw = remaining - innerPad
-				if iw < 1 {
-					iw = 1
-				}
-			}
-			content := a.content
-			if anchorFound && a.origIdx != row.Anchor {
-				lines := strings.Split(content, "\n")
-				if len(lines) > ih {
-					lines = lines[len(lines)-ih:]
-					content = strings.Join(lines, "\n")
-				}
-			}
-			r := innerBlock.Width(iw).Height(ih).Render(content)
-			parts = append(parts, r)
-			usedWidth += lipgloss.Width(r) + gap
-		}
-
-		var joined []string
-		for i, p := range parts {
-			if i > 0 {
-				joined = append(joined, " ")
-			}
-			joined = append(joined, p)
-		}
-		sections = append(sections, lipgloss.JoinHorizontal(lipgloss.Top, joined...))
 	}
 
-	return cardBorder.Width(cw).Render(strings.Join(sections, "\n"))
+	lines := strings.Split(strings.Join(sections, "\n"), "\n")
+	for i, ln := range lines {
+		lines[i] = ansi.Truncate(ln, cw, "…")
+	}
+	return cardBorder.Width(cw).Render(strings.Join(lines, "\n"))
+}
+
+func title() string {
+	return accentStyle.Render("s") + titleStyle.Render("tatu") + accentStyle.Render("s") + titleStyle.Render("phere")
 }
 
 func (m model) View() string {
-	outerPad := outerBorder.GetHorizontalBorderSize() + outerBorder.GetHorizontalPadding()
-
-	totalW := m.width
-	if totalW < minContentWidth+outerPad {
-		totalW = minContentWidth + outerPad
+	if m.mode == modeRename {
+		return m.renameModal()
+	}
+	if m.mode == modeChat {
+		return m.chatModal()
 	}
 
-	outer := outerBorder.Width(totalW - outerPad)
+	width := m.width
+	if width < minContentWidth {
+		width = minContentWidth
+	}
 
-	contentW := totalW - outerPad
-	cardWidth := contentW
-
-	header := accentStyle.Render("s") + titleStyle.Render("tatu") + accentStyle.Render("s") + titleStyle.Render("phere")
 	if len(m.groups) == 0 {
-		return outer.Render(
-			header + "\n\n" +
-				dimStyle.Render("waiting for devices…") + "\n\n" +
-				accentStyle.Render("q") + dimStyle.Render("uit"),
-		)
+		return title() + "\n\n" + dimStyle.Render("waiting for devices…") + "\n\n" + m.footer()
 	}
 
 	var cards []string
 	for _, g := range m.groups {
-		cards = append(cards, renderCard(g, m.layout, cardWidth))
+		cards = append(cards, renderCard(g, m.blocks, width))
 	}
-
 	grid := lipgloss.JoinVertical(lipgloss.Left, cards...)
 
-	return outer.Render(header + "\n\n" + grid + "\n\n" + m.footer())
+	return title() + "\n\n" + grid + "\n\n" + m.footer()
+}
+
+func (m model) renameModal() string {
+	w, h := m.width, m.height
+	if w == 0 {
+		w = 80
+	}
+	if h == 0 {
+		h = 24
+	}
+	body := modalTitle.Render("rename this device") + "\n\n" +
+		inputStyle.Render("› "+m.input) + inputCaret.Render("▏") + "\n\n" +
+		dimStyle.Render("enter to save · esc to cancel")
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Render(body))
+}
+
+func (m model) chatModal() string {
+	w, h := m.width, m.height
+	if w == 0 {
+		w = 80
+	}
+	if h == 0 {
+		h = 24
+	}
+
+	boxW := w * 3 / 5
+	if boxW < minContentWidth {
+		boxW = minContentWidth
+	}
+
+	logLines := strings.Split(m.nudges.Render(), "\n")
+	maxLines := h - 10
+	if maxLines < 3 {
+		maxLines = 3
+	}
+	if len(logLines) > maxLines {
+		logLines = logLines[len(logLines)-maxLines:]
+	}
+	for i, ln := range logLines {
+		logLines[i] = ansi.Truncate(ln, boxW, "…")
+	}
+
+	body := modalTitle.Render("group chat") + dimStyle.Render("  · everyone in the room") + "\n\n" +
+		strings.Join(logLines, "\n") + "\n\n" +
+		inputStyle.Render("› "+m.input) + inputCaret.Render("▏") + "\n\n" +
+		dimStyle.Render("enter to send · esc to close")
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(body))
 }
 
 func (m model) footer() string {
 	switch m.mode {
-	case modeNudge:
-		return inputStyle.Render("nudge: ") + m.input + inputCaret.Render("█")
-	case modeRename:
-		return inputStyle.Render("rename device: ") + m.input + inputCaret.Render("█")
-	case modeRenameConfirm:
-		return accentStyle.Render("rename device to ") + inputStyle.Render("«"+m.input+"»") +
-			dimStyle.Render("?  ") + accentStyle.Render("enter") + dimStyle.Render(" yes · ") +
-			accentStyle.Render("esc") + dimStyle.Render(" cancel")
 	case modeSyncDevice:
 		var opts []string
 		for i, d := range m.syncDevices {
@@ -525,7 +446,11 @@ func (m model) footer() string {
 		}
 		return inputStyle.Render(name+": ") + strings.Join(opts, "  ") + dimStyle.Render("  esc to cancel")
 	default:
-		return accentStyle.Render("n") + dimStyle.Render("udge · ") +
+		chat := "hat · "
+		if n := m.nudges.Count(); n > 0 {
+			chat = fmt.Sprintf("hat (%d) · ", n)
+		}
+		return accentStyle.Render("c") + dimStyle.Render(chat) +
 			accentStyle.Render("d") + dimStyle.Render("evice · ") +
 			accentStyle.Render("s") + dimStyle.Render("ync · ") +
 			accentStyle.Render("q") + dimStyle.Render("uit")
@@ -540,14 +465,15 @@ type TUI struct {
 func New(opts Options) *TUI {
 	nudges := NewNudgeHistory(opts.LocalAccountID)
 
-	layout := []LayoutRow{
-		{Blocks: []Block{BlockCustom(opts.CustomOrder)}},
-		{Blocks: []Block{BlockSpotify(opts.SpotifyCache), BlockNudge(nudges)}, Anchor: 0},
-		{Blocks: []Block{BlockApp(opts.SummaryCache)}},
+	blocks := []Block{
+		BlockCustom(),
+		BlockSpotify(opts.SpotifyCache),
+		BlockApp(opts.SummaryCache),
 	}
 
 	m := model{
-		layout:  layout,
+		blocks:  blocks,
+		nudges:  nudges,
 		ctrl:    opts.Controller,
 		localID: opts.LocalID,
 	}
