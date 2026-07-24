@@ -176,88 +176,99 @@ func BlockSpotify(cache *stats.Cache) Block {
 		Render: func(d presence.Snapshot) string {
 			display := d.String(presence.KeySpotifyDisplay)
 			if display == "" {
-				music := d.String("music")
-				if music == "" {
-					return ""
-				}
-				return spotDim.Render("♪ " + music)
+				display = d.String("music")
+			}
+			if display == "" {
+				return sectionLabel("music") + spotDim.Render("—")
 			}
 
-			status := d.String(presence.KeySpotifyStatus)
-			artist := d.String(presence.KeySpotifyArtist)
-			track := d.String(presence.KeySpotifyTrack)
-			album := d.String(presence.KeySpotifyAlbum)
-			artURL := d.String(presence.KeySpotifyArtURL)
-			deviceID := d.DeviceID()
-
-			var icon string
-			switch status {
-			case "playing":
-				icon = "▶ "
-			case "paused":
-				icon = "⏸ "
-			default:
-				icon = "♪ "
+			line := sectionLabel("music") + spotTrack.Render(display)
+			if d.String(presence.KeySpotifyStatus) == "paused" {
+				line += spotPaused.Render(" (paused)")
 			}
-
-			var lines []string
-
-			if status == "paused" {
-				lines = append(lines, spotPaused.Render(icon+display))
-			} else if artist != "" && track != "" {
-				lines = append(lines, icon+spotArtist.Render(artist))
-				lines = append(lines, "  "+spotTrack.Render(track))
-			} else {
-				lines = append(lines, icon+spotTrack.Render(display))
-			}
-
-			if album != "" && album != track {
-				lines = append(lines, "  "+spotDim.Render(album))
-			}
-
-			text := strings.Join(lines, "\n")
-			art := getCover(artURL)
-
-			var statsText string
-			if cache != nil && deviceID != "" {
-				if s, ok := cache.Get(deviceID).(*stats.SpotifyStats); ok && s != nil {
-					statsText = renderSpotifyStats(s)
+			if cache != nil && d.DeviceID() != "" {
+				if s, ok := cache.Get(d.DeviceID()).(*stats.SpotifyStats); ok && s != nil && s.TotalSeconds > 0 {
+					line += spotDim.Render("  ·  " + durShort(s.TotalSeconds) + "/wk")
 				}
 			}
-
-			var parts []string
-
-			if art != "" && statsText != "" {
-				artLines := strings.Split(art, "\n")
-				statLines := strings.Split(statsText, "\n")
-
-				maxLines := len(artLines)
-				if len(statLines) > maxLines {
-					maxLines = len(statLines)
-				}
-
-				pad := strings.Repeat(" ", coverCols)
-				var combined []string
-				for i := range maxLines {
-					left := pad
-					if i < len(artLines) {
-						left = artLines[i]
-					}
-					right := ""
-					if i < len(statLines) {
-						right = statLines[i]
-					}
-					combined = append(combined, left+"  "+right)
-				}
-				parts = append(parts, strings.Join(combined, "\n"))
-			} else if art != "" {
-				parts = append(parts, art)
-			} else if statsText != "" {
-				parts = append(parts, statsText)
-			}
-			parts = append(parts, text)
-
-			return strings.Join(parts, "\n\n")
+			return line
 		},
 	}
+}
+
+func spotifyDetail(d presence.Snapshot, cache *stats.Cache) string {
+	display := d.String(presence.KeySpotifyDisplay)
+	if display == "" {
+		return ""
+	}
+
+	status := d.String(presence.KeySpotifyStatus)
+	artist := d.String(presence.KeySpotifyArtist)
+	track := d.String(presence.KeySpotifyTrack)
+	album := d.String(presence.KeySpotifyAlbum)
+	artURL := d.String(presence.KeySpotifyArtURL)
+
+	var icon string
+	switch status {
+	case "playing":
+		icon = "▶ "
+	case "paused":
+		icon = "⏸ "
+	default:
+		icon = "♪ "
+	}
+
+	var lines []string
+	if status == "paused" {
+		lines = append(lines, spotPaused.Render(icon+display))
+	} else if artist != "" && track != "" {
+		lines = append(lines, icon+spotArtist.Render(artist))
+		lines = append(lines, "  "+spotTrack.Render(track))
+	} else {
+		lines = append(lines, icon+spotTrack.Render(display))
+	}
+	if album != "" && album != track {
+		lines = append(lines, "  "+spotDim.Render(album))
+	}
+
+	text := strings.Join(lines, "\n")
+	art := getCover(artURL)
+
+	var statsText string
+	if cache != nil && d.DeviceID() != "" {
+		if s, ok := cache.Get(d.DeviceID()).(*stats.SpotifyStats); ok && s != nil {
+			statsText = renderSpotifyStats(s)
+		}
+	}
+
+	var parts []string
+	if art != "" && statsText != "" {
+		artLines := strings.Split(art, "\n")
+		statLines := strings.Split(statsText, "\n")
+		maxLines := len(artLines)
+		if len(statLines) > maxLines {
+			maxLines = len(statLines)
+		}
+		pad := strings.Repeat(" ", coverCols)
+		var combined []string
+		for i := range maxLines {
+			left := pad
+			if i < len(artLines) {
+				left = artLines[i]
+			}
+			right := ""
+			if i < len(statLines) {
+				right = statLines[i]
+			}
+			combined = append(combined, left+"  "+right)
+		}
+		parts = append(parts, strings.Join(combined, "\n"))
+	} else if art != "" {
+		parts = append(parts, art)
+	} else if statsText != "" {
+		parts = append(parts, statsText)
+	}
+	parts = append(parts, text)
+
+	return strings.Join(parts, "\n\n")
 }

@@ -85,7 +85,6 @@ func Run(ctx context.Context, uiMode string) error {
 			SummaryCache:   stats.NewSummaryCache(cfg.ServerURL, cfg.Token, "day", cfg.RoomID),
 			LocalID:        cfg.DeviceID,
 			LocalAccountID: cfg.AccountID,
-			CustomOrder:    cm.FieldNames(),
 			Controller:     a,
 		})
 		a.ui = t
@@ -136,7 +135,7 @@ func (a *App) listen(ctx context.Context) {
 				a.notifier.Handle(accountID, name, nudge)
 			}
 			if a.nudges != nil {
-				a.nudges.Process(accountID, nudge)
+				a.nudges.Process(accountID, name, nudge)
 			}
 		}
 

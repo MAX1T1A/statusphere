@@ -1,26 +1,25 @@
 package tui
 
 import (
-	"sort"
 	"strings"
 	"sync"
 	"time"
-
-	"statusphere-client/internal/presence"
 
 	"github.com/charmbracelet/lipgloss"
 )
 
 var (
-	nudgeMsg    = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	nudgeSelf   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	nudgeTime   = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
-	nudgeSelfLb = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	chatTime = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	chatMsg  = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	chatYou  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
+	chatName = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
 )
 
-const nudgeMax = 15
+const chatMax = 200
 
 type NudgeEntry struct {
+	Sender  string
+	Name    string
 	Message string
 	At      time.Time
 	Self    bool
@@ -28,7 +27,7 @@ type NudgeEntry struct {
 
 type NudgeHistory struct {
 	mu      sync.Mutex
-	devices map[string][]NudgeEntry
+	log     []NudgeEntry
 	localID string
 	seen    map[string]string
 }
@@ -36,93 +35,62 @@ type NudgeHistory struct {
 func NewNudgeHistory(localID string) *NudgeHistory {
 	return &NudgeHistory{
 		localID: localID,
-		devices: make(map[string][]NudgeEntry),
 		seen:    make(map[string]string),
 	}
 }
 
-func (h *NudgeHistory) Process(deviceID, message string) {
-	if deviceID == h.localID || message == "" {
+func (h *NudgeHistory) append(e NudgeEntry) {
+	h.log = append(h.log, e)
+	if len(h.log) > chatMax {
+		h.log = h.log[len(h.log)-chatMax:]
+	}
+}
+
+func (h *NudgeHistory) Process(sender, name, message string) {
+	if sender == h.localID || message == "" {
 		return
 	}
-
 	h.mu.Lock()
 	defer h.mu.Unlock()
-
-	if h.seen[deviceID] == message {
+	if h.seen[sender] == message {
 		return
 	}
-	h.seen[deviceID] = message
-
-	h.push(deviceID, message, false)
+	h.seen[sender] = message
+	h.append(NudgeEntry{Sender: sender, Name: name, Message: message, At: time.Now()})
 }
 
 func (h *NudgeHistory) ProcessLocal(message string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.push("__self__", message, true)
+	h.append(NudgeEntry{Message: message, At: time.Now(), Self: true})
 }
 
-func (h *NudgeHistory) push(deviceID, message string, self bool) {
-	entries := append(h.devices[deviceID], NudgeEntry{
-		Message: message,
-		At:      time.Now(),
-		Self:    self,
-	})
-	if len(entries) > nudgeMax {
-		entries = entries[len(entries)-nudgeMax:]
-	}
-	h.devices[deviceID] = entries
+func (h *NudgeHistory) Count() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.log)
 }
 
-func (h *NudgeHistory) RenderFor(deviceID string) string {
+func (h *NudgeHistory) Render() string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	remote := h.devices[deviceID]
-	self := h.devices["__self__"]
-
-	if len(remote) == 0 && len(self) == 0 {
-		return ""
+	if len(h.log) == 0 {
+		return dimStyle.Render("no messages yet")
 	}
 
-	merged := make([]NudgeEntry, 0, len(remote)+len(self))
-	merged = append(merged, remote...)
-	merged = append(merged, self...)
-
-	sort.Slice(merged, func(i, j int) bool {
-		return merged[i].At.Before(merged[j].At)
-	})
-
-	if len(merged) > nudgeMax {
-		merged = merged[len(merged)-nudgeMax:]
-	}
-
-	var lines []string
-	for _, e := range merged {
-		ts := e.At.Format("15:04")
-
+	lines := make([]string, 0, len(h.log))
+	for _, e := range h.log {
+		ts := chatTime.Render(e.At.Format("15:04"))
+		var who string
 		if e.Self {
-			lines = append(lines, nudgeSelf.Render(e.Message)+" "+nudgeTime.Render("· "+ts))
+			who = chatYou.Render("you")
+		} else if e.Name != "" {
+			who = chatName.Render(e.Name)
 		} else {
-			lines = append(lines, nudgeMsg.Render(e.Message)+" "+nudgeTime.Render("· "+ts))
+			who = chatName.Render("someone")
 		}
+		lines = append(lines, ts+"  "+who+chatTime.Render(": ")+chatMsg.Render(e.Message))
 	}
-
 	return strings.Join(lines, "\n")
-}
-
-func BlockNudge(history *NudgeHistory) Block {
-	return Block{
-		Render: func(d presence.Snapshot) string {
-			key := d.String(presence.KeyAccountID)
-			if key == "" {
-				key = d.DeviceID()
-			}
-			if key == "" || history == nil {
-				return ""
-			}
-			return history.RenderFor(key)
-		},
-	}
 }
