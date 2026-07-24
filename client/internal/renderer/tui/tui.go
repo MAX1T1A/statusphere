@@ -64,6 +64,7 @@ type inputMode int
 
 const (
 	modeNone inputMode = iota
+	modeMenu
 	modeChat
 	modeRename
 	modeSyncDevice
@@ -71,6 +72,20 @@ const (
 	modeMusic
 	modeScreen
 )
+
+type menuItem struct {
+	label string
+	desc  string
+}
+
+var menuItems = []menuItem{
+	{"Music", "now playing + weekly"},
+	{"Screen time", "app usage today"},
+	{"Sync", "match their track"},
+	{"Chat", "room messages"},
+	{"Rename device", ""},
+	{"Quit", ""},
+}
 
 const (
 	maxNudgeLen  = 128
@@ -90,15 +105,16 @@ type deviceGroup struct {
 }
 
 type model struct {
-	groups   []deviceGroup
-	blocks   []Block
-	custom   Block
-	nudges   *NudgeHistory
-	spotify  *stats.Cache
-	summary  *stats.Cache
-	selected int
-	width    int
-	height   int
+	groups    []deviceGroup
+	blocks    []Block
+	custom    Block
+	nudges    *NudgeHistory
+	spotify   *stats.Cache
+	summary   *stats.Cache
+	selected  int
+	menuIndex int
+	width     int
+	height    int
 
 	mode        inputMode
 	input       string
@@ -144,6 +160,9 @@ func (m model) Init() tea.Cmd { return nil }
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.mode == modeMenu {
+			return m.updateMenu(msg)
+		}
 		if m.mode != modeNone {
 			return m.updateInput(msg), nil
 		}
@@ -158,6 +177,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			if m.selected < len(m.groups)-1 {
 				m.selected++
+			}
+		case "enter", " ":
+			if len(m.groups) > 0 {
+				m.mode = modeMenu
+				m.menuIndex = 0
 			}
 		case "1":
 			if len(m.groups) > 0 {
@@ -187,6 +211,45 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.selected < 0 {
 			m.selected = 0
 		}
+	}
+	return m, nil
+}
+
+func (m model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		m.mode = modeNone
+	case "up", "k":
+		if m.menuIndex > 0 {
+			m.menuIndex--
+		}
+	case "down", "j":
+		if m.menuIndex < len(menuItems)-1 {
+			m.menuIndex++
+		}
+	case "enter", " ":
+		return m.runMenu()
+	}
+	return m, nil
+}
+
+func (m model) runMenu() (tea.Model, tea.Cmd) {
+	switch m.menuIndex {
+	case 0:
+		m.mode = modeMusic
+	case 1:
+		m.mode = modeScreen
+	case 2:
+		m.mode = modeNone
+		m.startSync()
+	case 3:
+		m.mode = modeChat
+		m.input = ""
+	case 4:
+		m.mode = modeRename
+		m.input = ""
+	case 5:
+		return m, tea.Quit
 	}
 	return m, nil
 }
@@ -408,6 +471,8 @@ func title() string {
 
 func (m model) View() string {
 	switch m.mode {
+	case modeMenu:
+		return m.menuModal()
 	case modeRename:
 		return m.renameModal()
 	case modeChat:
@@ -452,6 +517,44 @@ func (m model) focusedName() string {
 		return n
 	}
 	return "device"
+}
+
+func (m model) menuModal() string {
+	w, h := m.width, m.height
+	if w == 0 {
+		w = 80
+	}
+	if h == 0 {
+		h = 24
+	}
+
+	var rows []string
+	for i, it := range menuItems {
+		cursor := "  "
+		label := dimStyle.Render(it.label)
+		if i == m.menuIndex {
+			cursor = accentStyle.Render("▸ ")
+			label = accentStyle.Render(it.label)
+		}
+		row := cursor + label
+		if it.desc != "" {
+			row += dimStyle.Render("   " + it.desc)
+		}
+		rows = append(rows, row)
+	}
+
+	boxW := w / 3
+	if boxW < 46 {
+		boxW = 46
+	}
+	if boxW > w-4 {
+		boxW = w - 4
+	}
+
+	body := modalTitle.Render("menu") + dimStyle.Render(" · "+m.focusedName()) + "\n\n" +
+		strings.Join(rows, "\n") + "\n\n" +
+		dimStyle.Render("↑↓ select · enter · esc")
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(body))
 }
 
 func (m model) detailModal(kind, body string) string {
@@ -544,14 +647,11 @@ func (m model) footer() string {
 		}
 		return inputStyle.Render(name+": ") + strings.Join(opts, "  ") + dimStyle.Render("  esc to cancel")
 	default:
-		chat := "chat · "
+		hint := dimStyle.Render("↑↓ select · ") + accentStyle.Render("enter") + dimStyle.Render(" menu · ")
 		if n := m.nudges.Count(); n > 0 {
-			chat = fmt.Sprintf("chat (%d) · ", n)
+			hint += accentStyle.Render("c") + dimStyle.Render(fmt.Sprintf(" chat (%d) · ", n))
 		}
-		key := func(k, rest string) string { return accentStyle.Render(k) + dimStyle.Render(rest) }
-		return dimStyle.Render("↑↓ ") +
-			key("1", " music · ") + key("2", " screen · ") +
-			key("c", chat) + key("d", "evice · ") + key("s", "ync · ") + key("q", "uit")
+		return hint + accentStyle.Render("q") + dimStyle.Render(" quit")
 	}
 }
 
