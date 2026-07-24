@@ -87,6 +87,19 @@ func (c *Cache) GetSync(deviceID string) any {
 	return result
 }
 
+func (c *Cache) Prime(deviceID string) {
+	if deviceID == "" {
+		return
+	}
+	result, err := c.doFetch(deviceID)
+	if err != nil {
+		return
+	}
+	c.mu.Lock()
+	c.items[deviceID] = &entry{data: result, fetchedAt: time.Now(), fetching: false}
+	c.mu.Unlock()
+}
+
 func (c *Cache) fetch(deviceID string) {
 	result, err := c.doFetch(deviceID)
 

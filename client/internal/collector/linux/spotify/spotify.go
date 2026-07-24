@@ -39,7 +39,7 @@ func getProp(ctx context.Context, conn *dbus.Conn, prop string) (dbus.Variant, e
 	return result, err
 }
 
-func extractMetadata(ctx context.Context, conn *dbus.Conn) (artist, title, album, artURL, trackID string) {
+func extractMetadata(ctx context.Context, conn *dbus.Conn) (artist, title, album, artURL, trackID string, length int64) {
 	v, err := getProp(ctx, conn, "Metadata")
 	if err != nil {
 		return
@@ -48,6 +48,15 @@ func extractMetadata(ctx context.Context, conn *dbus.Conn) (artist, title, album
 	meta, ok := v.Value().(map[string]dbus.Variant)
 	if !ok {
 		return
+	}
+
+	if l, ok := meta["mpris:length"]; ok {
+		switch val := l.Value().(type) {
+		case int64:
+			length = val
+		case uint64:
+			length = int64(val)
+		}
 	}
 
 	if t, ok := meta["xesam:title"]; ok {
@@ -109,7 +118,7 @@ func (p *player) collect(ctx context.Context, snap presence.Snapshot) error {
 		return nil
 	}
 
-	artist, title, album, artURL, trackID := extractMetadata(ctx, p.conn)
+	artist, title, album, artURL, trackID, length := extractMetadata(ctx, p.conn)
 	if title == "" {
 		return nil
 	}
@@ -119,6 +128,15 @@ func (p *player) collect(ctx context.Context, snap presence.Snapshot) error {
 	snap.Set(presence.KeySpotifyArtist, artist)
 	snap.Set(presence.KeySpotifyAlbum, album)
 	snap.Set(presence.KeySpotifyArtURL, artURL)
+
+	if length > 0 {
+		snap.Set(presence.KeySpotifyLength, int(length/1_000_000))
+	}
+	if pv, err := getProp(ctx, p.conn, "Position"); err == nil {
+		if us, ok := pv.Value().(int64); ok && us > 0 {
+			snap.Set(presence.KeySpotifyPosition, int(us/1_000_000))
+		}
+	}
 
 	if trackID != "" {
 		if id, ok := strings.CutPrefix(trackID, "/com/spotify/track/"); ok {
