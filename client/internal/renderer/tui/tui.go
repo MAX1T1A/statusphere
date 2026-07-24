@@ -43,6 +43,11 @@ var (
 			BorderForeground(cBorder).
 			Padding(0, 2)
 
+	cardBorderFocused = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(cAccent).
+				Padding(0, 2)
+
 	inputStyle = lipgloss.NewStyle().Foreground(cValue)
 	inputCaret = lipgloss.NewStyle().Foreground(cAccent)
 
@@ -63,6 +68,8 @@ const (
 	modeRename
 	modeSyncDevice
 	modeSyncAction
+	modeMusic
+	modeScreen
 )
 
 const (
@@ -83,12 +90,15 @@ type deviceGroup struct {
 }
 
 type model struct {
-	groups []deviceGroup
-	blocks []Block
-	custom Block
-	nudges *NudgeHistory
-	width  int
-	height int
+	groups   []deviceGroup
+	blocks   []Block
+	custom   Block
+	nudges   *NudgeHistory
+	spotify  *stats.Cache
+	summary  *stats.Cache
+	selected int
+	width    int
+	height   int
 
 	mode        inputMode
 	input       string
@@ -141,6 +151,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "up", "k":
+			if m.selected > 0 {
+				m.selected--
+			}
+		case "down", "j":
+			if m.selected < len(m.groups)-1 {
+				m.selected++
+			}
+		case "1":
+			if len(m.groups) > 0 {
+				m.mode = modeMusic
+			}
+		case "2":
+			if len(m.groups) > 0 {
+				m.mode = modeScreen
+			}
 		case "n", "т", "c", "с":
 			m.mode = modeChat
 			m.input = ""
@@ -155,6 +181,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case FeedMsg:
 		m.groups = groupDevices(msg)
+		if m.selected >= len(m.groups) {
+			m.selected = len(m.groups) - 1
+		}
+		if m.selected < 0 {
+			m.selected = 0
+		}
 	}
 	return m, nil
 }
@@ -198,6 +230,13 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 			m.pickSyncAction(msg.String())
 		case modeChat, modeRename:
 			m.typeInput(msg.String())
+		case modeMusic, modeScreen:
+			switch msg.String() {
+			case "1":
+				m.mode = modeMusic
+			case "2":
+				m.mode = modeScreen
+			}
 		}
 	}
 	return m
@@ -332,8 +371,12 @@ func customDivider() string {
 	return dimStyle.Render("── custom ──────")
 }
 
-func renderCard(g deviceGroup, blocks []Block, custom Block, cardWidth int) string {
-	cardPad := cardBorder.GetHorizontalBorderSize() + cardBorder.GetHorizontalPadding()
+func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardWidth int) string {
+	border := cardBorder
+	if focused {
+		border = cardBorderFocused
+	}
+	cardPad := border.GetHorizontalBorderSize() + border.GetHorizontalPadding()
 	cw := cardWidth - cardPad
 	if cw < minContentWidth {
 		cw = minContentWidth
@@ -356,7 +399,7 @@ func renderCard(g deviceGroup, blocks []Block, custom Block, cardWidth int) stri
 	for i, ln := range lines {
 		lines[i] = ansi.Truncate(ln, cw, "…")
 	}
-	return cardBorder.Width(cw).Render(strings.Join(lines, "\n"))
+	return border.Width(cw).Render(strings.Join(lines, "\n"))
 }
 
 func title() string {
@@ -364,11 +407,15 @@ func title() string {
 }
 
 func (m model) View() string {
-	if m.mode == modeRename {
+	switch m.mode {
+	case modeRename:
 		return m.renameModal()
-	}
-	if m.mode == modeChat {
+	case modeChat:
 		return m.chatModal()
+	case modeMusic:
+		return m.detailModal("music", spotifyDetail(m.focusedDevice(), m.spotify))
+	case modeScreen:
+		return m.detailModal("screen time", appDetail(m.focusedDevice(), m.summary))
 	}
 
 	width := m.width
@@ -381,12 +428,51 @@ func (m model) View() string {
 	}
 
 	var cards []string
-	for _, g := range m.groups {
-		cards = append(cards, renderCard(g, m.blocks, m.custom, width))
+	for i, g := range m.groups {
+		cards = append(cards, renderCard(g, m.blocks, m.custom, i == m.selected, width))
 	}
 	grid := lipgloss.JoinVertical(lipgloss.Left, cards...)
 
 	return title() + "\n\n" + grid + "\n\n" + m.footer()
+}
+
+func (m model) focusedDevice() presence.Snapshot {
+	if m.selected < 0 || m.selected >= len(m.groups) {
+		return presence.Snapshot{}
+	}
+	return m.groups[m.selected].devices[0]
+}
+
+func (m model) focusedName() string {
+	d := m.focusedDevice()
+	if n := d.String(presence.KeyAccountName); n != "" {
+		return n
+	}
+	if n := d.DeviceName(); n != "" {
+		return n
+	}
+	return "device"
+}
+
+func (m model) detailModal(kind, body string) string {
+	w, h := m.width, m.height
+	if w == 0 {
+		w = 80
+	}
+	if h == 0 {
+		h = 24
+	}
+	boxW := w * 3 / 5
+	if boxW < minContentWidth {
+		boxW = minContentWidth
+	}
+	if strings.TrimSpace(body) == "" {
+		body = dimStyle.Render("nothing here yet")
+	}
+	content := modalTitle.Render(m.focusedName()) + dimStyle.Render(" · "+kind) + "\n\n" +
+		body + "\n\n" +
+		dimStyle.Render("1 music · 2 screen · esc to close")
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(content))
 }
 
 func (m model) renameModal() string {
@@ -458,14 +544,14 @@ func (m model) footer() string {
 		}
 		return inputStyle.Render(name+": ") + strings.Join(opts, "  ") + dimStyle.Render("  esc to cancel")
 	default:
-		chat := "hat · "
+		chat := "chat · "
 		if n := m.nudges.Count(); n > 0 {
-			chat = fmt.Sprintf("hat (%d) · ", n)
+			chat = fmt.Sprintf("chat (%d) · ", n)
 		}
-		return accentStyle.Render("c") + dimStyle.Render(chat) +
-			accentStyle.Render("d") + dimStyle.Render("evice · ") +
-			accentStyle.Render("s") + dimStyle.Render("ync · ") +
-			accentStyle.Render("q") + dimStyle.Render("uit")
+		key := func(k, rest string) string { return accentStyle.Render(k) + dimStyle.Render(rest) }
+		return dimStyle.Render("↑↓ ") +
+			key("1", " music · ") + key("2", " screen · ") +
+			key("c", chat) + key("d", "evice · ") + key("s", "ync · ") + key("q", "uit")
 	}
 }
 
@@ -486,6 +572,8 @@ func New(opts Options) *TUI {
 		blocks:  blocks,
 		custom:  BlockCustom(),
 		nudges:  nudges,
+		spotify: opts.SpotifyCache,
+		summary: opts.SummaryCache,
 		ctrl:    opts.Controller,
 		localID: opts.LocalID,
 	}

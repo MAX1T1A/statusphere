@@ -43,7 +43,7 @@ func sampleGroup() deviceGroup {
 
 func TestRenderCardStructure(t *testing.T) {
 	blocks := []Block{BlockSpotify(nil), BlockApp(nil)}
-	out := renderCard(sampleGroup(), blocks, BlockCustom(), 70)
+	out := renderCard(sampleGroup(), blocks, BlockCustom(), false, 70)
 	for _, want := range []string{"Alice", "alice-laptop", "alice-phone", "kitty", "Roygbiv", "weather"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rendered card missing %q\n%s", want, out)
