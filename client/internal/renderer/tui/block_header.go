@@ -11,13 +11,12 @@ import (
 )
 
 var (
-	onlineDot   = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	idleDot     = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	offlineDot  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	accountName = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
-	deviceName  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	uptimeDim   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	sysDim      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	onlineDot   = lipgloss.NewStyle().Foreground(cOnline)
+	idleDot     = lipgloss.NewStyle().Foreground(cIdle)
+	offlineDot  = lipgloss.NewStyle().Foreground(cOffline)
+	accountName = lipgloss.NewStyle().Bold(true).Foreground(cAccent)
+	deviceName  = lipgloss.NewStyle().Bold(true).Foreground(cName)
+	uptimeDim   = lipgloss.NewStyle().Foreground(cDim)
 )
 
 func statusDot(d presence.Snapshot) string {
@@ -51,23 +50,26 @@ func formatUptime(d presence.Snapshot) string {
 	}
 }
 
-func systemLine(d presence.Snapshot) string {
-	var parts []string
+func deviceMeta(d presence.Snapshot) []string {
+	var meta []string
+	if up := formatUptime(d); up != "" {
+		meta = append(meta, up)
+	}
 	if cpu, ok := d.Float(presence.KeyCPUPercent); ok {
-		parts = append(parts, fmt.Sprintf("cpu %.0f%%", cpu))
+		meta = append(meta, fmt.Sprintf("cpu %.0f%%", cpu))
 	}
 	if used, ok := d.Float(presence.KeyMemUsedMB); ok {
 		if total, ok := d.Float(presence.KeyMemTotalMB); ok && total > 0 {
-			parts = append(parts, fmt.Sprintf("mem %.1f/%.1fG", used/1024, total/1024))
+			meta = append(meta, fmt.Sprintf("mem %.1f/%.1fG", used/1024, total/1024))
 		}
 	}
 	if load, ok := d.Float(presence.KeyLoadAvg1m); ok {
-		parts = append(parts, fmt.Sprintf("load %.2f", load))
+		meta = append(meta, fmt.Sprintf("load %.2f", load))
 	}
 	if pkgs, ok := d.Int(presence.KeyPackageCount); ok {
-		parts = append(parts, fmt.Sprintf("%d pkgs", pkgs))
+		meta = append(meta, fmt.Sprintf("%d pkgs", pkgs))
 	}
-	return strings.Join(parts, " · ")
+	return meta
 }
 
 func deviceLine(d presence.Snapshot) string {
@@ -78,26 +80,19 @@ func deviceLine(d presence.Snapshot) string {
 		name = id
 	}
 	line := statusDot(d) + " " + deviceName.Render(name)
-	if up := formatUptime(d); up != "" {
-		line += uptimeDim.Render(" · " + up)
+	if meta := deviceMeta(d); len(meta) > 0 {
+		line += uptimeDim.Render(" · " + strings.Join(meta, " · "))
 	}
 	return line
 }
 
 func groupHeader(g deviceGroup) string {
-	lines := make([]string, 0, len(g.devices)+2)
-
+	lines := make([]string, 0, len(g.devices)+1)
 	if name := g.devices[0].String(presence.KeyAccountName); name != "" {
 		lines = append(lines, accountName.Render(name))
 	}
-
-	for i, d := range g.devices {
+	for _, d := range g.devices {
 		lines = append(lines, deviceLine(d))
-		if i == 0 {
-			if sys := systemLine(d); sys != "" {
-				lines = append(lines, sysDim.Render(sys))
-			}
-		}
 	}
 	return strings.Join(lines, "\n")
 }

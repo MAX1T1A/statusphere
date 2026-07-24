@@ -11,12 +11,12 @@ import (
 )
 
 var (
-	appName   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	appWindow = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	appLabel  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	appName   = lipgloss.NewStyle().Bold(true).Foreground(cName)
+	appWindow = lipgloss.NewStyle().Foreground(cDim)
+	appLabel  = lipgloss.NewStyle().Foreground(cDim)
 
-	sumHeader = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	sumTime   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	sumHeader = lipgloss.NewStyle().Foreground(cLabel)
+	sumTime   = lipgloss.NewStyle().Foreground(cDim)
 )
 
 var barColors = []string{"#c084fc", "#a78bfa", "#818cf8", "#7dd3fc", "#67e8f9", "#5eead4", "#a5b4fc"}

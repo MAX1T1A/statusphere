@@ -35,24 +35,24 @@ type Block struct {
 }
 
 var (
-	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	dimStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(cName)
+	dimStyle   = lipgloss.NewStyle().Foreground(cDim)
 
 	cardBorder = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("8")).
+			BorderForeground(cBorder).
 			Padding(0, 2)
 
-	inputStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	inputCaret = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	inputStyle = lipgloss.NewStyle().Foreground(cValue)
+	inputCaret = lipgloss.NewStyle().Foreground(cAccent)
 
-	accentStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
+	accentStyle = lipgloss.NewStyle().Bold(true).Foreground(cAccent)
 
 	modalBox = lipgloss.NewStyle().
-			Border(lipgloss.DoubleBorder()).
-			BorderForeground(lipgloss.Color("11")).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(cAccent).
 			Padding(1, 4)
-	modalTitle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
+	modalTitle = lipgloss.NewStyle().Bold(true).Foreground(cAccent)
 )
 
 type inputMode int
@@ -85,6 +85,7 @@ type deviceGroup struct {
 type model struct {
 	groups []deviceGroup
 	blocks []Block
+	custom Block
 	nudges *NudgeHistory
 	width  int
 	height int
@@ -310,10 +311,12 @@ func (m model) buildSyncDevices() []syncDevice {
 
 const minContentWidth = 40
 
-var sectionLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+const labelWidth = 7
+
+var sectionLabelStyle = lipgloss.NewStyle().Foreground(cAccent)
 
 func sectionLabel(s string) string {
-	return sectionLabelStyle.Render(fmt.Sprintf("%-5s ", s))
+	return sectionLabelStyle.Render(fmt.Sprintf("%-*s ", labelWidth, s))
 }
 
 func durShort(sec int) string {
@@ -325,7 +328,11 @@ func durShort(sec int) string {
 	return fmt.Sprintf("%dm", m)
 }
 
-func renderCard(g deviceGroup, blocks []Block, cardWidth int) string {
+func customDivider() string {
+	return dimStyle.Render("── custom ──────")
+}
+
+func renderCard(g deviceGroup, blocks []Block, custom Block, cardWidth int) string {
 	cardPad := cardBorder.GetHorizontalBorderSize() + cardBorder.GetHorizontalPadding()
 	cw := cardWidth - cardPad
 	if cw < minContentWidth {
@@ -337,6 +344,11 @@ func renderCard(g deviceGroup, blocks []Block, cardWidth int) string {
 	for _, b := range blocks {
 		if out := strings.TrimRight(b.Render(d), "\n"); out != "" {
 			sections = append(sections, out)
+		}
+	}
+	if custom.Render != nil {
+		if out := strings.TrimRight(custom.Render(d), "\n"); out != "" {
+			sections = append(sections, customDivider(), out)
 		}
 	}
 
@@ -370,7 +382,7 @@ func (m model) View() string {
 
 	var cards []string
 	for _, g := range m.groups {
-		cards = append(cards, renderCard(g, m.blocks, width))
+		cards = append(cards, renderCard(g, m.blocks, m.custom, width))
 	}
 	grid := lipgloss.JoinVertical(lipgloss.Left, cards...)
 
@@ -466,13 +478,13 @@ func New(opts Options) *TUI {
 	nudges := NewNudgeHistory(opts.LocalAccountID)
 
 	blocks := []Block{
-		BlockCustom(),
 		BlockSpotify(opts.SpotifyCache),
 		BlockApp(opts.SummaryCache),
 	}
 
 	m := model{
 		blocks:  blocks,
+		custom:  BlockCustom(),
 		nudges:  nudges,
 		ctrl:    opts.Controller,
 		localID: opts.LocalID,

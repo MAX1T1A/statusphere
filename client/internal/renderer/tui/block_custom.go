@@ -10,9 +10,8 @@ import (
 )
 
 var (
-	customKeyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
-	customValueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	customSepStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	customKeyStyle   = lipgloss.NewStyle().Foreground(cLabel)
+	customValueStyle = lipgloss.NewStyle().Bold(true).Foreground(cValue)
 )
 
 func fieldValue(d presence.Snapshot, key string) string {
@@ -30,18 +29,16 @@ func BlockCustom() Block {
 				return ""
 			}
 
-			var parts []string
+			var lines []string
 			for _, key := range fields {
 				val := fieldValue(d, key)
 				if val == "" {
 					continue
 				}
-				parts = append(parts, customKeyStyle.Render(key)+" "+customValueStyle.Render(val))
+				label := customKeyStyle.Render(fmt.Sprintf("%-*s ", labelWidth, key))
+				lines = append(lines, label+customValueStyle.Render(val))
 			}
-			if len(parts) == 0 {
-				return ""
-			}
-			return sectionLabel("cfg") + strings.Join(parts, customSepStyle.Render("  ·  "))
+			return strings.Join(lines, "\n")
 		},
 	}
 }

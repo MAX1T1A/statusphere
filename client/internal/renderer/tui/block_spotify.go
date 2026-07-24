@@ -19,10 +19,10 @@ import (
 )
 
 var (
-	spotArtist = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10"))
-	spotTrack  = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	spotPaused = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	spotDim    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	spotArtist = lipgloss.NewStyle().Bold(true).Foreground(cName)
+	spotTrack  = lipgloss.NewStyle().Bold(true).Foreground(cValue)
+	spotPaused = lipgloss.NewStyle().Foreground(cDim)
+	spotDim    = lipgloss.NewStyle().Foreground(cDim)
 )
 
 var artCache struct {
