@@ -9,10 +9,10 @@ import (
 )
 
 var (
-	chatTime = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	chatMsg  = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	chatYou  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	chatName = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
+	chatTime = lipgloss.NewStyle().Foreground(cDim)
+	chatMsg  = lipgloss.NewStyle().Foreground(cValue)
+	chatYou  = lipgloss.NewStyle().Bold(true).Foreground(cYou)
+	chatName = lipgloss.NewStyle().Bold(true).Foreground(cOther)
 )
 
 const chatMax = 200
