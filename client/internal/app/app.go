@@ -178,6 +178,97 @@ func (a *App) SyncCustom(fields []string) {
 	a.custom.MergeKeys(fields)
 }
 
+type ScreenshotOpts struct {
+	Device string
+	Mode   string
+	Width  int
+	Height int
+	Wait   time.Duration
+}
+
+func Screenshot(ctx context.Context, so ScreenshotOpts) (string, error) {
+	cfg, err := auth.Load()
+	if err != nil {
+		return "", fmt.Errorf("no config found: %w", err)
+	}
+
+	ws := transport.NewWS(cfg.ServerURL, cfg.Token, cfg.DeviceID, cfg.RoomID)
+	if err := ws.Connect(ctx); err != nil {
+		return "", fmt.Errorf("connect failed: %w", err)
+	}
+	defer ws.Close()
+
+	f := feed.New()
+	go func() {
+		_ = ws.Listen(ctx, func(data []byte) {
+			var msg map[string]any
+			if err := json.Unmarshal(data, &msg); err != nil {
+				return
+			}
+			f.Update(presence.Snapshot(msg))
+		})
+	}()
+
+	wait := so.Wait
+	if wait <= 0 {
+		wait = 5 * time.Second
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(wait):
+	}
+
+	devices := f.Snapshot()
+	if len(devices) == 0 {
+		return "", fmt.Errorf("no devices seen in room within %s", wait)
+	}
+
+	target := so.Device
+	if target == "" {
+		target = pickScreenshotTarget(devices, cfg.AccountID)
+	}
+
+	opts := tui.Options{
+		SpotifyCache:   stats.NewSpotifyCache(cfg.ServerURL, cfg.Token, cfg.RoomID),
+		SummaryCache:   stats.NewSummaryCache(cfg.ServerURL, cfg.Token, "day", cfg.RoomID),
+		LocalID:        cfg.DeviceID,
+		LocalAccountID: cfg.AccountID,
+	}
+
+	mode := so.Mode
+	if mode == "" {
+		mode = "music"
+	}
+	width := so.Width
+	if width <= 0 {
+		width = 100
+	}
+	height := so.Height
+	if height <= 0 {
+		height = 32
+	}
+	return tui.Snapshot(opts, devices, target, mode, width, height), nil
+}
+
+func pickScreenshotTarget(devices []presence.Snapshot, ownAccount string) string {
+	var fallback string
+	for _, d := range devices {
+		if d.String(presence.KeyAccountID) == ownAccount {
+			continue
+		}
+		if fallback == "" {
+			fallback = d.DeviceID()
+		}
+		if d.String(presence.KeySpotifyStatus) != "" {
+			return d.DeviceID()
+		}
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return devices[0].DeviceID()
+}
+
 func setupLogging() {
 	if err := os.MkdirAll(config.CacheDir(), 0o700); err != nil {
 		return

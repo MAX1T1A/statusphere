@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"statusphere-client/internal/app"
 	"statusphere-client/internal/auth"
@@ -13,6 +14,13 @@ import (
 
 var (
 	uiMode = flag.String("ui", "tui", "UI mode: tui, headless")
+
+	screenshotFlag = flag.Bool("screenshot", false, "Render a room member's card offscreen as ANSI to stdout")
+	ssDeviceFlag   = flag.String("ss-device", "", "Target device id for --screenshot (default: a member who is playing)")
+	ssModeFlag     = flag.String("ss-mode", "music", "Screenshot modal: music or screen")
+	ssWidthFlag    = flag.Int("ss-width", 100, "Screenshot width")
+	ssHeightFlag   = flag.Int("ss-height", 32, "Screenshot height")
+	ssWaitFlag     = flag.Int("ss-wait", 5, "Seconds to collect the room feed before rendering")
 
 	registerFlag  = flag.String("register", "", "Create a new account on <server_url>")
 	linkFlag      = flag.String("link", "", "Link this device to an existing account on <server_url> (needs --code)")
@@ -41,6 +49,8 @@ func main() {
 
 func dispatch() error {
 	switch {
+	case *screenshotFlag:
+		return runScreenshot()
 	case *registerFlag != "":
 		return register(*registerFlag)
 	case *linkFlag != "":
@@ -118,6 +128,23 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	return app.Run(ctx, *uiMode)
+}
+
+func runScreenshot() error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	out, err := app.Screenshot(ctx, app.ScreenshotOpts{
+		Device: *ssDeviceFlag,
+		Mode:   *ssModeFlag,
+		Width:  *ssWidthFlag,
+		Height: *ssHeightFlag,
+		Wait:   time.Duration(*ssWaitFlag) * time.Second,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Print(out)
+	return nil
 }
 
 func withConfig(fn func(*auth.Config) error) error {

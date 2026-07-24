@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"statusphere-client/internal/presence"
 	"statusphere-client/internal/stats"
@@ -14,6 +15,12 @@ import (
 )
 
 type FeedMsg []presence.Snapshot
+
+type tickMsg struct{}
+
+func musicTick() tea.Cmd {
+	return tea.Tick(time.Second, func(time.Time) tea.Msg { return tickMsg{} })
+}
 
 type Controller interface {
 	Nudge(message string)
@@ -163,6 +170,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeMenu {
 			return m.updateMenu(msg)
 		}
+		if m.mode == modeMusic || m.mode == modeScreen {
+			return m.updateDetail(msg)
+		}
 		if m.mode != modeNone {
 			return m.updateInput(msg), nil
 		}
@@ -186,6 +196,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "1":
 			if len(m.groups) > 0 {
 				m.mode = modeMusic
+				return m, musicTick()
 			}
 		case "2":
 			if len(m.groups) > 0 {
@@ -199,6 +210,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input = ""
 		case "s", "ы":
 			m.startSync()
+		}
+	case tickMsg:
+		if m.mode == modeMusic {
+			return m, musicTick()
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -237,6 +252,7 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 	switch m.menuIndex {
 	case 0:
 		m.mode = modeMusic
+		return m, musicTick()
 	case 1:
 		m.mode = modeScreen
 	case 2:
@@ -293,16 +309,24 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 			m.pickSyncAction(msg.String())
 		case modeChat, modeRename:
 			m.typeInput(msg.String())
-		case modeMusic, modeScreen:
-			switch msg.String() {
-			case "1":
-				m.mode = modeMusic
-			case "2":
-				m.mode = modeScreen
-			}
 		}
 	}
 	return m
+}
+
+func (m model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		m.mode = modeNone
+	case "1":
+		if m.mode != modeMusic {
+			m.mode = modeMusic
+			return m, musicTick()
+		}
+	case "2":
+		m.mode = modeScreen
+	}
+	return m, nil
 }
 
 func (m *model) typeInput(s string) {
@@ -415,6 +439,42 @@ const minContentWidth = 40
 
 const labelWidth = 7
 
+func clampBox(desired, min, w int) int {
+	desired = max(desired, min)
+	if limit := w - 4; desired > limit {
+		desired = limit
+	}
+	return max(desired, 10)
+}
+
+func scrollWindow(heights []int, selected, avail int) (int, int) {
+	n := len(heights)
+	if n == 0 {
+		return 0, -1
+	}
+	selected = max(0, min(selected, n-1))
+
+	lo, hi := selected, selected
+	used := heights[selected]
+	for {
+		grew := false
+		if hi+1 < n && used+heights[hi+1] <= avail {
+			used += heights[hi+1]
+			hi++
+			grew = true
+		}
+		if lo-1 >= 0 && used+heights[lo-1] <= avail {
+			used += heights[lo-1]
+			lo--
+			grew = true
+		}
+		if !grew {
+			break
+		}
+	}
+	return lo, hi
+}
+
 var sectionLabelStyle = lipgloss.NewStyle().Foreground(cAccent)
 
 func sectionLabel(s string) string {
@@ -440,10 +500,7 @@ func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardW
 		border = cardBorderFocused
 	}
 	cardPad := border.GetHorizontalBorderSize() + border.GetHorizontalPadding()
-	cw := cardWidth - cardPad
-	if cw < minContentWidth {
-		cw = minContentWidth
-	}
+	cw := max(cardWidth-cardPad, 12)
 
 	d := g.devices[0]
 	sections := []string{groupHeader(g)}
@@ -478,27 +535,45 @@ func (m model) View() string {
 	case modeChat:
 		return m.chatModal()
 	case modeMusic:
-		return m.detailModal("music", spotifyDetail(m.focusedDevice(), m.spotify))
+		return m.detailModal("music", spotifyDetail(m.focusedDevice(), m.spotify, m.coListeners()))
 	case modeScreen:
 		return m.detailModal("screen time", appDetail(m.focusedDevice(), m.summary))
 	}
 
 	width := m.width
-	if width < minContentWidth {
-		width = minContentWidth
+	if width == 0 {
+		width = 80
 	}
+	if width < 24 {
+		width = 24
+	}
+
+	footer := ansi.Truncate(m.footer(), width, "…")
 
 	if len(m.groups) == 0 {
-		return title() + "\n\n" + dimStyle.Render("waiting for devices…") + "\n\n" + m.footer()
+		return title() + "\n\n" + dimStyle.Render("waiting for devices…") + "\n\n" + footer
 	}
 
-	var cards []string
+	cards := make([]string, len(m.groups))
+	heights := make([]int, len(m.groups))
 	for i, g := range m.groups {
-		cards = append(cards, renderCard(g, m.blocks, m.custom, i == m.selected, width))
+		cards[i] = renderCard(g, m.blocks, m.custom, i == m.selected, width)
+		heights[i] = strings.Count(cards[i], "\n") + 1
 	}
-	grid := lipgloss.JoinVertical(lipgloss.Left, cards...)
 
-	return title() + "\n\n" + grid + "\n\n" + m.footer()
+	avail := max(m.height-6, 3)
+	lo, hi := scrollWindow(heights, m.selected, avail)
+
+	var parts []string
+	if lo > 0 {
+		parts = append(parts, dimStyle.Render(fmt.Sprintf("  ↑ %d more", lo)))
+	}
+	parts = append(parts, lipgloss.JoinVertical(lipgloss.Left, cards[lo:hi+1]...))
+	if hi < len(cards)-1 {
+		parts = append(parts, dimStyle.Render(fmt.Sprintf("  ↓ %d more", len(cards)-1-hi)))
+	}
+
+	return title() + "\n\n" + strings.Join(parts, "\n") + "\n\n" + footer
 }
 
 func (m model) focusedDevice() presence.Snapshot {
@@ -506,6 +581,51 @@ func (m model) focusedDevice() presence.Snapshot {
 		return presence.Snapshot{}
 	}
 	return m.groups[m.selected].devices[0]
+}
+
+func (m model) coListeners() []string {
+	d := m.focusedDevice()
+	if d.String(presence.KeySpotifyStatus) != "playing" {
+		return nil
+	}
+	key := d.String(presence.KeySpotifyURI)
+	if key == "" {
+		key = d.String(presence.KeySpotifyTrack)
+	}
+	if key == "" {
+		return nil
+	}
+
+	self := d.String(presence.KeyAccountID)
+	seen := map[string]bool{}
+	var names []string
+	for _, g := range m.groups {
+		for _, dev := range g.devices {
+			if dev.String(presence.KeySpotifyStatus) != "playing" {
+				continue
+			}
+			if acc := dev.String(presence.KeyAccountID); acc != "" && acc == self {
+				continue
+			}
+			k := dev.String(presence.KeySpotifyURI)
+			if k == "" {
+				k = dev.String(presence.KeySpotifyTrack)
+			}
+			if k != key {
+				continue
+			}
+			name := dev.String(presence.KeyAccountName)
+			if name == "" {
+				name = dev.DeviceName()
+			}
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 func (m model) focusedName() string {
@@ -528,6 +648,8 @@ func (m model) menuModal() string {
 		h = 24
 	}
 
+	boxW := clampBox(w/3, 46, w)
+
 	var rows []string
 	for i, it := range menuItems {
 		cursor := "  "
@@ -540,15 +662,7 @@ func (m model) menuModal() string {
 		if it.desc != "" {
 			row += dimStyle.Render("   " + it.desc)
 		}
-		rows = append(rows, row)
-	}
-
-	boxW := w / 3
-	if boxW < 46 {
-		boxW = 46
-	}
-	if boxW > w-4 {
-		boxW = w - 4
+		rows = append(rows, ansi.Truncate(row, boxW, "…"))
 	}
 
 	body := modalTitle.Render("menu") + dimStyle.Render(" · "+m.focusedName()) + "\n\n" +
@@ -565,13 +679,19 @@ func (m model) detailModal(kind, body string) string {
 	if h == 0 {
 		h = 24
 	}
-	boxW := w * 3 / 5
-	if boxW < minContentWidth {
-		boxW = minContentWidth
-	}
+	boxW := clampBox(w*3/5, minContentWidth, w)
 	if strings.TrimSpace(body) == "" {
 		body = dimStyle.Render("nothing here yet")
 	}
+	lines := strings.Split(body, "\n")
+	maxLines := max(h-8, 3)
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+	}
+	for i, ln := range lines {
+		lines[i] = ansi.Truncate(ln, boxW, "…")
+	}
+	body = strings.Join(lines, "\n")
 	content := modalTitle.Render(m.focusedName()) + dimStyle.Render(" · "+kind) + "\n\n" +
 		body + "\n\n" +
 		dimStyle.Render("1 music · 2 screen · esc to close")
@@ -601,10 +721,7 @@ func (m model) chatModal() string {
 		h = 24
 	}
 
-	boxW := w * 3 / 5
-	if boxW < minContentWidth {
-		boxW = minContentWidth
-	}
+	boxW := clampBox(w*3/5, minContentWidth, w)
 
 	logLines := strings.Split(m.nudges.Render(), "\n")
 	maxLines := h - 10
@@ -660,25 +777,53 @@ type TUI struct {
 	Nudges *NudgeHistory
 }
 
-func New(opts Options) *TUI {
-	nudges := NewNudgeHistory(opts.LocalAccountID)
-
-	blocks := []Block{
-		BlockSpotify(opts.SpotifyCache),
-		BlockApp(opts.SummaryCache),
-	}
-
-	m := model{
-		blocks:  blocks,
+func newModel(opts Options) model {
+	return model{
+		blocks:  []Block{BlockSpotify(opts.SpotifyCache), BlockApp(opts.SummaryCache)},
 		custom:  BlockCustom(),
-		nudges:  nudges,
+		nudges:  NewNudgeHistory(opts.LocalAccountID),
 		spotify: opts.SpotifyCache,
 		summary: opts.SummaryCache,
 		ctrl:    opts.Controller,
 		localID: opts.LocalID,
 	}
+}
+
+func New(opts Options) *TUI {
+	m := newModel(opts)
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	return &TUI{prog: p, Nudges: nudges}
+	return &TUI{prog: p, Nudges: m.nudges}
+}
+
+func Snapshot(opts Options, devices []presence.Snapshot, selectDevice, mode string, width, height int) string {
+	m := newModel(opts)
+	m.groups = groupDevices(devices)
+	m.width = width
+	m.height = height
+
+	for i, g := range m.groups {
+		for _, d := range g.devices {
+			if d.DeviceID() == selectDevice {
+				m.selected = i
+			}
+		}
+	}
+
+	target := m.focusedDevice().DeviceID()
+	if opts.SpotifyCache != nil {
+		opts.SpotifyCache.Prime(target)
+	}
+	if opts.SummaryCache != nil {
+		opts.SummaryCache.Prime(target)
+	}
+
+	switch mode {
+	case "music":
+		m.mode = modeMusic
+	case "screen":
+		m.mode = modeScreen
+	}
+	return m.View()
 }
 
 func (t *TUI) Run() error {

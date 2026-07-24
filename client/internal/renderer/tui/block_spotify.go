@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/image/draw"
 
 	"statusphere-client/internal/presence"
@@ -23,18 +24,30 @@ var (
 	spotTrack  = lipgloss.NewStyle().Bold(true).Foreground(cValue)
 	spotPaused = lipgloss.NewStyle().Foreground(cDim)
 	spotDim    = lipgloss.NewStyle().Foreground(cDim)
-)
 
-var artCache struct {
-	sync.Mutex
-	url string
-	art string
-}
+	progFill = lipgloss.NewStyle().Foreground(cOnline)
+	progMark = lipgloss.NewStyle().Foreground(cAccent)
+	progRest = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
+)
 
 const (
 	coverCols = 20
 	coverRows = 10
 )
+
+type coverEntry struct {
+	art  string
+	done bool
+	ok   bool
+}
+
+var coverCache struct {
+	sync.Mutex
+	m     map[string]*coverEntry
+	order []string
+}
+
+const coverCacheMax = 48
 
 func fetchCover(url string) string {
 	resp, err := (&http.Client{Timeout: 3 * time.Second}).Get(url)
@@ -76,30 +89,106 @@ func fetchCover(url string) string {
 	return sb.String()
 }
 
+var (
+	placeholderOnce sync.Once
+	placeholderArt  string
+)
+
+func placeholderShade(i, n int) (int, int, int) {
+	f := float64(i) / float64(n-1)
+	return int(24 + f*20), int(27 + f*22), int(37 + f*30)
+}
+
+func placeholderCover() string {
+	placeholderOnce.Do(func() {
+		var sb strings.Builder
+		n := coverRows * 2
+		for row := range coverRows {
+			tr, tg, tb := placeholderShade(row*2, n)
+			br, bg, bb := placeholderShade(row*2+1, n)
+			for range coverCols {
+				fmt.Fprintf(&sb, "\033[38;2;%d;%d;%dm\033[48;2;%d;%d;%dm▀\033[0m", tr, tg, tb, br, bg, bb)
+			}
+			if row < coverRows-1 {
+				sb.WriteByte('\n')
+			}
+		}
+		placeholderArt = sb.String()
+	})
+	return placeholderArt
+}
+
 func getCover(url string) string {
 	if url == "" {
+		return placeholderCover()
+	}
+
+	coverCache.Lock()
+	if coverCache.m == nil {
+		coverCache.m = make(map[string]*coverEntry)
+	}
+	if e, ok := coverCache.m[url]; ok {
+		done, art, good := e.done, e.art, e.ok
+		coverCache.Unlock()
+		if done && good {
+			return art
+		}
+		return placeholderCover()
+	}
+
+	coverCache.m[url] = &coverEntry{}
+	coverCache.order = append(coverCache.order, url)
+	if len(coverCache.order) > coverCacheMax {
+		oldest := coverCache.order[0]
+		coverCache.order = coverCache.order[1:]
+		delete(coverCache.m, oldest)
+	}
+	coverCache.Unlock()
+
+	go func() {
+		art := fetchCover(url)
+		coverCache.Lock()
+		if e, ok := coverCache.m[url]; ok {
+			e.art = art
+			e.done = true
+			e.ok = art != ""
+		}
+		coverCache.Unlock()
+	}()
+
+	return placeholderCover()
+}
+
+func fmtClock(sec int) string {
+	if sec < 0 {
+		sec = 0
+	}
+	return fmt.Sprintf("%d:%02d", sec/60, sec%60)
+}
+
+func renderProgress(d presence.Snapshot) string {
+	length64, ok := d.Int(presence.KeySpotifyLength)
+	if !ok || length64 <= 0 {
 		return ""
 	}
+	length := int(length64)
 
-	artCache.Lock()
-	if artCache.url == url && artCache.art != "" {
-		result := artCache.art
-		artCache.Unlock()
-		return result
+	pos64, _ := d.Int(presence.KeySpotifyPosition)
+	pos := int(pos64)
+	if d.String(presence.KeySpotifyStatus) == "playing" {
+		if seen, ok := d.Int(presence.KeyLastSeen); ok {
+			pos += int(time.Now().Unix() - seen)
+		}
 	}
-	artCache.Unlock()
+	pos = max(0, min(pos, length))
 
-	art := fetchCover(url)
-	if art == "" {
-		return ""
-	}
+	const width = 22
+	filled := max(0, min(pos*width/length, width))
 
-	artCache.Lock()
-	artCache.url = url
-	artCache.art = art
-	artCache.Unlock()
-
-	return art
+	bar := progFill.Render(strings.Repeat("━", filled)) +
+		progMark.Render("●") +
+		progRest.Render(strings.Repeat("─", width-filled))
+	return spotDim.Render(fmtClock(pos)) + " " + bar + " " + spotDim.Render(fmtClock(length))
 }
 
 var spotBarColors = []string{"#4ade80", "#34d399", "#2dd4bf", "#22d3ee", "#38bdf8", "#60a5fa", "#818cf8"}
@@ -128,17 +217,15 @@ func renderSpotifyStats(s *stats.SpotifyStats) string {
 				maxSec = d.Seconds
 			}
 		}
+		if maxSec == 0 {
+			maxSec = 1
+		}
 
 		barWidth := 8
 		weekdays := []string{"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"}
 		dimBar := lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
 
-		idx := 0
-		for _, d := range s.Daily {
-			if d.Seconds == 0 {
-				continue
-			}
-
+		for idx, d := range s.Daily {
 			label := d.Day
 			if len(d.Day) >= 10 {
 				t, err := time.Parse("2006-01-02", d.Day)
@@ -154,7 +241,7 @@ func renderSpotifyStats(s *stats.SpotifyStats) string {
 			}
 
 			filled := (d.Seconds * barWidth) / maxSec
-			if filled < 1 {
+			if filled < 1 && d.Seconds > 0 {
 				filled = 1
 			}
 
@@ -164,10 +251,61 @@ func renderSpotifyStats(s *stats.SpotifyStats) string {
 
 			bar := barStyle.Render(strings.Repeat("█", filled)) + dimBar.Render(strings.Repeat("░", barWidth-filled))
 			lines = append(lines, labelStyle.Render(label)+" "+bar+" "+spotDim.Render(fmt.Sprintf("%dm", d.Seconds/60)))
-			idx++
 		}
 	}
 
+	return strings.Join(lines, "\n")
+}
+
+func topDur(sec int) string {
+	m := sec / 60
+	if m >= 60 {
+		return fmt.Sprintf("%dh%02dm", m/60, m%60)
+	}
+	return fmt.Sprintf("%dm", m)
+}
+
+func padLine(s string, w int) string {
+	s = ansi.Truncate(s, w, "…")
+	if gap := w - lipgloss.Width(s); gap > 0 {
+		s += strings.Repeat(" ", gap)
+	}
+	return s
+}
+
+func renderTopLists(s *stats.SpotifyStats) string {
+	if s == nil || (len(s.TopTracks) == 0 && len(s.TopArtists) == 0) {
+		return ""
+	}
+
+	const trackW, artistW = 30, 22
+	idxStyle := lipgloss.NewStyle().Foreground(cDim)
+
+	left := []string{spotDim.Render("top tracks")}
+	for i, t := range s.TopTracks {
+		line := idxStyle.Render(fmt.Sprintf("%d ", i+1)) + spotTrack.Render(t.Title) + spotDim.Render("  "+topDur(t.Seconds))
+		left = append(left, line)
+	}
+
+	right := []string{spotDim.Render("top artists")}
+	for i, a := range s.TopArtists {
+		line := idxStyle.Render(fmt.Sprintf("%d ", i+1)) + spotArtist.Render(a.Artist) + spotDim.Render("  "+topDur(a.Seconds))
+		right = append(right, line)
+	}
+
+	rows := max(len(left), len(right))
+	var lines []string
+	for i := range rows {
+		l := ""
+		if i < len(left) {
+			l = left[i]
+		}
+		r := ""
+		if i < len(right) {
+			r = right[i]
+		}
+		lines = append(lines, padLine(l, trackW)+"  "+r)
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -188,7 +326,7 @@ func BlockSpotify(cache *stats.Cache) Block {
 			}
 			if cache != nil && d.DeviceID() != "" {
 				if s, ok := cache.Get(d.DeviceID()).(*stats.SpotifyStats); ok && s != nil && s.TotalSeconds > 0 {
-					line += spotDim.Render("  ·  " + durShort(s.TotalSeconds) + "/wk")
+					line += spotDim.Render("  ·  " + durShort(s.TotalSeconds) + " this week")
 				}
 			}
 			return line
@@ -196,7 +334,7 @@ func BlockSpotify(cache *stats.Cache) Block {
 	}
 }
 
-func spotifyDetail(d presence.Snapshot, cache *stats.Cache) string {
+func spotifyDetail(d presence.Snapshot, cache *stats.Cache, coListeners []string) string {
 	display := d.String(presence.KeySpotifyDisplay)
 	if display == "" {
 		return ""
@@ -218,40 +356,47 @@ func spotifyDetail(d presence.Snapshot, cache *stats.Cache) string {
 		icon = "♪ "
 	}
 
-	var lines []string
+	var head []string
 	if status == "paused" {
-		lines = append(lines, spotPaused.Render(icon+display))
+		head = append(head, spotPaused.Render(icon+display))
 	} else if artist != "" && track != "" {
-		lines = append(lines, icon+spotArtist.Render(artist))
-		lines = append(lines, "  "+spotTrack.Render(track))
+		head = append(head, icon+spotArtist.Render(artist))
+		head = append(head, "  "+spotTrack.Render(track))
 	} else {
-		lines = append(lines, icon+spotTrack.Render(display))
+		head = append(head, icon+spotTrack.Render(display))
 	}
 	if album != "" && album != track {
-		lines = append(lines, "  "+spotDim.Render(album))
+		head = append(head, "  "+spotDim.Render(album))
 	}
+	if prog := renderProgress(d); prog != "" {
+		head = append(head, "  "+prog)
+	}
+	if len(coListeners) > 0 {
+		head = append(head, "  "+spotDim.Render("· also listening: "+strings.Join(coListeners, ", ")))
+	}
+	text := strings.Join(head, "\n")
 
-	text := strings.Join(lines, "\n")
 	art := getCover(artURL)
 
-	var statsText string
+	var s *stats.SpotifyStats
 	if cache != nil && d.DeviceID() != "" {
-		if s, ok := cache.Get(d.DeviceID()).(*stats.SpotifyStats); ok && s != nil {
-			statsText = renderSpotifyStats(s)
+		if got, ok := cache.Get(d.DeviceID()).(*stats.SpotifyStats); ok {
+			s = got
 		}
 	}
+	statsText := renderSpotifyStats(s)
+	tops := renderTopLists(s)
 
 	var parts []string
-	if art != "" && statsText != "" {
+	parts = append(parts, text)
+
+	if statsText != "" {
 		artLines := strings.Split(art, "\n")
 		statLines := strings.Split(statsText, "\n")
-		maxLines := len(artLines)
-		if len(statLines) > maxLines {
-			maxLines = len(statLines)
-		}
+		rows := max(len(artLines), len(statLines))
 		pad := strings.Repeat(" ", coverCols)
 		var combined []string
-		for i := range maxLines {
+		for i := range rows {
 			left := pad
 			if i < len(artLines) {
 				left = artLines[i]
@@ -263,12 +408,13 @@ func spotifyDetail(d presence.Snapshot, cache *stats.Cache) string {
 			combined = append(combined, left+"  "+right)
 		}
 		parts = append(parts, strings.Join(combined, "\n"))
-	} else if art != "" {
+	} else {
 		parts = append(parts, art)
-	} else if statsText != "" {
-		parts = append(parts, statsText)
 	}
-	parts = append(parts, text)
+
+	if tops != "" {
+		parts = append(parts, tops)
+	}
 
 	return strings.Join(parts, "\n\n")
 }
