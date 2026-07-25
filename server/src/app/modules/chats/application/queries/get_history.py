@@ -1,6 +1,6 @@
 from app.modules.chats.application.dto import MessageDTO
 from app.modules.chats.application.interfaces import IMessageReader, IRoomMembership
-from app.modules.chats.domain.exceptions import NotRoomMember
+from app.modules.rooms.public import NotRoomMember
 from app.shared_kernel.operation import AuthenticatedOperation
 
 
