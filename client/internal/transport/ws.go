@@ -116,6 +116,31 @@ func (t *WSTransport) Send(snap presence.Snapshot) error {
 	return nil
 }
 
+func (t *WSTransport) SendMessage(to, text string) error {
+	t.mu.Lock()
+	conn := t.conn
+	t.mu.Unlock()
+
+	if conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	data, err := json.Marshal(map[string]string{"type": "msg", "to": to, "text": text})
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
+	defer cancel()
+
+	if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+		log.Printf("send message error, dropping connection: %v", err)
+		t.drop()
+		return err
+	}
+	return nil
+}
+
 func (t *WSTransport) Listen(ctx context.Context, onEvent func(data []byte)) error {
 	for {
 		if err := ctx.Err(); err != nil {

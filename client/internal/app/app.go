@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"statusphere-client/internal/auth"
+	"statusphere-client/internal/chat"
 	"statusphere-client/internal/collector"
 	"statusphere-client/internal/collector/custom"
 	"statusphere-client/internal/config"
@@ -42,8 +43,9 @@ type App struct {
 	custom   *custom.Manager
 	notifier *notifier.Notifier
 
-	ui     renderer.Renderer
-	nudges *tui.NudgeHistory
+	ui        renderer.Renderer
+	chat      *tui.ChatStore
+	accountID string
 }
 
 func Run(ctx context.Context, uiMode string) error {
@@ -71,10 +73,11 @@ func Run(ctx context.Context, uiMode string) error {
 	defer ws.Close()
 
 	a := &App{
-		ws:       ws,
-		feed:     feed.New(),
-		custom:   cm,
-		notifier: notifier.New(cfg.AccountID),
+		ws:        ws,
+		feed:      feed.New(),
+		custom:    cm,
+		notifier:  notifier.New(cfg.AccountID),
+		accountID: cfg.AccountID,
 	}
 	a.watcher = watcher.New(coll, a.send, watchInterval)
 
@@ -88,7 +91,8 @@ func Run(ctx context.Context, uiMode string) error {
 			Controller:     a,
 		})
 		a.ui = t
-		a.nudges = t.Nudges
+		a.chat = t.Chat
+		go a.loadHistory(cfg.ServerURL, cfg.Token, cfg.RoomID)
 	case "headless":
 		n := noop.NewNoop()
 		a.ui = n
@@ -123,25 +127,51 @@ func (a *App) listen(ctx context.Context) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return
 		}
-		snap := presence.Snapshot(msg)
 
-		if nudge := snap.String(presence.KeyNudge); nudge != "" {
-			accountID := snap.String(presence.KeyAccountID)
-			name := snap.String(presence.KeyAccountName)
-			if name == "" {
-				name = snap.DeviceName()
-			}
-			if a.notifier != nil {
-				a.notifier.Handle(accountID, name, nudge)
-			}
-			if a.nudges != nil {
-				a.nudges.Process(accountID, name, nudge)
-			}
+		if kind, _ := msg["type"].(string); kind == "msg" {
+			a.handleMessage(msg)
+			return
 		}
 
-		a.feed.Update(snap)
+		a.feed.Update(presence.Snapshot(msg))
 		a.ui.UpdateDevices(a.feed.Snapshot())
 	})
+}
+
+func (a *App) handleMessage(msg map[string]any) {
+	from, _ := msg["from"].(string)
+	name, _ := msg["from_name"].(string)
+	to, _ := msg["to"].(string)
+	text, _ := msg["text"].(string)
+	at, _ := msg["at"].(string)
+	if text == "" {
+		return
+	}
+
+	if a.chat != nil {
+		a.chat.Ingest(from, name, to, text, at)
+		a.ui.UpdateDevices(a.feed.Snapshot())
+	}
+
+	if from != a.accountID && to == a.accountID && a.notifier != nil {
+		if name == "" {
+			name = from
+		}
+		a.notifier.Handle(from, name, text)
+	}
+}
+
+func (a *App) loadHistory(serverURL, token, roomID string) {
+	if a.chat == nil {
+		return
+	}
+	msgs, err := chat.FetchHistory(serverURL, token, roomID)
+	if err != nil {
+		log.Printf("chat history: %v", err)
+		return
+	}
+	a.chat.LoadHistory(msgs)
+	a.ui.UpdateDevices(a.feed.Snapshot())
 }
 
 func (a *App) refresh(ctx context.Context) {
@@ -157,10 +187,9 @@ func (a *App) refresh(ctx context.Context) {
 	}
 }
 
-func (a *App) Nudge(message string) {
-	a.watcher.InjectOnce(presence.KeyNudge, message)
-	if a.nudges != nil {
-		a.nudges.ProcessLocal(message)
+func (a *App) SendMessage(to, text string) {
+	if err := a.ws.SendMessage(to, text); err != nil {
+		log.Printf("send message: %v", err)
 	}
 }
 
