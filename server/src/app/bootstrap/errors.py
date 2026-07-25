@@ -1,8 +1,13 @@
-from app.shared_kernel.exceptions import DomainError
+from app.modules.chats.presentation.errors import ERROR_STATUS_MAP as CHATS_ERRORS
+from app.shared_kernel.exceptions import DeviceRevoked, DomainError, InvalidToken
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-ERROR_STATUS_MAP: dict[type[DomainError], int] = {}
+ERROR_STATUS_MAP: dict[type[DomainError], int] = {
+    InvalidToken: 401,
+    DeviceRevoked: 401,
+    **CHATS_ERRORS,
+}
 
 
 def register_exception_handlers(app: FastAPI) -> None:
