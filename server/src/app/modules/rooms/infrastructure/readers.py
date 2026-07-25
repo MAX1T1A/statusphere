@@ -1,5 +1,6 @@
-from app.modules.rooms.application.interfaces import IMembershipReader
 from asyncpg.pool import Pool
+
+from app.modules.rooms.application.interfaces import IMembershipReader
 
 
 class MembershipReader(IMembershipReader):

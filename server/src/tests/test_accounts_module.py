@@ -88,7 +88,8 @@ async def test_recover_bad_secret():
 async def test_recover_ok():
     secret = "topsecret"
     repo = FakeRepo()
-    uc = RecoverAccountUseCase(FakeReader(verifier_val=verifier(secret)), lambda: FakeUoW(repo), FakeDirectory(owned="R2"))
+    reader = FakeReader(verifier_val=verifier(secret))
+    uc = RecoverAccountUseCase(reader, lambda: FakeUoW(repo), FakeDirectory(owned="R2"))
     dto = await uc.execute(RecoverAccount(account_id="acct", secret=secret, name="laptop"))
     assert dto.account_id == "acct" and dto.room_id == "R2"
     assert repo.devices_created and repo.devices_created[0][2] == "laptop"
@@ -97,7 +98,8 @@ async def test_recover_ok():
 async def test_link_device_ok():
     code = sign_code("link", "acct1:dev1:", 300)
     repo = FakeRepo()
-    uc = LinkDeviceUseCase(FakeReader(verifier_val="v", active=True), lambda: FakeUoW(repo), FakeDirectory(owned="room-y"))
+    reader = FakeReader(verifier_val="v", active=True)
+    uc = LinkDeviceUseCase(reader, lambda: FakeUoW(repo), FakeDirectory(owned="room-y"))
     dto = await uc.execute(LinkDevice(code=code, name="phone"))
     assert dto.account_id == "acct1" and dto.room_id == "room-y"
     assert repo.devices_created and repo.devices_created[0][2] == "phone"
@@ -117,6 +119,7 @@ async def test_revoke_device():
 
 
 async def test_list_devices():
-    reader = FakeReader(devices=[{"device_id": "d1", "name": None, "revoked": False, "linked_at": datetime(2026, 1, 1)}])
+    devices = [{"device_id": "d1", "name": None, "revoked": False, "linked_at": datetime(2026, 1, 1)}]
+    reader = FakeReader(devices=devices)
     out = await ListDevicesUseCase(reader).execute(ListDevices(actor=ACTOR))
     assert out[0].device_id == "d1"

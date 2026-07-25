@@ -1,7 +1,8 @@
+from fastapi import FastAPI
+
 from app.bootstrap.errors import register_exception_handlers
 from app.bootstrap.lifespan import lifespan
 from app.bootstrap.routers import register_module_routers
-from fastapi import FastAPI
 
 
 def create_app() -> FastAPI:

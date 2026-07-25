@@ -1,5 +1,6 @@
-from app.modules.accounts.application.interfaces import IAccountReader
 from asyncpg.pool import Pool
+
+from app.modules.accounts.application.interfaces import IAccountReader
 
 
 class AccountReader(IAccountReader):

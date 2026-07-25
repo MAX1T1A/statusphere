@@ -1,8 +1,9 @@
+from asyncpg.pool import Pool
+
 from app.modules.chats.application.dto import MessageDTO
 from app.modules.chats.application.interfaces import IMessageReader
 from app.modules.chats.domain.message import DM_LIMIT, GROUP_LIMIT
 from app.platform.crypto import decrypt
-from asyncpg.pool import Pool
 
 _GROUP_QUERY = (
     "SELECT from_account, to_account, data, created_at FROM messages "

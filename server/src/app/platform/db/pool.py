@@ -1,7 +1,8 @@
 import asyncpg
+from asyncpg.pool import Pool
+
 from app.platform.config import get_settings
 from app.platform.db.schema import create_all_tables
-from asyncpg.pool import Pool
 
 
 async def provide_pool() -> Pool:

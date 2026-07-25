@@ -1,10 +1,11 @@
+from fastapi import APIRouter, Depends, Query, Request
+
 from app.modules.presence.application.queries.get_spotify_stats import GetSpotifyStats
 from app.modules.presence.application.queries.get_summary import GetSummary
 from app.platform.ratelimit import limit
 from app.platform.web.deps import get_bus, require_actor
 from app.shared_kernel.actor import Actor
 from app.shared_kernel.bus import UseCaseBus
-from fastapi import APIRouter, Depends, Query, Request
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 

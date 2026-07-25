@@ -1,3 +1,6 @@
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+
 from app.modules.rooms.application.commands.create_invite import CreateInvite
 from app.modules.rooms.application.commands.join_room import JoinRoom
 from app.modules.rooms.application.commands.kick_member import KickMember
@@ -5,8 +8,6 @@ from app.modules.rooms.application.queries.list_members import ListMembers
 from app.platform.web.deps import get_bus, require_actor
 from app.shared_kernel.actor import Actor
 from app.shared_kernel.bus import UseCaseBus
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 

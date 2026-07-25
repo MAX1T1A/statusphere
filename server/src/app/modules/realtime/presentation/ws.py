@@ -3,12 +3,13 @@ import json
 import logging
 import time
 
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
 from app.modules.chats.application.commands.send_message import SendMessage
 from app.modules.chats.domain.message import MAX_TEXT
 from app.modules.presence.application.commands.ingest_snapshot import IngestPresenceSnapshot
 from app.platform.security import verify_account_token
 from app.shared_kernel.actor import Actor
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["ws"])
