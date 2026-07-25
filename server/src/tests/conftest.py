@@ -2,8 +2,8 @@ import base64
 
 import pytest
 
-from app.core import crypto
-from app.core.config.settings import get_settings
+from app.platform import crypto
+from app.platform.config.settings import get_settings
 
 
 @pytest.fixture(autouse=True)

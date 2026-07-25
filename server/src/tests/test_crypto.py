@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.core import crypto
+from app.platform import crypto
 
 
 def test_encrypt_decrypt_roundtrip():

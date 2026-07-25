@@ -3,12 +3,15 @@ import json
 import logging
 import time
 
-from app.core.auth.auth import verify_account_token
+from app.platform.security import verify_account_token
+from app.repositories.message import MAX_TEXT
 from app.services.account import AccountService
 from app.services.membership import MembershipService
+from app.services.message import MessageService
 from app.services.providers import (
     provide_account_service_stub,
     provide_membership_service_stub,
+    provide_message_service_stub,
     provide_room_manager_stub,
     provide_sampler_stub,
 )
@@ -44,6 +47,7 @@ async def ws_endpoint(
     sampler: Sampler = Depends(provide_sampler_stub),
     accounts: AccountService = Depends(provide_account_service_stub),
     membership: MembershipService = Depends(provide_membership_service_stub),
+    messages: MessageService = Depends(provide_message_service_stub),
 ) -> None:
     identity = verify_account_token(websocket.headers.get("x-room-token", ""))
     if identity is None:
@@ -71,7 +75,7 @@ async def ws_endpoint(
     try:
 
         async def forward_to_client():
-            async for data in room_manager.subscribe(room, device_id):
+            async for data in room_manager.subscribe(room, device_id, account_id):
                 await websocket.send_text(json.dumps(data))
 
         async def watch_authz():
@@ -105,6 +109,15 @@ async def ws_endpoint(
                 continue
 
             if not isinstance(snapshot, dict):
+                continue
+
+            if snapshot.get("type") == "msg":
+                text = (snapshot.get("text") or "").strip()[:MAX_TEXT]
+                if not text:
+                    continue
+                to_account = (snapshot.get("to") or "").strip()
+                created = await messages.save(room, account_id, to_account, text)
+                await room_manager.deliver_message(room, account_id, account_name, to_account, text, created.isoformat())
                 continue
 
             await room_manager.publish(room, account_id, account_name, device_id, snapshot)

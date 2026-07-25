@@ -1,7 +1,16 @@
 from app.repositories.account import AccountRepository
 from app.repositories.membership import MembershipRepository
+from app.repositories.message import MessageRepository
 from app.repositories.snapshot import SnapshotRepository
 from asyncpg.pool import Pool
+
+
+def provide_message_repository_stub() -> MessageRepository:
+    raise NotImplementedError
+
+
+def provide_message_repository(pool: Pool) -> MessageRepository:
+    return MessageRepository(pool)
 
 
 def provide_snapshot_repository_stub() -> SnapshotRepository:

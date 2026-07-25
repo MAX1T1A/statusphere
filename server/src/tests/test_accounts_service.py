@@ -1,4 +1,4 @@
-from app.core.auth import auth
+from app.platform.security import tokens as auth
 from app.services.account import AccountService
 from app.services.membership import MembershipService
 

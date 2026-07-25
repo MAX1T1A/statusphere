@@ -2,7 +2,7 @@ import json
 from collections import Counter
 from datetime import date
 
-from app.core.crypto import decrypt
+from app.platform.crypto import decrypt
 
 QUERY = """
     SELECT data FROM snapshots

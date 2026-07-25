@@ -1,5 +1,5 @@
-import app.core.ratelimit.ratelimit as rlmod
-from app.core.ratelimit.ratelimit import RateLimiter
+import app.platform.ratelimit as rlmod
+from app.platform.ratelimit import RateLimiter
 
 
 def test_allows_up_to_limit_then_blocks():

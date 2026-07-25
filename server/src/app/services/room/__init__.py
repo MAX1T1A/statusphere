@@ -1,4 +1,5 @@
 from .storage import RoomStorage
+from .v1.deliver import deliver_message
 from .v1.publish import publish
 from .v1.subscribe import subscribe
 
@@ -9,3 +10,4 @@ class RoomManager:
 
     publish = publish
     subscribe = subscribe
+    deliver_message = deliver_message

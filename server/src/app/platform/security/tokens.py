@@ -3,7 +3,7 @@ import hmac
 import secrets
 import time
 
-from app.core.config import get_settings
+from app.platform.config import get_settings
 
 TOKEN_V2 = "v2"
 

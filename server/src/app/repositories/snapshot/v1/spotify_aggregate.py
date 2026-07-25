@@ -2,7 +2,7 @@ import json
 from collections import defaultdict
 from datetime import date, timedelta
 
-from app.core.crypto import decrypt
+from app.platform.crypto import decrypt
 
 QUERY = """
     SELECT created_at::date AS day, data FROM snapshots

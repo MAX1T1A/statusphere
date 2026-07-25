@@ -1,7 +1,7 @@
 import os
 from functools import lru_cache
 
-from app.core.config import get_settings
+from app.platform.config import get_settings
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 _NONCE_LEN = 12

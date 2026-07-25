@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 @dataclass
 class Subscriber:
     device_id: str
+    account_id: str
     queue: asyncio.Queue
 
 

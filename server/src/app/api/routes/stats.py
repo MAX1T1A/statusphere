@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 
 from app.api.dependencies import require_account
-from app.core.ratelimit.ratelimit import limit
+from app.platform.ratelimit import limit
 from app.services.membership import MembershipService
 from app.services.providers import provide_membership_service_stub, provide_snapshot_service_stub
 from app.services.snapshot import SnapshotService
