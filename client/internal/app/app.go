@@ -153,7 +153,7 @@ func (a *App) handleMessage(msg map[string]any) {
 		a.ui.UpdateDevices(a.feed.Snapshot())
 	}
 
-	if from != a.accountID && to == a.accountID && a.notifier != nil {
+	if a.accountID != "" && from != a.accountID && to == a.accountID && a.notifier != nil {
 		if name == "" {
 			name = from
 		}

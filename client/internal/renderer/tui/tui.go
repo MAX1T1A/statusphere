@@ -780,6 +780,9 @@ func (m model) footer() string {
 	if m.chat.GroupUnread() > 0 {
 		hint += notifStyle.Render("● c chat") + dimStyle.Render(" · ")
 	}
+	if n := m.chat.TotalDMUnread(); n > 0 {
+		hint += dmDotStyle.Render(fmt.Sprintf("● %d dm", n)) + dimStyle.Render(" · ")
+	}
 	return hint + accentStyle.Render("q") + dimStyle.Render(" quit")
 }
 

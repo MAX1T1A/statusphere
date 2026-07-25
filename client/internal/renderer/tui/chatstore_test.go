@@ -151,6 +151,37 @@ func TestLoadHistoryOrdersAndDedupsAgainstLive(t *testing.T) {
 	}
 }
 
+func TestLoadHistoryThenLiveEchoNoDup(t *testing.T) {
+	// history-first ordering: LoadHistory runs before the live echo of the same message arrives
+	c := NewChatStore(meAccount)
+	c.LoadHistory([]chat.Message{
+		{From: "acc-bob", To: "", Text: "shared", At: "2026-07-26T10:00:03Z"},
+	})
+	// same persisted message now arrives live (identical from/text/at)
+	c.Ingest("acc-bob", "Bob", "", "shared", "2026-07-26T10:00:03Z")
+
+	if got := len(c.GroupEntries()); got != 1 {
+		t.Fatalf("history-first live echo duplicated: %d entries, want 1", got)
+	}
+	if got := c.GroupUnread(); got != 0 {
+		t.Fatalf("deduped live echo must not bump unread, got %d", got)
+	}
+}
+
+func TestTotalDMUnread(t *testing.T) {
+	c := NewChatStore(meAccount)
+	c.Ingest("acc-bob", "Bob", meAccount, "hi", "")
+	c.Ingest("acc-ann", "Ann", meAccount, "yo", "")
+	c.Ingest("acc-ann", "Ann", meAccount, "there", "")
+	if got := c.TotalDMUnread(); got != 3 {
+		t.Fatalf("TotalDMUnread = %d, want 3", got)
+	}
+	c.MarkDMRead("acc-ann")
+	if got := c.TotalDMUnread(); got != 1 {
+		t.Fatalf("after mark ann read TotalDMUnread = %d, want 1", got)
+	}
+}
+
 func TestChatMaxTrim(t *testing.T) {
 	c := NewChatStore(meAccount)
 	for i := 0; i < chatMax+50; i++ {
