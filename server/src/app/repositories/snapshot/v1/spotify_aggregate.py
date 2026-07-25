@@ -18,6 +18,7 @@ async def spotify_aggregate(self, room_token: str, device_id: str, since: date) 
     per_day: dict = defaultdict(int)
     per_track: dict = defaultdict(int)
     per_artist: dict = defaultdict(int)
+    per_album: dict = defaultdict(int)
     total = 0
 
     for row in rows:
@@ -33,10 +34,13 @@ async def spotify_aggregate(self, room_token: str, device_id: str, since: date) 
 
         title = (payload.get("spotify_track") or "").strip()
         artist = (payload.get("spotify_artist") or "").strip()
+        album = (payload.get("spotify_album") or "").strip()
         if title:
             per_track[(title, artist)] += 1
         if artist:
             per_artist[artist] += 1
+        if album:
+            per_album[album] += 1
 
     today = date.today()
     daily = []
@@ -47,16 +51,23 @@ async def spotify_aggregate(self, room_token: str, device_id: str, since: date) 
 
     top_tracks = [
         {"title": title, "artist": artist, "seconds": count * interval}
-        for (title, artist), count in sorted(per_track.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        for (title, artist), count in sorted(per_track.items(), key=lambda kv: kv[1], reverse=True)[:3]
     ]
     top_artists = [
         {"artist": artist, "seconds": count * interval}
-        for artist, count in sorted(per_artist.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        for artist, count in sorted(per_artist.items(), key=lambda kv: kv[1], reverse=True)[:3]
     ]
+
+    top_album = ""
+    if per_album:
+        top_album = max(per_album.items(), key=lambda kv: kv[1])[0]
 
     return {
         "total_seconds": total * interval,
         "daily": daily,
         "top_tracks": top_tracks,
         "top_artists": top_artists,
+        "unique_tracks": len(per_track),
+        "unique_artists": len(per_artist),
+        "top_album": top_album,
     }

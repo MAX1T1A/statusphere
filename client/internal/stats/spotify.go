@@ -19,13 +19,16 @@ type ArtistStat struct {
 }
 
 type SpotifyStats struct {
-	DeviceID     string       `json:"device_id"`
-	Period       string       `json:"period"`
-	Since        string       `json:"since"`
-	TotalSeconds int          `json:"total_seconds"`
-	Daily        []DayStat    `json:"daily"`
-	TopTracks    []TrackStat  `json:"top_tracks"`
-	TopArtists   []ArtistStat `json:"top_artists"`
+	DeviceID      string       `json:"device_id"`
+	Period        string       `json:"period"`
+	Since         string       `json:"since"`
+	TotalSeconds  int          `json:"total_seconds"`
+	Daily         []DayStat    `json:"daily"`
+	TopTracks     []TrackStat  `json:"top_tracks"`
+	TopArtists    []ArtistStat `json:"top_artists"`
+	UniqueTracks  int          `json:"unique_tracks"`
+	UniqueArtists int          `json:"unique_artists"`
+	TopAlbum      string       `json:"top_album"`
 }
 
 type spotifyFetcher struct {

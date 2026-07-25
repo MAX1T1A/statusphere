@@ -166,25 +166,36 @@ func fmtClock(sec int) string {
 	return fmt.Sprintf("%d:%02d", sec/60, sec%60)
 }
 
-func renderProgress(d presence.Snapshot) string {
-	length64, ok := d.Int(presence.KeySpotifyLength)
-	if !ok || length64 <= 0 {
-		return ""
-	}
-	length := int(length64)
+func trackLength(d presence.Snapshot) int {
+	length64, _ := d.Int(presence.KeySpotifyLength)
+	return int(length64)
+}
 
+func currentPosition(d presence.Snapshot) (int, int) {
 	pos64, _ := d.Int(presence.KeySpotifyPosition)
 	pos := int(pos64)
+	length := trackLength(d)
 	if d.String(presence.KeySpotifyStatus) == "playing" {
 		if seen, ok := d.Int(presence.KeyLastSeen); ok {
 			pos += int(time.Now().Unix() - seen)
 		}
 	}
-	pos = max(0, min(pos, length))
+	if pos < 0 {
+		pos = 0
+	}
+	if length > 0 && pos > length {
+		pos = length
+	}
+	return pos, length
+}
 
+func renderProgress(d presence.Snapshot) string {
+	pos, length := currentPosition(d)
+	if length <= 0 {
+		return ""
+	}
 	const width = 22
 	filled := max(0, min(pos*width/length, width))
-
 	bar := progFill.Render(strings.Repeat("━", filled)) +
 		progMark.Render("●") +
 		progRest.Render(strings.Repeat("─", width-filled))
@@ -273,40 +284,89 @@ func padLine(s string, w int) string {
 	return s
 }
 
-func renderTopLists(s *stats.SpotifyStats) string {
-	if s == nil || (len(s.TopTracks) == 0 && len(s.TopArtists) == 0) {
-		return ""
-	}
+const topN = 3
 
-	const trackW, artistW = 30, 22
+func topTracksLines(s *stats.SpotifyStats) []string {
+	if s == nil || len(s.TopTracks) == 0 {
+		return nil
+	}
 	idxStyle := lipgloss.NewStyle().Foreground(cDim)
-
-	left := []string{spotDim.Render("top tracks")}
+	lines := []string{spotDim.Render("top tracks")}
 	for i, t := range s.TopTracks {
-		line := idxStyle.Render(fmt.Sprintf("%d ", i+1)) + spotTrack.Render(t.Title) + spotDim.Render("  "+topDur(t.Seconds))
-		left = append(left, line)
+		if i >= topN {
+			break
+		}
+		lines = append(lines, idxStyle.Render(fmt.Sprintf("%d ", i+1))+spotTrack.Render(t.Title)+spotDim.Render("  "+topDur(t.Seconds)))
 	}
+	return lines
+}
 
-	right := []string{spotDim.Render("top artists")}
+func topArtistsLines(s *stats.SpotifyStats) []string {
+	if s == nil || len(s.TopArtists) == 0 {
+		return nil
+	}
+	idxStyle := lipgloss.NewStyle().Foreground(cDim)
+	lines := []string{spotDim.Render("top artists")}
 	for i, a := range s.TopArtists {
-		line := idxStyle.Render(fmt.Sprintf("%d ", i+1)) + spotArtist.Render(a.Artist) + spotDim.Render("  "+topDur(a.Seconds))
-		right = append(right, line)
+		if i >= topN {
+			break
+		}
+		lines = append(lines, idxStyle.Render(fmt.Sprintf("%d ", i+1))+spotArtist.Render(a.Artist)+spotDim.Render("  "+topDur(a.Seconds)))
 	}
+	return lines
+}
 
-	rows := max(len(left), len(right))
-	var lines []string
+func coverBesideStats(art, statsText string) []string {
+	if art == "" && statsText == "" {
+		return nil
+	}
+	if statsText == "" {
+		return strings.Split(art, "\n")
+	}
+	artLines := strings.Split(art, "\n")
+	statLines := strings.Split(statsText, "\n")
+	rows := max(len(artLines), len(statLines))
+	pad := strings.Repeat(" ", coverCols)
+	var out []string
 	for i := range rows {
-		l := ""
+		l := pad
+		if i < len(artLines) {
+			l = artLines[i]
+		}
+		r := ""
+		if i < len(statLines) {
+			r = statLines[i]
+		}
+		out = append(out, l+"  "+r)
+	}
+	return out
+}
+
+func zipColumns(left, right []string, gap int) string {
+	leftW := 0
+	for _, l := range left {
+		if w := lipgloss.Width(l); w > leftW {
+			leftW = w
+		}
+	}
+	sep := strings.Repeat(" ", gap)
+	rows := max(len(left), len(right))
+	var out []string
+	for i := range rows {
+		var l, r string
 		if i < len(left) {
 			l = left[i]
 		}
-		r := ""
 		if i < len(right) {
 			r = right[i]
 		}
-		lines = append(lines, padLine(l, trackW)+"  "+r)
+		if r == "" {
+			out = append(out, l)
+		} else {
+			out = append(out, padLine(l, leftW)+sep+r)
+		}
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(out, "\n")
 }
 
 func BlockSpotify(cache *stats.Cache) Block {
@@ -334,7 +394,17 @@ func BlockSpotify(cache *stats.Cache) Block {
 	}
 }
 
-func spotifyDetail(d presence.Snapshot, cache *stats.Cache, coListeners []string) string {
+func linesWidth(lines []string) int {
+	w := 0
+	for _, l := range lines {
+		if lw := lipgloss.Width(l); lw > w {
+			w = lw
+		}
+	}
+	return w
+}
+
+func spotifyDetail(d presence.Snapshot, cache *stats.Cache, coListeners []string, width int) string {
 	display := d.String(presence.KeySpotifyDisplay)
 	if display == "" {
 		return ""
@@ -372,11 +442,8 @@ func spotifyDetail(d presence.Snapshot, cache *stats.Cache, coListeners []string
 		head = append(head, "  "+prog)
 	}
 	if len(coListeners) > 0 {
-		head = append(head, "  "+spotDim.Render("· also listening: "+strings.Join(coListeners, ", ")))
+		head = append(head, "  "+spotDim.Render("· with "+strings.Join(coListeners, ", ")+" now"))
 	}
-	text := strings.Join(head, "\n")
-
-	art := getCover(artURL)
 
 	var s *stats.SpotifyStats
 	if cache != nil && d.DeviceID() != "" {
@@ -384,37 +451,41 @@ func spotifyDetail(d presence.Snapshot, cache *stats.Cache, coListeners []string
 			s = got
 		}
 	}
+
+	art := getCover(artURL)
 	statsText := renderSpotifyStats(s)
-	tops := renderTopLists(s)
 
-	var parts []string
-	parts = append(parts, text)
+	left := append([]string{}, head...)
+	if cover := coverBesideStats(art, statsText); len(cover) > 0 {
+		left = append(left, "")
+		left = append(left, cover...)
+	}
 
-	if statsText != "" {
-		artLines := strings.Split(art, "\n")
-		statLines := strings.Split(statsText, "\n")
-		rows := max(len(artLines), len(statLines))
-		pad := strings.Repeat(" ", coverCols)
-		var combined []string
-		for i := range rows {
-			left := pad
-			if i < len(artLines) {
-				left = artLines[i]
-			}
-			right := ""
-			if i < len(statLines) {
-				right = statLines[i]
-			}
-			combined = append(combined, left+"  "+right)
+	right := topTracksLines(s)
+	if artists := topArtistsLines(s); len(artists) > 0 {
+		if len(right) > 0 {
+			right = append(right, "")
 		}
-		parts = append(parts, strings.Join(combined, "\n"))
-	} else {
-		parts = append(parts, art)
+		right = append(right, artists...)
 	}
 
-	if tops != "" {
-		parts = append(parts, tops)
+	leftW := linesWidth(left)
+	if len(right) > 0 && leftW+4+linesWidth(right) <= width {
+		if ly := renderLyricsLines(d, max(width-leftW-4, 12)); len(ly) > 0 {
+			right = append(right, "")
+			right = append(right, ly...)
+		}
+		return zipColumns(left, right, 4)
 	}
 
-	return strings.Join(parts, "\n\n")
+	stacked := append([]string{}, left...)
+	if len(right) > 0 {
+		stacked = append(stacked, "")
+		stacked = append(stacked, right...)
+	}
+	if ly := renderLyricsLines(d, width); len(ly) > 0 {
+		stacked = append(stacked, "")
+		stacked = append(stacked, ly...)
+	}
+	return strings.Join(stacked, "\n")
 }
