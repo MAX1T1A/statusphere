@@ -23,11 +23,12 @@ const (
 )
 
 type ChatEntry struct {
-	From string
-	Name string
-	Text string
-	At   time.Time
-	Self bool
+	From  string
+	Name  string
+	Text  string
+	At    time.Time
+	Self  bool
+	atKey string
 }
 
 type thread struct {
@@ -35,29 +36,32 @@ type thread struct {
 	unread int
 }
 
-func (t *thread) append(e ChatEntry) {
+func (t *thread) contains(e ChatEntry) bool {
+	if e.atKey == "" {
+		return false
+	}
+	for i := len(t.log) - 1; i >= 0; i-- {
+		x := t.log[i]
+		if x.atKey == e.atKey && x.From == e.From && x.Text == e.Text {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *thread) add(e ChatEntry) bool {
+	if t.contains(e) {
+		return false
+	}
 	t.log = append(t.log, e)
 	if len(t.log) > chatMax {
 		t.log = t.log[len(t.log)-chatMax:]
 	}
+	return true
 }
 
-// normalize orders the thread chronologically and drops adjacent duplicates
-// (same author/text/timestamp), which can happen when a message arrives live
-// during the initial history fetch. Called after a bulk history load.
-func (t *thread) normalize() {
+func (t *thread) sortAndCap() {
 	sort.SliceStable(t.log, func(i, j int) bool { return t.log[i].At.Before(t.log[j].At) })
-	out := t.log[:0]
-	for i, e := range t.log {
-		if i > 0 {
-			p := out[len(out)-1]
-			if p.From == e.From && p.Text == e.Text && p.At.Equal(e.At) {
-				continue
-			}
-		}
-		out = append(out, e)
-	}
-	t.log = out
 	if len(t.log) > chatMax {
 		t.log = t.log[len(t.log)-chatMax:]
 	}
@@ -106,8 +110,7 @@ func (c *ChatStore) Ingest(from, name, to, text, at string) {
 
 	peer, self := c.route(from, to)
 	t := c.threadFor(peer)
-	t.append(ChatEntry{From: from, Name: name, Text: text, At: parseAt(at), Self: self})
-	if !self {
+	if t.add(ChatEntry{From: from, Name: name, Text: text, At: parseAt(at), Self: self, atKey: at}) && !self {
 		t.unread++
 	}
 }
@@ -121,11 +124,11 @@ func (c *ChatStore) LoadHistory(msgs []chat.Message) {
 			continue
 		}
 		peer, self := c.route(m.From, m.To)
-		c.threadFor(peer).append(ChatEntry{From: m.From, Text: m.Text, At: parseAt(m.At), Self: self})
+		c.threadFor(peer).add(ChatEntry{From: m.From, Text: m.Text, At: parseAt(m.At), Self: self, atKey: m.At})
 	}
-	c.group.normalize()
+	c.group.sortAndCap()
 	for _, t := range c.dms {
-		t.normalize()
+		t.sortAndCap()
 	}
 }
 
@@ -157,6 +160,16 @@ func (c *ChatStore) DMUnread(peer string) int {
 		return t.unread
 	}
 	return 0
+}
+
+func (c *ChatStore) TotalDMUnread() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, t := range c.dms {
+		n += t.unread
+	}
+	return n
 }
 
 func (c *ChatStore) MarkGroupRead() {
