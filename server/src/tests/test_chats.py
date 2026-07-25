@@ -5,8 +5,8 @@ import pytest
 from app.modules.chats.application.commands.send_message import SendMessage, SendMessageUseCase
 from app.modules.chats.application.dto import MessageDTO
 from app.modules.chats.application.queries.get_history import GetMessageHistory, GetMessageHistoryUseCase
-from app.modules.chats.domain.exceptions import NotRoomMember
 from app.modules.chats.domain.message import MAX_TEXT, normalize_text
+from app.modules.rooms.public import NotRoomMember
 from app.shared_kernel.actor import Actor
 
 ACTOR = Actor(account_id="a1", device_id="d1")
