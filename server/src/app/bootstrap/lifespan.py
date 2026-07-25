@@ -1,10 +1,11 @@
 from contextlib import asynccontextmanager
 
+from fastapi import FastAPI
+
 from app.bootstrap.container import build_container
 from app.bootstrap.logging import configure_logging
 from app.modules.realtime.presentation.ws import close_all as close_all_ws
 from app.platform.db.pool import provide_pool
-from fastapi import FastAPI
 
 
 @asynccontextmanager

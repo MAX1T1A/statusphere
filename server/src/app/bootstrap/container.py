@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from asyncpg.pool import Pool
+
 from app.modules.accounts.application.commands.issue_link_code import IssueLinkCode, IssueLinkCodeUseCase
 from app.modules.accounts.application.commands.link_device import LinkDevice, LinkDeviceUseCase
 from app.modules.accounts.application.commands.recover_account import RecoverAccount, RecoverAccountUseCase
@@ -33,7 +35,6 @@ from app.modules.rooms.infrastructure.room_directory import RoomDirectory
 from app.modules.rooms.infrastructure.uow import RoomsUnitOfWork
 from app.platform.config import get_settings
 from app.shared_kernel.bus import UseCaseBus
-from asyncpg.pool import Pool
 
 
 @dataclass

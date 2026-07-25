@@ -1,9 +1,10 @@
+from fastapi import APIRouter, Depends, Query, Request
+
 from app.modules.chats.application.queries.get_history import GetMessageHistory
 from app.platform.ratelimit import limit
 from app.platform.web.deps import get_bus, require_actor
 from app.shared_kernel.actor import Actor
 from app.shared_kernel.bus import UseCaseBus
-from fastapi import APIRouter, Depends, Query, Request
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 

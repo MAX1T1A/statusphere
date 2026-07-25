@@ -1,8 +1,9 @@
+from fastapi import Header, Request
+
 from app.platform.security import verify_account_token
 from app.shared_kernel.actor import Actor
 from app.shared_kernel.bus import UseCaseBus
 from app.shared_kernel.exceptions import DeviceRevoked, InvalidToken
-from fastapi import Header, Request
 
 
 def get_bus(request: Request) -> UseCaseBus:

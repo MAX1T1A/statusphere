@@ -1,4 +1,5 @@
 import asyncpg
+
 from app.modules.chats.application.interfaces import IChatsUnitOfWork
 from app.modules.chats.infrastructure.repositories import MessageRepository
 from app.platform.db.uow import BaseUnitOfWork

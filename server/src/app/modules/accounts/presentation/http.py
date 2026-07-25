@@ -1,3 +1,6 @@
+from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel
+
 from app.modules.accounts.application.commands.issue_link_code import IssueLinkCode
 from app.modules.accounts.application.commands.link_device import LinkDevice
 from app.modules.accounts.application.commands.recover_account import RecoverAccount
@@ -10,8 +13,6 @@ from app.platform.ratelimit import limit
 from app.platform.web.deps import get_bus, require_actor
 from app.shared_kernel.actor import Actor
 from app.shared_kernel.bus import UseCaseBus
-from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
 
 accounts_router = APIRouter(prefix="/accounts", tags=["accounts"])
 devices_router = APIRouter(prefix="/devices", tags=["devices"])

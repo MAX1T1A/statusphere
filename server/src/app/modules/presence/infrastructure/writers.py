@@ -1,8 +1,9 @@
 import json
 
+from asyncpg.pool import Pool
+
 from app.modules.presence.application.interfaces import ISnapshotWriter
 from app.platform.crypto import encrypt
-from asyncpg.pool import Pool
 
 
 class SnapshotWriter(ISnapshotWriter):

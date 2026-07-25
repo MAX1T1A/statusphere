@@ -1,8 +1,9 @@
 import os
 from functools import lru_cache
 
-from app.platform.config import get_settings
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+from app.platform.config import get_settings
 
 _NONCE_LEN = 12
 

@@ -2,9 +2,10 @@ import json
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 
+from asyncpg.pool import Pool
+
 from app.modules.presence.application.interfaces import ISnapshotReader
 from app.platform.crypto import decrypt
-from asyncpg.pool import Pool
 
 _SUMMARY_QUERY = """
     SELECT data FROM snapshots
