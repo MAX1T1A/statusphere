@@ -216,6 +216,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.selected < 0 {
 			m.selected = 0
 		}
+		if m.mode == modeChat {
+			m.nudges.MarkRead()
+		}
 	}
 	return m, nil
 }
@@ -659,10 +662,8 @@ func (m model) chatModal() string {
 
 func (m model) footer() string {
 	hint := dimStyle.Render("↑↓ select · ") + accentStyle.Render("enter") + dimStyle.Render(" menu · ")
-	if u := m.nudges.Unread(); u > 0 {
-		hint += notifStyle.Render(fmt.Sprintf("● c chat (%d new)", u)) + dimStyle.Render(" · ")
-	} else if n := m.nudges.Count(); n > 0 {
-		hint += accentStyle.Render("c") + dimStyle.Render(fmt.Sprintf(" chat (%d) · ", n))
+	if m.nudges.Unread() > 0 {
+		hint += notifStyle.Render("● c chat") + dimStyle.Render(" · ")
 	}
 	return hint + accentStyle.Render("q") + dimStyle.Render(" quit")
 }
