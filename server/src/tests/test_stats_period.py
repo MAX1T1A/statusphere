@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from app.api.routes.stats import since_for
+from app.modules.presence.application.period import since_for
 
 
 def test_since_for_known_periods():
