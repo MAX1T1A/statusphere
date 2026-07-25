@@ -81,17 +81,12 @@ async def ws_endpoint(websocket: WebSocket, room: str = "") -> None:
         recv_task = asyncio.create_task(forward_to_client())
         authz_task = asyncio.create_task(watch_authz())
 
-        last_msg_at = 0.0
+        last_presence_at = 0.0
         while True:
             raw = await websocket.receive_text()
             if len(raw) > MAX_MESSAGE_SIZE:
                 await websocket.close(code=1009, reason="message too large")
                 return
-
-            now = time.monotonic()
-            if now - last_msg_at < MIN_MESSAGE_INTERVAL:
-                continue
-            last_msg_at = now
 
             try:
                 snapshot = json.loads(raw)
@@ -116,6 +111,11 @@ async def ws_endpoint(websocket: WebSocket, room: str = "") -> None:
                     )
                 )
                 continue
+
+            now = time.monotonic()
+            if now - last_presence_at < MIN_MESSAGE_INTERVAL:
+                continue
+            last_presence_at = now
 
             await bus.dispatch(
                 IngestPresenceSnapshot(actor=actor, room=room, account_name=account_name, snapshot=snapshot)

@@ -23,7 +23,7 @@ func musicTick(id int) tea.Cmd {
 }
 
 type Controller interface {
-	Nudge(message string)
+	SendMessage(to, text string)
 	Rename(name string)
 	SyncSpotify(uri string)
 	SyncCustom(fields []string)
@@ -60,6 +60,7 @@ var (
 
 	accentStyle = lipgloss.NewStyle().Bold(true).Foreground(cAccent)
 	notifStyle  = lipgloss.NewStyle().Bold(true).Foreground(cNotify)
+	dmDotStyle  = lipgloss.NewStyle().Bold(true).Foreground(cDMDot)
 
 	modalBox = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -74,22 +75,32 @@ const (
 	modeNone inputMode = iota
 	modeMenu
 	modeChat
+	modeDM
 	modeRename
 	modeMusic
 	modeScreen
 )
 
 type menuItem struct {
-	label string
-	desc  string
+	action string
+	label  string
+	desc   string
 }
 
-var menuItems = []menuItem{
-	{"Music", "now playing + weekly"},
-	{"Screen time", "app usage today"},
-	{"Chat", "room messages"},
-	{"Rename device", ""},
-	{"Quit", ""},
+func (m model) menu() []menuItem {
+	items := []menuItem{
+		{"music", "Music", "now playing + weekly"},
+		{"screen", "Screen time", "app usage today"},
+		{"chat", "Chat", "room messages"},
+	}
+	if peer := m.focusedDevice().String(presence.KeyAccountID); peer != "" && peer != m.chat.localID {
+		items = append(items, menuItem{"message", "Message " + m.focusedName(), "direct message"})
+	}
+	items = append(items,
+		menuItem{"rename", "Rename device", ""},
+		menuItem{"quit", "Quit", ""},
+	)
+	return items
 }
 
 const (
@@ -106,7 +117,7 @@ type model struct {
 	groups    []deviceGroup
 	blocks    []Block
 	custom    Block
-	nudges    *NudgeHistory
+	chat      *ChatStore
 	spotify   *stats.Cache
 	summary   *stats.Cache
 	selected  int
@@ -115,10 +126,12 @@ type model struct {
 	width     int
 	height    int
 
-	mode    inputMode
-	input   string
-	ctrl    Controller
-	localID string
+	mode       inputMode
+	input      string
+	ctrl       Controller
+	localID    string
+	dmPeer     string
+	dmPeerName string
 }
 
 func groupDevices(snaps []presence.Snapshot) []deviceGroup {
@@ -196,7 +209,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "n", "т", "c", "с":
 			m.mode = modeChat
 			m.input = ""
-			m.nudges.MarkRead()
+			m.chat.MarkGroupRead()
 		case "d", "в":
 			m.mode = modeRename
 			m.input = ""
@@ -216,8 +229,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.selected < 0 {
 			m.selected = 0
 		}
-		if m.mode == modeChat {
-			m.nudges.MarkRead()
+		switch m.mode {
+		case modeChat:
+			m.chat.MarkGroupRead()
+		case modeDM:
+			m.chat.MarkDMRead(m.dmPeer)
 		}
 	}
 	return m, nil
@@ -232,7 +248,7 @@ func (m model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.menuIndex--
 		}
 	case "down", "j":
-		if m.menuIndex < len(menuItems)-1 {
+		if m.menuIndex < len(m.menu())-1 {
 			m.menuIndex++
 		}
 	case "enter", " ":
@@ -242,21 +258,31 @@ func (m model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) runMenu() (tea.Model, tea.Cmd) {
-	switch m.menuIndex {
-	case 0:
+	menu := m.menu()
+	if m.menuIndex < 0 || m.menuIndex >= len(menu) {
+		return m, nil
+	}
+	switch menu[m.menuIndex].action {
+	case "music":
 		m.mode = modeMusic
 		m.tickID++
 		return m, musicTick(m.tickID)
-	case 1:
+	case "screen":
 		m.mode = modeScreen
-	case 2:
+	case "chat":
 		m.mode = modeChat
 		m.input = ""
-		m.nudges.MarkRead()
-	case 3:
+		m.chat.MarkGroupRead()
+	case "message":
+		m.mode = modeDM
+		m.input = ""
+		m.dmPeer = m.focusedDevice().String(presence.KeyAccountID)
+		m.dmPeerName = m.focusedName()
+		m.chat.MarkDMRead(m.dmPeer)
+	case "rename":
 		m.mode = modeRename
 		m.input = ""
-	case 4:
+	case "quit":
 		return m, tea.Quit
 	}
 	return m, nil
@@ -269,7 +295,12 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 		switch m.mode {
 		case modeChat:
 			if text != "" {
-				m.ctrl.Nudge(text)
+				m.ctrl.SendMessage("", text)
+			}
+			m.input = ""
+		case modeDM:
+			if text != "" && m.dmPeer != "" {
+				m.ctrl.SendMessage(m.dmPeer, text)
 			}
 			m.input = ""
 		case modeRename:
@@ -289,13 +320,13 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 		m.mode = modeMenu
 		m.input = ""
 	case "backspace":
-		if m.mode == modeChat || m.mode == modeRename {
+		if m.mode == modeChat || m.mode == modeDM || m.mode == modeRename {
 			if runes := []rune(m.input); len(runes) > 0 {
 				m.input = string(runes[:len(runes)-1])
 			}
 		}
 	default:
-		if m.mode == modeChat || m.mode == modeRename {
+		if m.mode == modeChat || m.mode == modeDM || m.mode == modeRename {
 			m.typeInput(msg.String())
 		}
 	}
@@ -406,7 +437,7 @@ func customDivider() string {
 	return dimStyle.Render("── custom ──────")
 }
 
-func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardWidth int) string {
+func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardWidth int, unreadDM bool) string {
 	border := cardBorder
 	if focused {
 		border = cardBorderFocused
@@ -415,7 +446,11 @@ func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardW
 	cw := max(cardWidth-cardPad, 12)
 
 	d := g.devices[0]
-	sections := []string{groupHeader(g)}
+	header := groupHeader(g)
+	if unreadDM {
+		header = dmDotStyle.Render("● ") + header
+	}
+	sections := []string{header}
 	for _, b := range blocks {
 		if out := strings.TrimRight(b.Render(d), "\n"); out != "" {
 			sections = append(sections, out)
@@ -447,6 +482,8 @@ func (m model) View() string {
 		return m.renameModal()
 	case modeChat:
 		return m.chatModal()
+	case modeDM:
+		return m.dmModal()
 	case modeMusic:
 		return m.detailModal("music", spotifyDetail(m.focusedDevice(), m.spotify, m.coListeners(), modalBoxW(m.width)-modalPad))
 	case modeScreen:
@@ -470,7 +507,7 @@ func (m model) View() string {
 	cards := make([]string, len(m.groups))
 	heights := make([]int, len(m.groups))
 	for i, g := range m.groups {
-		cards[i] = renderCard(g, m.blocks, m.custom, i == m.selected, width)
+		cards[i] = renderCard(g, m.blocks, m.custom, i == m.selected, width, m.chat.DMUnread(g.key) > 0)
 		heights[i] = strings.Count(cards[i], "\n") + 1
 	}
 
@@ -564,7 +601,7 @@ func (m model) menuModal() string {
 	boxW := clampBox(w/3, 46, w)
 
 	var rows []string
-	for i, it := range menuItems {
+	for i, it := range m.menu() {
 		cursor := "  "
 		label := dimStyle.Render(it.label)
 		if i == m.menuIndex {
@@ -644,7 +681,41 @@ func (m model) chatModal() string {
 	boxW := modalBoxW(w)
 	contentW := max(boxW-modalPad, 4)
 
-	logLines := strings.Split(m.nudges.Render(), "\n")
+	logLines := m.chatLines(m.chat.GroupEntries(), contentW, h)
+	body := modalTitle.Render("group chat") + dimStyle.Render("  · everyone in the room") + "\n\n" +
+		strings.Join(logLines, "\n") + "\n\n" +
+		inputStyle.Render("› "+m.input) + inputCaret.Render("▏") + "\n\n" +
+		accentStyle.Render("←") + dimStyle.Render(" back · ") + accentStyle.Render("enter") + dimStyle.Render(" send · ") + accentStyle.Render("esc") + dimStyle.Render(" room")
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(body))
+}
+
+func (m model) dmModal() string {
+	w, h := m.width, m.height
+	if w == 0 {
+		w = 80
+	}
+	if h == 0 {
+		h = 24
+	}
+
+	boxW := modalBoxW(w)
+	contentW := max(boxW-modalPad, 4)
+
+	name := m.dmPeerName
+	if name == "" {
+		name = "direct message"
+	}
+
+	logLines := m.chatLines(m.chat.DMEntries(m.dmPeer), contentW, h)
+	body := modalTitle.Render(name) + dimStyle.Render("  · direct message") + "\n\n" +
+		strings.Join(logLines, "\n") + "\n\n" +
+		inputStyle.Render("› "+m.input) + inputCaret.Render("▏") + "\n\n" +
+		accentStyle.Render("←") + dimStyle.Render(" back · ") + accentStyle.Render("enter") + dimStyle.Render(" send · ") + accentStyle.Render("esc") + dimStyle.Render(" room")
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(body))
+}
+
+func (m model) chatLines(entries []ChatEntry, contentW, h int) []string {
+	logLines := strings.Split(m.renderThread(entries), "\n")
 	maxLines := h - 10
 	if maxLines < 3 {
 		maxLines = 3
@@ -655,32 +726,73 @@ func (m model) chatModal() string {
 	for i, ln := range logLines {
 		logLines[i] = ansi.Truncate(ln, contentW, "…")
 	}
+	return logLines
+}
 
-	body := modalTitle.Render("group chat") + dimStyle.Render("  · everyone in the room") + "\n\n" +
-		strings.Join(logLines, "\n") + "\n\n" +
-		inputStyle.Render("› "+m.input) + inputCaret.Render("▏") + "\n\n" +
-		accentStyle.Render("←") + dimStyle.Render(" back · ") + accentStyle.Render("enter") + dimStyle.Render(" send · ") + accentStyle.Render("esc") + dimStyle.Render(" room")
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(body))
+func (m model) renderThread(entries []ChatEntry) string {
+	if len(entries) == 0 {
+		return dimStyle.Render("no messages yet")
+	}
+	lines := make([]string, 0, len(entries))
+	for _, e := range entries {
+		ts := chatTime.Render(e.At.Format("15:04"))
+		var who string
+		switch {
+		case e.Self:
+			who = chatYou.Render("you")
+		default:
+			name := e.Name
+			if name == "" {
+				name = m.nameFor(e.From)
+			}
+			if name == "" {
+				name = "someone"
+			}
+			who = chatName.Render(name)
+		}
+		lines = append(lines, ts+"  "+who+chatTime.Render(": ")+chatMsg.Render(e.Text))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m model) nameFor(accountID string) string {
+	if accountID == "" {
+		return ""
+	}
+	for _, g := range m.groups {
+		for _, d := range g.devices {
+			if d.String(presence.KeyAccountID) != accountID {
+				continue
+			}
+			if n := d.String(presence.KeyAccountName); n != "" {
+				return n
+			}
+			if n := d.DeviceName(); n != "" {
+				return n
+			}
+		}
+	}
+	return ""
 }
 
 func (m model) footer() string {
 	hint := dimStyle.Render("↑↓ select · ") + accentStyle.Render("enter") + dimStyle.Render(" menu · ")
-	if m.nudges.Unread() > 0 {
+	if m.chat.GroupUnread() > 0 {
 		hint += notifStyle.Render("● c chat") + dimStyle.Render(" · ")
 	}
 	return hint + accentStyle.Render("q") + dimStyle.Render(" quit")
 }
 
 type TUI struct {
-	prog   *tea.Program
-	Nudges *NudgeHistory
+	prog *tea.Program
+	Chat *ChatStore
 }
 
 func newModel(opts Options) model {
 	return model{
 		blocks:  []Block{BlockSpotify(opts.SpotifyCache), BlockApp(opts.SummaryCache)},
 		custom:  BlockCustom(),
-		nudges:  NewNudgeHistory(opts.LocalAccountID),
+		chat:    NewChatStore(opts.LocalAccountID),
 		spotify: opts.SpotifyCache,
 		summary: opts.SummaryCache,
 		ctrl:    opts.Controller,
@@ -691,7 +803,7 @@ func newModel(opts Options) model {
 func New(opts Options) *TUI {
 	m := newModel(opts)
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	return &TUI{prog: p, Nudges: m.nudges}
+	return &TUI{prog: p, Chat: m.chat}
 }
 
 func Snapshot(opts Options, devices []presence.Snapshot, selectDevice, mode string, width, height int) string {

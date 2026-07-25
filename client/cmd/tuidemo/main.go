@@ -9,10 +9,10 @@ import (
 
 type noopController struct{}
 
-func (noopController) Nudge(string)        {}
-func (noopController) Rename(string)       {}
-func (noopController) SyncSpotify(string)  {}
-func (noopController) SyncCustom([]string) {}
+func (noopController) SendMessage(string, string) {}
+func (noopController) Rename(string)              {}
+func (noopController) SyncSpotify(string)         {}
+func (noopController) SyncCustom([]string)        {}
 
 func main() {
 	const localID = "me-device-0001"
@@ -23,8 +23,9 @@ func main() {
 		Controller:     noopController{},
 	})
 
-	t.Nudges.Process("acc-alice", "Alice", "pizza tonight?")
-	t.Nudges.ProcessLocal("sure, 8pm")
+	t.Chat.Ingest("acc-alice", "Alice", "", "pizza tonight?", "")
+	t.Chat.Ingest("acc-me", "Me", "", "sure, 8pm", "")
+	t.Chat.Ingest("acc-bob", "Bob", "acc-me", "ping me when you're free", "")
 
 	now := time.Now().Unix()
 	devices := []presence.Snapshot{

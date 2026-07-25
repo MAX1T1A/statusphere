@@ -6,6 +6,7 @@ var (
 	cAccent  = lipgloss.Color("111")
 	cFocus   = lipgloss.Color("214")
 	cNotify  = lipgloss.Color("220")
+	cDMDot   = lipgloss.Color("203")
 	cName    = lipgloss.Color("255")
 	cValue   = lipgloss.Color("255")
 	cLabel   = lipgloss.Color("250")
