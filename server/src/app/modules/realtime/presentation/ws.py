@@ -3,25 +3,15 @@ import json
 import logging
 import time
 
+from app.modules.chats.application.commands.send_message import SendMessage
+from app.modules.chats.domain.message import MAX_TEXT
+from app.modules.presence.application.commands.ingest_snapshot import IngestPresenceSnapshot
 from app.platform.security import verify_account_token
-from app.repositories.message import MAX_TEXT
-from app.services.account import AccountService
-from app.services.membership import MembershipService
-from app.services.message import MessageService
-from app.services.providers import (
-    provide_account_service_stub,
-    provide_membership_service_stub,
-    provide_message_service_stub,
-    provide_room_manager_stub,
-    provide_sampler_stub,
-)
-from app.services.room import RoomManager
-from app.services.sampler import Sampler
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from app.shared_kernel.actor import Actor
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["ws"])
-
 
 MAX_MESSAGE_SIZE = 16 * 1024
 MIN_MESSAGE_INTERVAL = 0.5
@@ -40,15 +30,13 @@ async def close_all() -> None:
 
 
 @router.websocket("/ws")
-async def ws_endpoint(
-    websocket: WebSocket,
-    room: str = "",
-    room_manager: RoomManager = Depends(provide_room_manager_stub),
-    sampler: Sampler = Depends(provide_sampler_stub),
-    accounts: AccountService = Depends(provide_account_service_stub),
-    membership: MembershipService = Depends(provide_membership_service_stub),
-    messages: MessageService = Depends(provide_message_service_stub),
-) -> None:
+async def ws_endpoint(websocket: WebSocket, room: str = "") -> None:
+    container = websocket.app.state.container
+    bus = container.bus
+    hub = container.hub
+    accounts = container.accounts
+    membership = container.membership
+
     identity = verify_account_token(websocket.headers.get("x-room-token", ""))
     if identity is None:
         await websocket.close(code=1008, reason="invalid token")
@@ -65,6 +53,7 @@ async def ws_endpoint(
         return
 
     account_name = await accounts.name_of(account_id)
+    actor = Actor(account_id=account_id, device_id=device_id)
 
     await websocket.accept()
     _active.add(websocket)
@@ -75,7 +64,7 @@ async def ws_endpoint(
     try:
 
         async def forward_to_client():
-            async for data in room_manager.subscribe(room, device_id, account_id):
+            async for data in hub.subscribe(room, device_id, account_id):
                 await websocket.send_text(json.dumps(data))
 
         async def watch_authz():
@@ -116,12 +105,20 @@ async def ws_endpoint(
                 if not text:
                     continue
                 to_account = (snapshot.get("to") or "").strip()
-                created = await messages.save(room, account_id, to_account, text)
-                await room_manager.deliver_message(room, account_id, account_name, to_account, text, created.isoformat())
+                await bus.dispatch(
+                    SendMessage(
+                        actor=actor,
+                        room_token=room,
+                        to_account=to_account,
+                        text=text,
+                        from_name=account_name,
+                    )
+                )
                 continue
 
-            await room_manager.publish(room, account_id, account_name, device_id, snapshot)
-            await sampler.put(room, account_id, device_id, snapshot)
+            await bus.dispatch(
+                IngestPresenceSnapshot(actor=actor, room=room, account_name=account_name, snapshot=snapshot)
+            )
 
     except WebSocketDisconnect:
         logger.info("ws disconnected: device=%s", device_id)
