@@ -24,8 +24,9 @@ type lrcLine struct {
 }
 
 type lyricsEntry struct {
-	lines []lrcLine
-	done  bool
+	lines    []lrcLine
+	done     bool
+	fetching bool
 }
 
 var lyricsCache struct {
@@ -55,14 +56,21 @@ func getLyrics(artist, track, album string, duration int) []lrcLine {
 		lyricsCache.m = make(map[string]*lyricsEntry)
 	}
 	if e, ok := lyricsCache.m[key]; ok {
-		lines, done := e.lines, e.done
-		lyricsCache.Unlock()
-		if done {
+		if e.done {
+			lines := e.lines
+			lyricsCache.Unlock()
 			return lines
 		}
+		if e.fetching {
+			lyricsCache.Unlock()
+			return nil
+		}
+		e.fetching = true
+		lyricsCache.Unlock()
+		go fetchLyricsInto(key, artist, track, album, duration)
 		return nil
 	}
-	lyricsCache.m[key] = &lyricsEntry{}
+	lyricsCache.m[key] = &lyricsEntry{fetching: true}
 	lyricsCache.order = append(lyricsCache.order, key)
 	if len(lyricsCache.order) > lyricsCacheMax {
 		oldest := lyricsCache.order[0]
@@ -71,52 +79,60 @@ func getLyrics(artist, track, album string, duration int) []lrcLine {
 	}
 	lyricsCache.Unlock()
 
-	go func() {
-		lines := fetchLyrics(artist, track, album, duration)
-		lyricsCache.Lock()
-		if e, ok := lyricsCache.m[key]; ok {
+	go fetchLyricsInto(key, artist, track, album, duration)
+	return nil
+}
+
+func fetchLyricsInto(key, artist, track, album string, duration int) {
+	lines, definitive := fetchLyrics(artist, track, album, duration)
+	lyricsCache.Lock()
+	if e, ok := lyricsCache.m[key]; ok {
+		e.fetching = false
+		if definitive {
 			e.lines = lines
 			e.done = true
 		}
-		lyricsCache.Unlock()
-	}()
-
-	return nil
+	}
+	lyricsCache.Unlock()
 }
 
-func fetchLyrics(artist, track, album string, duration int) []lrcLine {
+func fetchLyrics(artist, track, album string, duration int) ([]lrcLine, bool) {
 	client := &http.Client{Timeout: 5 * time.Second}
-	if synced := lrclibGet(client, artist, track, album, duration); synced != "" {
-		return parseLRC(synced)
+	if synced, ok := lrclibGet(client, artist, track, album, duration); ok && synced != "" {
+		return parseLRC(synced), true
 	}
-	if synced := lrclibSearch(client, artist, track); synced != "" {
-		return parseLRC(synced)
+	synced, ok := lrclibSearch(client, artist, track)
+	if ok && synced != "" {
+		return parseLRC(synced), true
 	}
-	return nil
+	return nil, ok
 }
 
-func lrclibBody(client *http.Client, endpoint string, q url.Values) []byte {
+func lrclibBody(client *http.Client, endpoint string, q url.Values) ([]byte, bool) {
 	req, err := http.NewRequest("GET", "https://lrclib.net"+endpoint+"?"+q.Encode(), nil)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	req.Header.Set("User-Agent", "statusphere (https://github.com/MAX1T1A/statusphere)")
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, true
+	}
 	if resp.StatusCode != http.StatusOK {
-		return nil
+		return nil, false
 	}
 	buf := &bytes.Buffer{}
 	if _, err := buf.ReadFrom(resp.Body); err != nil {
-		return nil
+		return nil, false
 	}
-	return buf.Bytes()
+	return buf.Bytes(), true
 }
 
-func lrclibGet(client *http.Client, artist, track, album string, duration int) string {
+func lrclibGet(client *http.Client, artist, track, album string, duration int) (string, bool) {
 	q := url.Values{}
 	q.Set("artist_name", artist)
 	q.Set("track_name", track)
@@ -126,39 +142,45 @@ func lrclibGet(client *http.Client, artist, track, album string, duration int) s
 	if duration > 0 {
 		q.Set("duration", strconv.Itoa(duration))
 	}
-	body := lrclibBody(client, "/api/get", q)
+	body, reached := lrclibBody(client, "/api/get", q)
+	if !reached {
+		return "", false
+	}
 	if body == nil {
-		return ""
+		return "", true
 	}
 	var d struct {
 		SyncedLyrics string `json:"syncedLyrics"`
 	}
 	if err := json.Unmarshal(body, &d); err != nil {
-		return ""
+		return "", true
 	}
-	return d.SyncedLyrics
+	return d.SyncedLyrics, true
 }
 
-func lrclibSearch(client *http.Client, artist, track string) string {
+func lrclibSearch(client *http.Client, artist, track string) (string, bool) {
 	q := url.Values{}
 	q.Set("track_name", track)
 	q.Set("artist_name", artist)
-	body := lrclibBody(client, "/api/search", q)
+	body, reached := lrclibBody(client, "/api/search", q)
+	if !reached {
+		return "", false
+	}
 	if body == nil {
-		return ""
+		return "", true
 	}
 	var arr []struct {
 		SyncedLyrics string `json:"syncedLyrics"`
 	}
 	if err := json.Unmarshal(body, &arr); err != nil {
-		return ""
+		return "", true
 	}
 	for _, r := range arr {
 		if r.SyncedLyrics != "" {
-			return r.SyncedLyrics
+			return r.SyncedLyrics, true
 		}
 	}
-	return ""
+	return "", true
 }
 
 func parseLRC(s string) []lrcLine {

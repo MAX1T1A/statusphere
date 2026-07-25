@@ -16,10 +16,10 @@ import (
 
 type FeedMsg []presence.Snapshot
 
-type tickMsg struct{}
+type tickMsg struct{ id int }
 
-func musicTick() tea.Cmd {
-	return tea.Tick(time.Second, func(time.Time) tea.Msg { return tickMsg{} })
+func musicTick(id int) tea.Cmd {
+	return tea.Tick(time.Second, func(time.Time) tea.Msg { return tickMsg{id: id} })
 }
 
 type Controller interface {
@@ -59,6 +59,7 @@ var (
 	inputCaret = lipgloss.NewStyle().Foreground(cAccent)
 
 	accentStyle = lipgloss.NewStyle().Bold(true).Foreground(cAccent)
+	notifStyle  = lipgloss.NewStyle().Bold(true).Foreground(cNotify)
 
 	modalBox = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -110,6 +111,7 @@ type model struct {
 	summary   *stats.Cache
 	selected  int
 	menuIndex int
+	tickID    int
 	width     int
 	height    int
 
@@ -166,7 +168,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "q", "ctrl+c":
+		case "q", "й", "ctrl+c":
 			return m, tea.Quit
 		case "up", "k":
 			if m.selected > 0 {
@@ -184,7 +186,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "1":
 			if len(m.groups) > 0 {
 				m.mode = modeMusic
-				return m, musicTick()
+				m.tickID++
+				return m, musicTick(m.tickID)
 			}
 		case "2":
 			if len(m.groups) > 0 {
@@ -193,13 +196,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "n", "т", "c", "с":
 			m.mode = modeChat
 			m.input = ""
+			m.nudges.MarkRead()
 		case "d", "в":
 			m.mode = modeRename
 			m.input = ""
 		}
 	case tickMsg:
-		if m.mode == modeMusic {
-			return m, musicTick()
+		if m.mode == modeMusic && msg.id == m.tickID {
+			return m, musicTick(msg.id)
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -218,7 +222,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc", "q":
+	case "esc", "q", "й":
 		m.mode = modeNone
 	case "up", "k":
 		if m.menuIndex > 0 {
@@ -238,12 +242,14 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 	switch m.menuIndex {
 	case 0:
 		m.mode = modeMusic
-		return m, musicTick()
+		m.tickID++
+		return m, musicTick(m.tickID)
 	case 1:
 		m.mode = modeScreen
 	case 2:
 		m.mode = modeChat
 		m.input = ""
+		m.nudges.MarkRead()
 	case 3:
 		m.mode = modeRename
 		m.input = ""
@@ -292,7 +298,7 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 
 func (m model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc", "q":
+	case "esc", "q", "й":
 		m.mode = modeNone
 	case "left", "backspace":
 		m.mode = modeMenu
@@ -653,7 +659,9 @@ func (m model) chatModal() string {
 
 func (m model) footer() string {
 	hint := dimStyle.Render("↑↓ select · ") + accentStyle.Render("enter") + dimStyle.Render(" menu · ")
-	if n := m.nudges.Count(); n > 0 {
+	if u := m.nudges.Unread(); u > 0 {
+		hint += notifStyle.Render(fmt.Sprintf("● c chat (%d new)", u)) + dimStyle.Render(" · ")
+	} else if n := m.nudges.Count(); n > 0 {
 		hint += accentStyle.Render("c") + dimStyle.Render(fmt.Sprintf(" chat (%d) · ", n))
 	}
 	return hint + accentStyle.Render("q") + dimStyle.Render(" quit")
