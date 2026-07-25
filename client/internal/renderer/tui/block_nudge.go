@@ -30,6 +30,7 @@ type NudgeHistory struct {
 	log     []NudgeEntry
 	localID string
 	seen    map[string]string
+	unread  int
 }
 
 func NewNudgeHistory(localID string) *NudgeHistory {
@@ -57,6 +58,7 @@ func (h *NudgeHistory) Process(sender, name, message string) {
 	}
 	h.seen[sender] = message
 	h.append(NudgeEntry{Sender: sender, Name: name, Message: message, At: time.Now()})
+	h.unread++
 }
 
 func (h *NudgeHistory) ProcessLocal(message string) {
@@ -69,6 +71,18 @@ func (h *NudgeHistory) Count() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.log)
+}
+
+func (h *NudgeHistory) Unread() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.unread
+}
+
+func (h *NudgeHistory) MarkRead() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.unread = 0
 }
 
 func (h *NudgeHistory) Render() string {
