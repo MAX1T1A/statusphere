@@ -52,7 +52,7 @@ var (
 
 	cardBorderFocused = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(cAccent).
+				BorderForeground(cFocus).
 				Padding(0, 2)
 
 	inputStyle = lipgloss.NewStyle().Foreground(cValue)
@@ -74,8 +74,6 @@ const (
 	modeMenu
 	modeChat
 	modeRename
-	modeSyncDevice
-	modeSyncAction
 	modeMusic
 	modeScreen
 )
@@ -88,7 +86,6 @@ type menuItem struct {
 var menuItems = []menuItem{
 	{"Music", "now playing + weekly"},
 	{"Screen time", "app usage today"},
-	{"Sync", "match their track"},
 	{"Chat", "room messages"},
 	{"Rename device", ""},
 	{"Quit", ""},
@@ -98,13 +95,6 @@ const (
 	maxNudgeLen  = 128
 	maxRenameLen = 32
 )
-
-type syncDevice struct {
-	id     string
-	name   string
-	uri    string
-	fields []string
-}
 
 type deviceGroup struct {
 	key     string
@@ -123,12 +113,10 @@ type model struct {
 	width     int
 	height    int
 
-	mode        inputMode
-	input       string
-	ctrl        Controller
-	localID     string
-	syncDevices []syncDevice
-	syncTarget  *syncDevice
+	mode    inputMode
+	input   string
+	ctrl    Controller
+	localID string
 }
 
 func groupDevices(snaps []presence.Snapshot) []deviceGroup {
@@ -208,8 +196,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "d", "в":
 			m.mode = modeRename
 			m.input = ""
-		case "s", "ы":
-			m.startSync()
 		}
 	case tickMsg:
 		if m.mode == modeMusic {
@@ -256,15 +242,12 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 	case 1:
 		m.mode = modeScreen
 	case 2:
-		m.mode = modeNone
-		m.startSync()
-	case 3:
 		m.mode = modeChat
 		m.input = ""
-	case 4:
+	case 3:
 		m.mode = modeRename
 		m.input = ""
-	case 5:
+	case 4:
 		return m, tea.Quit
 	}
 	return m, nil
@@ -293,8 +276,6 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 	case "esc":
 		m.mode = modeNone
 		m.input = ""
-		m.syncDevices = nil
-		m.syncTarget = nil
 	case "backspace":
 		if m.mode == modeChat || m.mode == modeRename {
 			if runes := []rune(m.input); len(runes) > 0 {
@@ -302,12 +283,7 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 			}
 		}
 	default:
-		switch m.mode {
-		case modeSyncDevice:
-			m.pickSyncDevice(msg.String())
-		case modeSyncAction:
-			m.pickSyncAction(msg.String())
-		case modeChat, modeRename:
+		if m.mode == modeChat || m.mode == modeRename {
 			m.typeInput(msg.String())
 		}
 	}
@@ -318,15 +294,23 @@ func (m model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "q":
 		m.mode = modeNone
-	case "1":
-		if m.mode != modeMusic {
-			m.mode = modeMusic
-			return m, musicTick()
+	case "left", "backspace":
+		m.mode = modeMenu
+	case "s", "ы":
+		if m.mode == modeMusic {
+			m.syncFocused()
 		}
-	case "2":
-		m.mode = modeScreen
 	}
 	return m, nil
+}
+
+func (m *model) syncFocused() {
+	if m.ctrl == nil {
+		return
+	}
+	if uri := m.focusedDevice().String(presence.KeySpotifyURI); uri != "" {
+		m.ctrl.SyncSpotify(uri)
+	}
 }
 
 func (m *model) typeInput(s string) {
@@ -342,99 +326,6 @@ func (m *model) typeInput(s string) {
 	}
 }
 
-func (m *model) startSync() {
-	devices := m.buildSyncDevices()
-	switch len(devices) {
-	case 0:
-		return
-	case 1:
-		m.applySync(devices[0])
-	default:
-		m.syncDevices = devices
-		m.mode = modeSyncDevice
-	}
-}
-
-func (m *model) applySync(dev syncDevice) {
-	switch {
-	case dev.uri != "" && len(dev.fields) > 0:
-		m.syncTarget = &dev
-		m.mode = modeSyncAction
-	case dev.uri != "":
-		m.ctrl.SyncSpotify(dev.uri)
-	case len(dev.fields) > 0:
-		m.ctrl.SyncCustom(dev.fields)
-	}
-}
-
-func (m *model) pickSyncDevice(key string) {
-	r := []rune(key)
-	if len(r) != 1 || r[0] < '1' || r[0] > '9' {
-		return
-	}
-	idx := int(r[0] - '1')
-	if idx >= len(m.syncDevices) {
-		return
-	}
-	dev := m.syncDevices[idx]
-	m.syncDevices = nil
-	if dev.uri != "" && len(dev.fields) > 0 {
-		m.syncTarget = &dev
-		m.mode = modeSyncAction
-		return
-	}
-	m.applySync(dev)
-	if m.mode == modeSyncDevice {
-		m.mode = modeNone
-	}
-}
-
-func (m *model) pickSyncAction(key string) {
-	if m.syncTarget == nil {
-		return
-	}
-	switch key {
-	case "1":
-		if m.syncTarget.uri != "" {
-			m.ctrl.SyncSpotify(m.syncTarget.uri)
-		}
-	case "2":
-		if len(m.syncTarget.fields) > 0 {
-			m.ctrl.SyncCustom(m.syncTarget.fields)
-		}
-	default:
-		return
-	}
-	m.mode = modeNone
-	m.syncTarget = nil
-}
-
-func (m model) buildSyncDevices() []syncDevice {
-	var devices []syncDevice
-	for _, g := range m.groups {
-		for _, dev := range g.devices {
-			id := dev.DeviceID()
-			if id == "" || id == m.localID {
-				continue
-			}
-			uri := dev.String(presence.KeySpotifyURI)
-			fields := dev.Strings(presence.KeyCustomFields)
-			if uri == "" && len(fields) == 0 {
-				continue
-			}
-			name := id
-			if n := dev.DeviceName(); n != "" {
-				name = n
-			}
-			devices = append(devices, syncDevice{id: id, name: name, uri: uri, fields: fields})
-		}
-	}
-	sort.Slice(devices, func(i, j int) bool {
-		return devices[i].name < devices[j].name
-	})
-	return devices
-}
-
 const minContentWidth = 40
 
 const labelWidth = 7
@@ -445,6 +336,15 @@ func clampBox(desired, min, w int) int {
 		desired = limit
 	}
 	return max(desired, 10)
+}
+
+const modalPad = 8
+
+func modalBoxW(w int) int {
+	if w == 0 {
+		w = 80
+	}
+	return clampBox(w*3/5, minContentWidth, w)
 }
 
 func scrollWindow(heights []int, selected, avail int) (int, int) {
@@ -515,9 +415,10 @@ func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardW
 		}
 	}
 
+	textW := max(cw-border.GetHorizontalPadding(), 4)
 	lines := strings.Split(strings.Join(sections, "\n"), "\n")
 	for i, ln := range lines {
-		lines[i] = ansi.Truncate(ln, cw, "…")
+		lines[i] = ansi.Truncate(ln, textW, "…")
 	}
 	return border.Width(cw).Render(strings.Join(lines, "\n"))
 }
@@ -535,7 +436,7 @@ func (m model) View() string {
 	case modeChat:
 		return m.chatModal()
 	case modeMusic:
-		return m.detailModal("music", spotifyDetail(m.focusedDevice(), m.spotify, m.coListeners()))
+		return m.detailModal("music", spotifyDetail(m.focusedDevice(), m.spotify, m.coListeners(), modalBoxW(m.width)-modalPad))
 	case modeScreen:
 		return m.detailModal("screen time", appDetail(m.focusedDevice(), m.summary))
 	}
@@ -662,7 +563,7 @@ func (m model) menuModal() string {
 		if it.desc != "" {
 			row += dimStyle.Render("   " + it.desc)
 		}
-		rows = append(rows, ansi.Truncate(row, boxW, "…"))
+		rows = append(rows, ansi.Truncate(row, max(boxW-modalPad, 4), "…"))
 	}
 
 	body := modalTitle.Render("menu") + dimStyle.Render(" · "+m.focusedName()) + "\n\n" +
@@ -679,7 +580,8 @@ func (m model) detailModal(kind, body string) string {
 	if h == 0 {
 		h = 24
 	}
-	boxW := clampBox(w*3/5, minContentWidth, w)
+	boxW := modalBoxW(w)
+	contentW := max(boxW-modalPad, 4)
 	if strings.TrimSpace(body) == "" {
 		body = dimStyle.Render("nothing here yet")
 	}
@@ -689,12 +591,18 @@ func (m model) detailModal(kind, body string) string {
 		lines = lines[:maxLines]
 	}
 	for i, ln := range lines {
-		lines[i] = ansi.Truncate(ln, boxW, "…")
+		lines[i] = ansi.Truncate(ln, contentW, "…")
 	}
 	body = strings.Join(lines, "\n")
+	nav := accentStyle.Render("←") + dimStyle.Render(" back · ")
+	if kind == "music" {
+		nav += accentStyle.Render("s") + dimStyle.Render(" sync · ")
+	}
+	nav += accentStyle.Render("esc") + dimStyle.Render(" room")
+
 	content := modalTitle.Render(m.focusedName()) + dimStyle.Render(" · "+kind) + "\n\n" +
 		body + "\n\n" +
-		dimStyle.Render("1 music · 2 screen · esc to close")
+		nav
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(content))
 }
 
@@ -721,7 +629,8 @@ func (m model) chatModal() string {
 		h = 24
 	}
 
-	boxW := clampBox(w*3/5, minContentWidth, w)
+	boxW := modalBoxW(w)
+	contentW := max(boxW-modalPad, 4)
 
 	logLines := strings.Split(m.nudges.Render(), "\n")
 	maxLines := h - 10
@@ -732,7 +641,7 @@ func (m model) chatModal() string {
 		logLines = logLines[len(logLines)-maxLines:]
 	}
 	for i, ln := range logLines {
-		logLines[i] = ansi.Truncate(ln, boxW, "…")
+		logLines[i] = ansi.Truncate(ln, contentW, "…")
 	}
 
 	body := modalTitle.Render("group chat") + dimStyle.Render("  · everyone in the room") + "\n\n" +
@@ -743,33 +652,11 @@ func (m model) chatModal() string {
 }
 
 func (m model) footer() string {
-	switch m.mode {
-	case modeSyncDevice:
-		var opts []string
-		for i, d := range m.syncDevices {
-			opts = append(opts, inputStyle.Render(fmt.Sprintf("%d)", i+1))+" "+dimStyle.Render(d.name))
-		}
-		return inputStyle.Render("sync from: ") + strings.Join(opts, "  ") + dimStyle.Render("  esc to cancel")
-	case modeSyncAction:
-		name := ""
-		var opts []string
-		if m.syncTarget != nil {
-			name = m.syncTarget.name
-			if m.syncTarget.uri != "" {
-				opts = append(opts, accentStyle.Render("1")+dimStyle.Render(") spotify"))
-			}
-			if len(m.syncTarget.fields) > 0 {
-				opts = append(opts, accentStyle.Render("2")+dimStyle.Render(") custom fields"))
-			}
-		}
-		return inputStyle.Render(name+": ") + strings.Join(opts, "  ") + dimStyle.Render("  esc to cancel")
-	default:
-		hint := dimStyle.Render("↑↓ select · ") + accentStyle.Render("enter") + dimStyle.Render(" menu · ")
-		if n := m.nudges.Count(); n > 0 {
-			hint += accentStyle.Render("c") + dimStyle.Render(fmt.Sprintf(" chat (%d) · ", n))
-		}
-		return hint + accentStyle.Render("q") + dimStyle.Render(" quit")
+	hint := dimStyle.Render("↑↓ select · ") + accentStyle.Render("enter") + dimStyle.Render(" menu · ")
+	if n := m.nudges.Count(); n > 0 {
+		hint += accentStyle.Render("c") + dimStyle.Render(fmt.Sprintf(" chat (%d) · ", n))
 	}
+	return hint + accentStyle.Render("q") + dimStyle.Render(" quit")
 }
 
 type TUI struct {

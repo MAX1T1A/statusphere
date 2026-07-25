@@ -4,6 +4,7 @@ import "github.com/charmbracelet/lipgloss"
 
 var (
 	cAccent  = lipgloss.Color("111")
+	cFocus   = lipgloss.Color("214")
 	cName    = lipgloss.Color("255")
 	cValue   = lipgloss.Color("255")
 	cLabel   = lipgloss.Color("250")
