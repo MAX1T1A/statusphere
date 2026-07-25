@@ -72,17 +72,11 @@ func dispatch() error {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Share with a friend:\n  statusphere --join %s\n", code)
+			fmt.Printf("Share with a friend:\n  statusphere --join %s\n", auth.EncodeInvite(c.ServerURL, code))
 			return nil
 		})
 	case *joinFlag != "":
-		return withConfig(func(c *auth.Config) error {
-			if err := c.Join(*joinFlag); err != nil {
-				return err
-			}
-			fmt.Printf("Joined room %s\n", c.RoomID)
-			return nil
-		})
+		return joinRoom(*joinFlag)
 	case *devicesFlag:
 		return withConfig(listDevices)
 	case *revokeFlag != "":
@@ -144,6 +138,29 @@ func runScreenshot() error {
 		return err
 	}
 	fmt.Print(out)
+	return nil
+}
+
+func joinRoom(arg string) error {
+	server, code := auth.DecodeInvite(arg)
+
+	cfg, err := auth.Load()
+	needRegister := err != nil || (server != "" && cfg.ServerURL != server)
+	if needRegister {
+		if server == "" {
+			return fmt.Errorf("no account found; register first: statusphere --register <server_url>")
+		}
+		cfg, err = auth.Register(server)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Account created on %s\n", server)
+	}
+
+	if err := cfg.Join(code); err != nil {
+		return err
+	}
+	fmt.Printf("Joined room %s\n", cfg.RoomID)
 	return nil
 }
 

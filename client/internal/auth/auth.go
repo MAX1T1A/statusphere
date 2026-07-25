@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -208,6 +209,22 @@ func (c *Config) Join(code string) error {
 	}
 	c.RoomID = resp.RoomID
 	return c.Save()
+}
+
+func EncodeInvite(serverURL, code string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strings.TrimRight(serverURL, "/") + "\n" + code))
+}
+
+func DecodeInvite(s string) (serverURL, code string) {
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return "", s
+	}
+	server, code, ok := strings.Cut(string(raw), "\n")
+	if !ok {
+		return "", s
+	}
+	return server, code
 }
 
 type DeviceInfo struct {
