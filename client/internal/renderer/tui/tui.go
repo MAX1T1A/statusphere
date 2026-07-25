@@ -104,8 +104,8 @@ func (m model) menu() []menuItem {
 }
 
 const (
-	maxNudgeLen  = 128
-	maxRenameLen = 32
+	maxMessageLen = 500
+	maxRenameLen  = 32
 )
 
 type deviceGroup struct {
@@ -360,7 +360,7 @@ func (m *model) typeInput(s string) {
 	if r := []rune(s); len(r) != 1 {
 		return
 	}
-	limit := maxNudgeLen
+	limit := maxMessageLen
 	if m.mode == modeRename {
 		limit = maxRenameLen
 	}
