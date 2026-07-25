@@ -1,5 +1,5 @@
 from app.api.dependencies import require_account
-from app.core.ratelimit.ratelimit import limit
+from app.platform.ratelimit import limit
 from app.services.account import AccountService
 from app.services.providers import provide_account_service_stub
 from fastapi import APIRouter, Depends, HTTPException, Request

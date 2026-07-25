@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
-from app.core.config.postgres import PostgresConfig
+from app.platform.config.postgres import PostgresConfig
 
 _LEVELS = {
     "CRITICAL": logging.CRITICAL,

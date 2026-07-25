@@ -1,11 +1,21 @@
 from app.repositories.account import AccountRepository
 from app.repositories.membership import MembershipRepository
+from app.repositories.message import MessageRepository
 from app.repositories.snapshot import SnapshotRepository
 from app.services.account import AccountService
 from app.services.membership import MembershipService
+from app.services.message import MessageService
 from app.services.room import RoomManager
 from app.services.sampler import Sampler
 from app.services.snapshot import SnapshotService
+
+
+def provide_message_service(repository: MessageRepository) -> MessageService:
+    return MessageService(repository)
+
+
+def provide_message_service_stub() -> MessageService:
+    raise NotImplementedError
 
 
 def provide_room_manager() -> RoomManager:

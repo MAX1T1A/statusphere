@@ -1,4 +1,4 @@
-from app.core.config import get_settings
+from app.platform.config import get_settings
 from asyncpg.pool import Pool
 
 from .v1.save_batch import save_batch

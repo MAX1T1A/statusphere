@@ -1,4 +1,4 @@
-from app.core.auth.auth import verify_account_token
+from app.platform.security import verify_account_token
 from app.services.account import AccountService
 from app.services.providers import provide_account_service_stub
 from fastapi import Depends, Header, HTTPException

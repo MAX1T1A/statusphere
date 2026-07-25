@@ -1,6 +1,6 @@
 import json
 
-from app.core.crypto import encrypt
+from app.platform.crypto import encrypt
 
 
 async def save_batch(self, rows: list[tuple[str, str, str, dict]]) -> None:

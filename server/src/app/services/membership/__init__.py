@@ -1,4 +1,4 @@
-from app.core.auth import auth
+from app.platform.security import tokens as auth
 from app.repositories.membership import MembershipRepository
 
 INVITE_TTL = 3600

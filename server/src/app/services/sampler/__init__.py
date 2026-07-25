@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from app.core.config import get_settings
+from app.platform.config import get_settings
 from app.repositories.snapshot import SnapshotRepository
 
 from .v1.put import put

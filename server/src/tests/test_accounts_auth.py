@@ -1,4 +1,4 @@
-from app.core.auth import auth
+from app.platform.security import tokens as auth
 
 
 def test_account_token_roundtrip():
