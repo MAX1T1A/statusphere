@@ -285,6 +285,9 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 	case "esc":
 		m.mode = modeNone
 		m.input = ""
+	case "left":
+		m.mode = modeMenu
+		m.input = ""
 	case "backspace":
 		if m.mode == modeChat || m.mode == modeRename {
 			if runes := []rune(m.input); len(runes) > 0 {
@@ -625,7 +628,7 @@ func (m model) renameModal() string {
 	}
 	body := modalTitle.Render("rename this device") + "\n\n" +
 		inputStyle.Render("› "+m.input) + inputCaret.Render("▏") + "\n\n" +
-		dimStyle.Render("enter to save · esc to cancel")
+		accentStyle.Render("←") + dimStyle.Render(" back · ") + accentStyle.Render("enter") + dimStyle.Render(" save · ") + accentStyle.Render("esc") + dimStyle.Render(" room")
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Render(body))
 }
 
@@ -656,7 +659,7 @@ func (m model) chatModal() string {
 	body := modalTitle.Render("group chat") + dimStyle.Render("  · everyone in the room") + "\n\n" +
 		strings.Join(logLines, "\n") + "\n\n" +
 		inputStyle.Render("› "+m.input) + inputCaret.Render("▏") + "\n\n" +
-		dimStyle.Render("enter to send · esc to close")
+		accentStyle.Render("←") + dimStyle.Render(" back · ") + accentStyle.Render("enter") + dimStyle.Render(" send · ") + accentStyle.Render("esc") + dimStyle.Render(" room")
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(body))
 }
 
