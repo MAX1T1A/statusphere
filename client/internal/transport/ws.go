@@ -73,6 +73,12 @@ func (t *WSTransport) SetDeviceName(name string) {
 	saveName(name)
 }
 
+func (t *WSTransport) DeviceName() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.deviceName
+}
+
 func (t *WSTransport) drop() {
 	t.mu.Lock()
 	defer t.mu.Unlock()

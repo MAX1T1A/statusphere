@@ -250,7 +250,11 @@ func listMembers(c *auth.Config) error {
 		if m.AccountID == c.AccountID {
 			marker = " (you)"
 		}
-		fmt.Printf("%s  %s%s\n", m.AccountID, m.Role, marker)
+		name := m.Name
+		if name == "" {
+			name = "—"
+		}
+		fmt.Printf("%s  %-20s %s%s\n", m.AccountID, name, m.Role, marker)
 	}
 	return nil
 }
