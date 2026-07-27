@@ -9,6 +9,14 @@ class ISnapshotReader(ABC):
     @abstractmethod
     async def spotify_aggregate(self, room_token: str, device_id: str, since: date) -> dict: ...
 
+    @abstractmethod
+    async def hourly_activity(
+        self, room_token: str, device_id: str, tz_offset_min: int, tz_name: str = ""
+    ) -> list[int]: ...
+
+    @abstractmethod
+    async def room_screen_time(self, room_token: str, tz_offset_min: int, tz_name: str = "") -> list[dict]: ...
+
 
 class ISnapshotWriter(ABC):
     @abstractmethod

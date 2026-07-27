@@ -19,6 +19,14 @@ from app.modules.presence.application.commands.ingest_snapshot import (
     IngestPresenceSnapshot,
     IngestPresenceSnapshotUseCase,
 )
+from app.modules.presence.application.queries.get_hourly_activity import (
+    GetHourlyActivity,
+    GetHourlyActivityUseCase,
+)
+from app.modules.presence.application.queries.get_room_screen_time import (
+    GetRoomScreenTime,
+    GetRoomScreenTimeUseCase,
+)
 from app.modules.presence.application.queries.get_spotify_stats import GetSpotifyStats, GetSpotifyStatsUseCase
 from app.modules.presence.application.queries.get_summary import GetSummary, GetSummaryUseCase
 from app.modules.presence.infrastructure.readers import SnapshotReader
@@ -89,6 +97,8 @@ def build_container(pool: Pool) -> Container:
     snapshot_reader = SnapshotReader(pool, interval)
     bus.register(GetSummary, GetSummaryUseCase(snapshot_reader, membership_reader))
     bus.register(GetSpotifyStats, GetSpotifyStatsUseCase(snapshot_reader, membership_reader))
+    bus.register(GetHourlyActivity, GetHourlyActivityUseCase(snapshot_reader, membership_reader))
+    bus.register(GetRoomScreenTime, GetRoomScreenTimeUseCase(snapshot_reader, membership_reader))
 
     sampler = Sampler(SnapshotWriter(pool), interval)
     bus.register(IngestPresenceSnapshot, IngestPresenceSnapshotUseCase(hub, sampler))
