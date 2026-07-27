@@ -39,10 +39,10 @@ func TestOfflineMemberCardRenders(t *testing.T) {
 func TestPersonMenuHasNoKickOrSettings(t *testing.T) {
 	m := rosterModel("owner")
 	selectAccount(&m, "acc-bob")
-	if hasAction(m.personMenu(), "kick") || hasAction(m.personMenu(), "rename") || hasAction(m.personMenu(), "quit") {
+	if hasAction(m.personRows(), "kick") || hasAction(m.personRows(), "rename") || hasAction(m.personRows(), "quit") {
 		t.Fatal("person menu must only hold per-person actions (music/screen/message)")
 	}
-	if !hasAction(m.personMenu(), "message") {
+	if !hasAction(m.personRows(), "message") {
 		t.Fatal("person menu should offer Message for another member")
 	}
 }
@@ -95,7 +95,7 @@ func TestSettingsOpensAndRenames(t *testing.T) {
 	if m.mode != modeSettings {
 		t.Fatalf("s should open settings, mode=%v", m.mode)
 	}
-	items, _ := m.currentMenu()
+	items := m.menuRows()
 	for _, want := range []string{"update", "rename", "quit"} {
 		if !hasAction(items, want) {
 			t.Fatalf("settings should hold %q, got %v", want, items)
@@ -108,9 +108,9 @@ func TestSettingsOpensAndRenames(t *testing.T) {
 	}
 }
 
-func actionIndex(items []menuItem, action string) int {
-	for i, it := range items {
-		if it.action == action {
+func actionIndex(rows []menuRow, action string) int {
+	for i, r := range rows {
+		if r.id == action {
 			return i
 		}
 	}

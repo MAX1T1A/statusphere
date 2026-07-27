@@ -99,7 +99,8 @@ func TestPopupFloatsOverTheFrameWithoutResizingIt(t *testing.T) {
 	m := musicModel(t)
 	plainBefore := ansi.Strip(m.View())
 
-	m.mode = modeMusicPicks
+	m.mode = modeMenu
+	m.openSection = "music"
 	withPopup := ansi.Strip(m.View())
 
 	if len(strings.Split(plainBefore, "\n")) != len(strings.Split(withPopup, "\n")) {
@@ -109,7 +110,7 @@ func TestPopupFloatsOverTheFrameWithoutResizingIt(t *testing.T) {
 		t.Fatal("popup content missing")
 	}
 	last := strings.Split(withPopup, "\n")
-	if !strings.Contains(last[len(last)-1], "toggle") {
+	if !strings.Contains(last[len(last)-1], "esc") {
 		t.Fatalf("the footer must stay visible: %q", last[len(last)-1])
 	}
 }
