@@ -97,7 +97,6 @@ const (
 	modeMenu
 	modeSettings
 	modeView
-	modeMusicPicks
 	modeUpdate
 	modeDM
 	modeRename
@@ -154,66 +153,10 @@ const (
 	panelBoard
 )
 
-var panelViews = []menuItem{
-	{"chat", "Chat", "room messages"},
-	{"board", "Screen today", "who's been at the screen"},
-}
-
 type menuItem struct {
 	action string
 	label  string
 	desc   string
-}
-
-func (m model) personMenu() []menuItem {
-	music := menuItem{"music", "Music", "pick what to show"}
-	if m.expand != nil && m.expand.any(m.focusedDevice().String(presence.KeyAccountID), musicPieces) {
-		music.desc = "pick what to show · on"
-	}
-	items := []menuItem{
-		music,
-		{"screen", "Screen time", "app usage today"},
-	}
-	if m.focusedDevice().String(presence.KeySpotifyURI) != "" {
-		items = append(items, menuItem{"sync", "Play the same track", "open it in your spotify"})
-	}
-	if peer := m.focusedDevice().String(presence.KeyAccountID); peer != "" && peer != m.chat.localID {
-		items = append(items, menuItem{"message", "Message " + m.focusedName(), "direct message"})
-	}
-	return items
-}
-
-func (m model) settingsMenu() []menuItem {
-	update := menuItem{"update", "Check for updates", version.Current()}
-	switch m.updateStage {
-	case updateChecking:
-		update = menuItem{"update", "Checking for updates…", ""}
-	case updateAvailable:
-		if m.updateRel != nil {
-			update = menuItem{"update", "Update to " + m.updateRel.Version, "restart applies it"}
-		}
-	case updateInstalling:
-		update = menuItem{"update", "Downloading update…", ""}
-	case updateCurrent:
-		update = menuItem{"update", "Check for updates", "up to date · " + version.Current()}
-	case updateDone:
-		update = menuItem{"update", "Update installed", "restart to apply"}
-	}
-	return []menuItem{
-		update,
-		{"rename", "Rename device", ""},
-		{"quit", "Quit", ""},
-	}
-}
-
-func (m model) currentMenu() ([]menuItem, string) {
-	switch m.mode {
-	case modeSettings:
-		return m.settingsMenu(), "settings"
-	case modeView:
-		return panelViews, "panel"
-	}
-	return m.personMenu(), m.focusedName()
 }
 
 func (m model) isOwner() bool {
@@ -268,8 +211,8 @@ type model struct {
 	updateRel   *selfupdate.Release
 	updateErr   string
 
-	expand    *expandState
-	pickIndex int
+	expand      *expandState
+	openSection string
 }
 
 func (m model) selfPinned() bool {
@@ -346,9 +289,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeUpdate {
 			return m.updateModalKeys(msg)
 		}
-		if m.mode == modeMusicPicks {
-			return m.musicPickKeys(msg)
-		}
 		if m.mode == modeScreen {
 			return m.updateDetail(msg)
 		}
@@ -394,8 +334,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "1":
 			if m.hasSelectable() {
-				m.mode = modeMusicPicks
-				m.pickIndex = 0
+				m.mode = modeMenu
+				m.menuIndex = 0
+				m.openSection = "music"
 				m.tickID++
 				return m, musicTick(m.tickID)
 			}
@@ -438,7 +379,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateStage = updateDone
 		}
 	case tickMsg:
-		if m.mode == modeMusicPicks && msg.id == m.tickID {
+		if (m.mode == modeMenu || m.mode == modeNone) && msg.id == m.tickID && m.openSection != "" {
 			return m, musicTick(msg.id)
 		}
 	case tea.WindowSizeMsg:
@@ -478,17 +419,29 @@ func (m model) updateChatFocus(msg tea.KeyMsg) model {
 }
 
 func (m model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	rows := m.menuRows()
 	switch msg.String() {
 	case "esc", "q", "й":
 		m.mode = modeNone
+		m.openSection = ""
 	case "up", "k":
 		if m.menuIndex > 0 {
 			m.menuIndex--
 		}
 	case "down", "j":
-		items, _ := m.currentMenu()
-		if m.menuIndex < len(items)-1 {
+		if m.menuIndex < len(rows)-1 {
 			m.menuIndex++
+		}
+	case "right", "l":
+		if m.menuIndex < len(rows) && rows[m.menuIndex].kind == rowSection {
+			m.openSection = rows[m.menuIndex].id
+			m.tickID++
+			return m, musicTick(m.tickID)
+		}
+	case "left", "h":
+		if m.openSection != "" {
+			m.menuIndex = m.sectionIndex(m.openSection)
+			m.openSection = ""
 		}
 	case "enter", " ":
 		return m.runMenu()
@@ -496,13 +449,40 @@ func (m model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) sectionIndex(id string) int {
+	for i, r := range m.menuRows() {
+		if r.kind == rowSection && r.id == id {
+			return i
+		}
+	}
+	return 0
+}
+
 func (m model) runMenu() (tea.Model, tea.Cmd) {
-	items, _ := m.currentMenu()
-	if m.menuIndex < 0 || m.menuIndex >= len(items) {
+	rows := m.menuRows()
+	if m.menuIndex < 0 || m.menuIndex >= len(rows) {
 		return m, nil
 	}
+	row := rows[m.menuIndex]
+
+	switch row.kind {
+	case rowSection:
+		if m.openSection == row.id {
+			m.openSection = ""
+		} else {
+			m.openSection = row.id
+		}
+		m.tickID++
+		return m, musicTick(m.tickID)
+	case rowCheck:
+		if account := m.focusedDevice().String(presence.KeyAccountID); account != "" {
+			m.expand.toggle(account, row.id)
+		}
+		return m, nil
+	}
+
 	if m.mode == modeView {
-		switch items[m.menuIndex].action {
+		switch row.id {
 		case "chat":
 			m.panel = panelChat
 			m.chat.MarkGroupRead()
@@ -513,12 +493,8 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 		m.mode = modeNone
 		return m, nil
 	}
-	switch items[m.menuIndex].action {
-	case "music":
-		m.mode = modeMusicPicks
-		m.pickIndex = 0
-		m.tickID++
-		return m, musicTick(m.tickID)
+
+	switch row.id {
 	case "screen":
 		m.mode = modeScreen
 	case "sync":
@@ -553,53 +529,6 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	return m, nil
-}
-
-func (m model) musicPickKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q", "й":
-		m.mode = modeNone
-	case "left", "backspace":
-		m.mode = modeMenu
-		m.menuIndex = 0
-	case "up", "k":
-		if m.pickIndex > 0 {
-			m.pickIndex--
-		}
-	case "down", "j":
-		if m.pickIndex < len(musicPieces)-1 {
-			m.pickIndex++
-		}
-	case "enter", " ":
-		if account := m.focusedDevice().String(presence.KeyAccountID); account != "" &&
-			m.pickIndex >= 0 && m.pickIndex < len(musicPieces) {
-			m.expand.toggle(account, musicPieces[m.pickIndex].id)
-		}
-	}
-	return m, nil
-}
-
-func (m model) musicPickPopup(width int) string {
-	account := m.focusedDevice().String(presence.KeyAccountID)
-	inner := max(min(width-8, 50), 24)
-	textW := max(inner-popupBox.GetHorizontalPadding(), 12)
-
-	rows := []string{modalTitle.Render("music") + dimStyle.Render(" · "+m.focusedName()), ""}
-	for i, p := range musicPieces {
-		cursor := "  "
-		label := dimStyle.Render(p.label)
-		if i == m.pickIndex {
-			cursor = accentStyle.Render("▸ ")
-			label = accentStyle.Render(p.label)
-		}
-		row := cursor + checkbox(m.expand.enabled(account, p.id)) + label
-		if p.desc != "" {
-			row += dimStyle.Render("  " + p.desc)
-		}
-		rows = append(rows, ansi.Truncate(row, textW, "…"))
-	}
-
-	return popupBox.Width(inner).Render(strings.Join(rows, "\n"))
 }
 
 func (m model) updateModalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -825,8 +754,6 @@ func titleBar(width int, updateReady string) string {
 
 func (m model) View() string {
 	switch m.mode {
-	case modeMenu, modeSettings, modeView:
-		return m.menuModal()
 	case modeUpdate:
 		return m.updateModal()
 	case modeRename:
@@ -864,11 +791,14 @@ func (m model) View() string {
 		body = lipgloss.JoinHorizontal(lipgloss.Top, cardsCol, " ", m.sidePanel(chatW, avail))
 	}
 
-	if m.mode == modeMusicPicks {
-		popup := m.musicPickPopup(cardsW)
-		col := max(cardsW-lipgloss.Width(popup)-2, 2)
-		body = overlay(body, popup, selBottom, col)
+	if m.mode == modeMenu || m.mode == modeSettings || m.mode == modeView {
+		popup := m.menuPopup(width, m.height)
+		bodyH := strings.Count(body, "\n") + 1
+		row := max((bodyH-lipgloss.Height(popup))/2, 0)
+		col := max((width-lipgloss.Width(popup))/2, 0)
+		body = overlay(body, popup, row, col)
 	}
+	_ = selBottom
 	return head + "\n\n" + body + "\n\n" + footer
 }
 
@@ -1126,46 +1056,6 @@ func (m model) focusedName() string {
 	return "device"
 }
 
-func (m model) menuModal() string {
-	w, h := m.width, m.height
-	if w == 0 {
-		w = 80
-	}
-	if h == 0 {
-		h = 24
-	}
-
-	boxW := clampBox(w/3, 46, w)
-
-	items, title := m.currentMenu()
-	var rows []string
-	for i, it := range items {
-		cursor := "  "
-		label := dimStyle.Render(it.label)
-		if i == m.menuIndex {
-			cursor = accentStyle.Render("▸ ")
-			label = accentStyle.Render(it.label)
-		}
-		row := cursor + label
-		if it.desc != "" {
-			row += dimStyle.Render("   " + it.desc)
-		}
-		rows = append(rows, ansi.Truncate(row, max(boxW-modalPad, 4), "…"))
-	}
-
-	head := modalTitle.Render("menu") + dimStyle.Render(" · "+title)
-	switch m.mode {
-	case modeSettings:
-		head = modalTitle.Render("settings")
-	case modeView:
-		head = modalTitle.Render("panel") + dimStyle.Render(" · right side")
-	}
-	body := head + "\n\n" +
-		strings.Join(rows, "\n") + "\n\n" +
-		dimStyle.Render("↑↓ select · enter · esc")
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(body))
-}
-
 func (m model) detailModal(kind, body string) string {
 	w, h := m.width, m.height
 	if w == 0 {
@@ -1356,9 +1246,8 @@ func (m model) nameFor(accountID string) string {
 }
 
 func (m model) footer() string {
-	if m.mode == modeMusicPicks {
-		return dimStyle.Render("↑↓ pick · ") + accentStyle.Render("enter") + dimStyle.Render(" toggle · ") +
-			accentStyle.Render("←") + dimStyle.Render(" menu · ") + accentStyle.Render("esc") + dimStyle.Render(" close")
+	if m.mode == modeMenu || m.mode == modeSettings || m.mode == modeView {
+		return m.menuFooter()
 	}
 	if m.focus == focusChat {
 		return accentStyle.Render("enter") + dimStyle.Render(" send · ") +

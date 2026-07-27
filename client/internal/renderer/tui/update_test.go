@@ -53,23 +53,23 @@ func TestSettingsUpdateEntryReflectsState(t *testing.T) {
 	stubVersion(t, "v0.3.0")
 	m := chatModel()
 
-	if got := m.settingsMenu()[0].label; got != "Check for updates" {
+	if got := m.settingsRows()[0].label; got != "Check for updates" {
 		t.Fatalf("idle label = %q", got)
 	}
 
 	m.updateStage = updateAvailable
 	m.updateRel = &selfupdate.Release{Version: "v0.4.0"}
-	if got := m.settingsMenu()[0].label; got != "Update to v0.4.0" {
+	if got := m.settingsRows()[0].label; got != "Update to v0.4.0" {
 		t.Fatalf("available label = %q", got)
 	}
 
 	m.updateStage = updateCurrent
-	if got := m.settingsMenu()[0].desc; !strings.Contains(got, "up to date") {
+	if got := m.settingsRows()[0].desc; !strings.Contains(got, "up to date") {
 		t.Fatalf("up-to-date desc = %q", got)
 	}
 
 	m.updateStage = updateDone
-	if got := m.settingsMenu()[0].label; got != "Update installed" {
+	if got := m.settingsRows()[0].label; got != "Update installed" {
 		t.Fatalf("done label = %q", got)
 	}
 }
@@ -175,7 +175,7 @@ func TestNoSecondInstallWhileOneIsRunning(t *testing.T) {
 	next, _ = m.updateModalKeys(key("esc"))
 	m = next.(model)
 	m.mode = modeSettings
-	m.menuIndex = actionIndex(m.settingsMenu(), "update")
+	m.menuIndex = actionIndex(m.settingsRows(), "update")
 	next, cmd = m.runMenu()
 	m = next.(model)
 	if cmd != nil {
@@ -184,7 +184,7 @@ func TestNoSecondInstallWhileOneIsRunning(t *testing.T) {
 	if m.updateStage != updateInstalling {
 		t.Fatalf("stage should stay installing, got %v", m.updateStage)
 	}
-	if got := m.settingsMenu()[0].label; got != "Downloading update…" {
+	if got := m.settingsRows()[0].label; got != "Downloading update…" {
 		t.Fatalf("settings should show the in-flight state, got %q", got)
 	}
 }

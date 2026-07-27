@@ -89,70 +89,71 @@ func TestPicksSurviveRestart(t *testing.T) {
 	}
 }
 
-func TestEnterOnMusicOpensThePopupNotAModal(t *testing.T) {
-	m := musicModel(t)
-	m = send(m, key("enter"))
-	if m.mode != modeMenu {
-		t.Fatalf("enter should open the person menu, got %v", m.mode)
-	}
-	m.menuIndex = actionIndex(m.personMenu(), "music")
-	next, _ := m.runMenu()
-	m = next.(model)
-	if m.mode != modeMusicPicks {
-		t.Fatalf("Music should open the picker, got %v", m.mode)
-	}
-
-	view := m.View()
-	if !strings.Contains(view, "Album art") || !strings.Contains(view, "[ ]") {
-		t.Fatalf("popup should list checkboxes:\n%s", view)
-	}
-	if !strings.Contains(view, "Bob") || !strings.Contains(view, "group chat") {
-		t.Fatal("the popup must sit on the main screen, not replace it")
-	}
-}
-
-func TestPopupTogglesAndClosesBackToRoom(t *testing.T) {
-	m := musicModel(t)
-	m.mode = modeMusicPicks
-	m.pickIndex = actionIndexPiece("progress")
-
-	next, _ := m.musicPickKeys(key("enter"))
-	m = next.(model)
-	if !m.expand.enabled("acc-bob", "progress") {
-		t.Fatal("enter should tick the highlighted piece")
-	}
-	next, _ = m.musicPickKeys(key("enter"))
-	m = next.(model)
-	if m.expand.enabled("acc-bob", "progress") {
-		t.Fatal("enter again should untick it")
-	}
-
-	next, _ = m.musicPickKeys(key("esc"))
-	if next.(model).mode != modeNone {
-		t.Fatal("esc should return to the room")
-	}
-}
-
-func TestPopupNavigationStaysInRange(t *testing.T) {
-	m := musicModel(t)
-	m.mode = modeMusicPicks
-	m.pickIndex = 0
-	next, _ := m.musicPickKeys(key("up"))
-	if next.(model).pickIndex != 0 {
-		t.Fatal("up at the top should stay")
-	}
-	m.pickIndex = len(musicPieces) - 1
-	next, _ = m.musicPickKeys(key("down"))
-	if next.(model).pickIndex != len(musicPieces)-1 {
-		t.Fatal("down at the bottom should stay")
-	}
-}
-
-func actionIndexPiece(id string) int {
-	for i, p := range musicPieces {
-		if p.id == id {
+func pieceRowIndex(rows []menuRow, id string) int {
+	for i, r := range rows {
+		if r.kind == rowCheck && r.id == id {
 			return i
 		}
 	}
-	return 0
+	return -1
+}
+
+func TestMusicSectionExpandsInsideTheMenu(t *testing.T) {
+	m := musicModel(t)
+	m = send(m, key("enter"))
+	if m.mode != modeMenu {
+		t.Fatalf("enter should open the menu, got %v", m.mode)
+	}
+	rows := m.menuRows()
+	if rows[0].kind != rowSection || rows[0].id != "music" {
+		t.Fatalf("Music should be a collapsible section: %+v", rows[0])
+	}
+	if pieceRowIndex(rows, "lyrics") != -1 {
+		t.Fatal("a collapsed section must not list its checkboxes")
+	}
+
+	m.menuIndex = 0
+	m = send(m, key("right"))
+	rows = m.menuRows()
+	if pieceRowIndex(rows, "lyrics") == -1 {
+		t.Fatal("right arrow should unfold the checkboxes under the heading")
+	}
+
+	m = send(m, key("left"))
+	if pieceRowIndex(m.menuRows(), "lyrics") != -1 {
+		t.Fatal("left arrow should fold it back")
+	}
+}
+
+func TestTogglingACheckboxRowFromTheMenu(t *testing.T) {
+	m := musicModel(t)
+	m.mode = modeMenu
+	m.openSection = "music"
+	m.menuIndex = pieceRowIndex(m.menuRows(), "progress")
+
+	m = send(m, key("enter"))
+	if !m.expand.enabled("acc-bob", "progress") {
+		t.Fatal("enter on a checkbox row should tick it")
+	}
+	m = send(m, key("enter"))
+	if m.expand.enabled("acc-bob", "progress") {
+		t.Fatal("enter again should untick it")
+	}
+}
+
+func TestMenuIsACenteredPopupOverTheRoom(t *testing.T) {
+	m := musicModel(t)
+	plain := len(strings.Split(m.View(), "\n"))
+
+	m.mode = modeMenu
+	m.openSection = "music"
+	withMenu := m.View()
+	if len(strings.Split(withMenu, "\n")) != plain {
+		t.Fatal("the menu popup must not resize the frame")
+	}
+	for _, want := range []string{"Album art", "Bob", "group chat"} {
+		if !strings.Contains(withMenu, want) {
+			t.Fatalf("expected %q to be visible with the menu open:\n%s", want, withMenu)
+		}
+	}
 }

@@ -84,12 +84,12 @@ func musicExpansion(d presence.Snapshot, account string, e *expandState, ctx mus
 		}
 	}
 
-	for _, block := range extras {
-		if len(body) > 0 {
-			body = append(body, "")
-		}
-		body = append(body, block...)
+	blocks := [][]string{}
+	if len(body) > 0 {
+		blocks = append(blocks, body)
 	}
+	blocks = append(blocks, extras...)
+	body = packColumns(blocks, inner, 4)
 
 	if len(body) == 0 {
 		return nil
@@ -100,6 +100,81 @@ func musicExpansion(d presence.Snapshot, account string, e *expandState, ctx mus
 	}
 	panel := musicPanelBorder.Width(inner).Render(strings.Join(body, "\n"))
 	return indentLines(strings.Split(panel, "\n"), 2)
+}
+
+func packColumns(blocks [][]string, width, gap int) []string {
+	var out []string
+	var row [][]string
+	rowW := 0
+
+	rowHeight := func() int {
+		h := 0
+		for _, c := range row {
+			h = max(h, len(c))
+		}
+		return h
+	}
+	rowWidth := func() int {
+		w := 0
+		for i, c := range row {
+			if i > 0 {
+				w += gap
+			}
+			w += linesWidth(c)
+		}
+		return w
+	}
+	flush := func() {
+		if len(row) == 0 {
+			return
+		}
+		if len(out) > 0 {
+			out = append(out, "")
+		}
+		merged := row[0]
+		for _, next := range row[1:] {
+			merged = strings.Split(zipColumns(merged, next, gap), "\n")
+		}
+		out = append(out, merged...)
+		row, rowW = nil, 0
+	}
+
+	for _, b := range blocks {
+		if len(b) == 0 {
+			continue
+		}
+		w := linesWidth(b)
+
+		if len(row) == 0 {
+			row, rowW = [][]string{b}, w
+			continue
+		}
+
+		stacked := false
+		for i, c := range row {
+			colW := linesWidth(c)
+			grow := max(w-colW, 0)
+			if len(c)+1+len(b) <= rowHeight() && rowW+grow <= width {
+				row[i] = append(append(append([]string{}, c...), ""), b...)
+				rowW = rowWidth()
+				stacked = true
+				break
+			}
+		}
+		if stacked {
+			continue
+		}
+
+		if rowW+gap+w <= width {
+			row = append(row, b)
+			rowW = rowWidth()
+			continue
+		}
+		flush()
+		row, rowW = [][]string{b}, w
+	}
+	flush()
+	return out
 }
 
 func joinSideBySide(left, right []string, width int) []string {
