@@ -61,12 +61,12 @@ func TestMenuIncludesMessageForOtherNotSelf(t *testing.T) {
 	m := chatModel()
 
 	selectAccount(&m, "acc-bob")
-	if !hasAction(m.menu(), "message") {
+	if !hasAction(m.personMenu(), "message") {
 		t.Fatal("expected Message item when focused on another account")
 	}
 
 	selectAccount(&m, meAccount)
-	if hasAction(m.menu(), "message") {
+	if hasAction(m.personMenu(), "message") {
 		t.Fatal("Message item must be hidden when focused on self")
 	}
 }

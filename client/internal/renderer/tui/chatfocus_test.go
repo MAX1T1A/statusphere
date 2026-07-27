@@ -9,11 +9,15 @@ import (
 
 type sentMsg struct{ to, text string }
 
-type recordingCtrl struct{ sent []sentMsg }
+type recordingCtrl struct {
+	sent   []sentMsg
+	kicked []string
+	rendev []string
+}
 
 func (c *recordingCtrl) SendMessage(to, text string) { c.sent = append(c.sent, sentMsg{to, text}) }
-func (c *recordingCtrl) Kick(string)                 {}
-func (c *recordingCtrl) Rename(string)               {}
+func (c *recordingCtrl) Kick(id string)              { c.kicked = append(c.kicked, id) }
+func (c *recordingCtrl) Rename(n string)             { c.rendev = append(c.rendev, n) }
 func (c *recordingCtrl) SyncSpotify(string)          {}
 func (c *recordingCtrl) SyncCustom([]string)         {}
 

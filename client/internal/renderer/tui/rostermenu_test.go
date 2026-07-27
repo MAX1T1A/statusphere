@@ -36,36 +36,90 @@ func TestOfflineMemberCardRenders(t *testing.T) {
 	}
 }
 
-func TestOwnerSeesKickForMemberOnly(t *testing.T) {
+func TestPersonMenuHasNoKickOrSettings(t *testing.T) {
 	m := rosterModel("owner")
-
-	selectAccount(&m, "acc-bob") // another member
-	if !hasAction(m.menu(), "kick") {
-		t.Fatal("owner should see Remove for a member")
+	selectAccount(&m, "acc-bob")
+	if hasAction(m.personMenu(), "kick") || hasAction(m.personMenu(), "rename") || hasAction(m.personMenu(), "quit") {
+		t.Fatal("person menu must only hold per-person actions (music/screen/message)")
 	}
-	if !hasAction(m.menu(), "message") {
-		t.Fatal("owner should also see Message for a member")
-	}
-
-	selectAccount(&m, meAccount) // self
-	if hasAction(m.menu(), "kick") || hasAction(m.menu(), "message") {
-		t.Fatal("no kick/message on your own card")
-	}
-
-	selectAccount(&m, "acc-ann") // offline member is still kickable
-	if !hasAction(m.menu(), "kick") {
-		t.Fatal("owner should be able to remove an offline member")
+	if !hasAction(m.personMenu(), "message") {
+		t.Fatal("person menu should offer Message for another member")
 	}
 }
 
-func TestNonOwnerNeverSeesKick(t *testing.T) {
-	m := rosterModel("member") // I am not the owner
+func TestOwnerKicksWithXAndConfirm(t *testing.T) {
+	ctrl := &recordingCtrl{}
+	m := rosterModel("owner")
+	m.ctrl = ctrl
 	selectAccount(&m, "acc-bob")
-	if hasAction(m.menu(), "kick") {
-		t.Fatal("a non-owner must never see Remove from room")
+
+	m = send(m, key("x"))
+	if m.confirmKick != "acc-bob" {
+		t.Fatalf("x should arm a kick confirmation, got %q", m.confirmKick)
 	}
-	if !hasAction(m.menu(), "message") {
-		t.Fatal("a non-owner should still be able to DM a member")
+	m = send(m, key("y"))
+	if len(ctrl.kicked) != 1 || ctrl.kicked[0] != "acc-bob" {
+		t.Fatalf("y should confirm the kick, got %v", ctrl.kicked)
+	}
+	if m.confirmKick != "" {
+		t.Fatal("confirmation should clear after y")
+	}
+}
+
+func TestKickConfirmCancels(t *testing.T) {
+	ctrl := &recordingCtrl{}
+	m := rosterModel("owner")
+	m.ctrl = ctrl
+	selectAccount(&m, "acc-bob")
+	m = send(m, key("x"))
+	m = send(m, key("n"))
+	if len(ctrl.kicked) != 0 || m.confirmKick != "" {
+		t.Fatalf("n should cancel the kick, kicked=%v confirm=%q", ctrl.kicked, m.confirmKick)
+	}
+}
+
+func TestNonOwnerCannotKick(t *testing.T) {
+	ctrl := &recordingCtrl{}
+	m := rosterModel("member") // not the owner
+	m.ctrl = ctrl
+	selectAccount(&m, "acc-bob")
+	m = send(m, key("x"))
+	if m.confirmKick != "" {
+		t.Fatal("a non-owner pressing x must not arm a kick")
+	}
+}
+
+func TestSettingsOpensAndRenames(t *testing.T) {
+	m := rosterModel("member")
+	m = send(m, key("s"))
+	if m.mode != modeSettings {
+		t.Fatalf("s should open settings, mode=%v", m.mode)
+	}
+	items, _ := m.currentMenu()
+	if !hasAction(items, "rename") || !hasAction(items, "quit") {
+		t.Fatalf("settings should hold rename + quit, got %v", items)
+	}
+	// rename is the first item; enter opens the rename input
+	m.menuIndex = 0
+	next, _ := m.runMenu()
+	if next.(model).mode != modeRename {
+		t.Fatal("selecting Rename device should open the rename input")
+	}
+}
+
+func TestSelfCardNotSelectable(t *testing.T) {
+	m := rosterModel("owner") // groups: [me(self), bob, ann]
+	// selection starts at the first non-self member and up-arrow cannot reach self
+	m.clampSelection()
+	if m.selected != 1 {
+		t.Fatalf("selection should skip the pinned self card, got %d", m.selected)
+	}
+	m = send(m, key("up"))
+	if m.selected == 0 {
+		t.Fatal("up must not land on your own (static) card")
+	}
+	if m.focusedDevice().String(presence.KeyAccountID) == meAccount {
+		t.Fatal("your own card must never be the focused/selected member")
 	}
 }
 

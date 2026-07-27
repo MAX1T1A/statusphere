@@ -84,6 +84,7 @@ type inputMode int
 const (
 	modeNone inputMode = iota
 	modeMenu
+	modeSettings
 	modeDM
 	modeRename
 	modeMusic
@@ -103,23 +104,32 @@ type menuItem struct {
 	desc   string
 }
 
-func (m model) menu() []menuItem {
+// personMenu is the action menu for the focused OTHER member (your own card is
+// a static block and never opens a menu).
+func (m model) personMenu() []menuItem {
 	items := []menuItem{
 		{"music", "Music", "now playing + weekly"},
 		{"screen", "Screen time", "app usage today"},
 	}
-	focused := m.focusedDevice()
-	if peer := focused.String(presence.KeyAccountID); peer != "" && peer != m.chat.localID {
+	if peer := m.focusedDevice().String(presence.KeyAccountID); peer != "" && peer != m.chat.localID {
 		items = append(items, menuItem{"message", "Message " + m.focusedName(), "direct message"})
-		if m.isOwner() && focused.String(presence.KeyRole) != "owner" {
-			items = append(items, menuItem{"kick", "Remove from room", ""})
-		}
 	}
-	items = append(items,
-		menuItem{"rename", "Rename device", ""},
-		menuItem{"quit", "Quit", ""},
-	)
 	return items
+}
+
+// settingsMenu holds your own account/app settings, opened from the main screen.
+func (m model) settingsMenu() []menuItem {
+	return []menuItem{
+		{"rename", "Rename device", ""},
+		{"quit", "Quit", ""},
+	}
+}
+
+func (m model) currentMenu() ([]menuItem, string) {
+	if m.mode == modeSettings {
+		return m.settingsMenu(), "settings"
+	}
+	return m.personMenu(), m.focusedName()
 }
 
 func (m model) isOwner() bool {
@@ -156,14 +166,42 @@ type model struct {
 	width     int
 	height    int
 
-	mode       inputMode
-	focus      focusArea
-	input      string
-	chatInput  string
-	ctrl       Controller
-	localID    string
-	dmPeer     string
-	dmPeerName string
+	mode        inputMode
+	focus       focusArea
+	input       string
+	chatInput   string
+	ctrl        Controller
+	localID     string
+	dmPeer      string
+	dmPeerName  string
+	confirmKick string
+}
+
+// selfPinned reports whether the first card is your own (static, unselectable) block.
+func (m model) selfPinned() bool {
+	return len(m.groups) > 0 && m.groups[0].key == m.chat.localID
+}
+
+// minSelectable is the lowest selectable card index; your own pinned card is skipped.
+func (m model) minSelectable() int {
+	if m.selfPinned() {
+		return 1
+	}
+	return 0
+}
+
+func (m *model) clampSelection() {
+	if max := len(m.groups) - 1; m.selected > max {
+		m.selected = max
+	}
+	if m.selected < m.minSelectable() {
+		m.selected = m.minSelectable()
+	}
+}
+
+// hasSelectable reports whether there is at least one selectable (non-self) member.
+func (m model) hasSelectable() bool {
+	return len(m.groups) > m.minSelectable()
 }
 
 func groupDevices(snaps []presence.Snapshot, selfAccount string) []deviceGroup {
@@ -211,7 +249,7 @@ func (m model) Init() tea.Cmd { return nil }
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if m.mode == modeMenu {
+		if m.mode == modeMenu || m.mode == modeSettings {
 			return m.updateMenu(msg)
 		}
 		if m.mode == modeMusic || m.mode == modeScreen {
@@ -228,6 +266,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateChatFocus(msg), nil
 		}
 
+		// a pending "remove member" confirmation intercepts the next keypress
+		if m.confirmKick != "" {
+			if msg.String() == "y" || msg.String() == "н" {
+				m.ctrl.Kick(m.confirmKick)
+			}
+			m.confirmKick = ""
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "q", "й":
 			return m, tea.Quit
@@ -235,7 +282,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focus = focusChat
 			m.chat.MarkGroupRead()
 		case "up", "k":
-			if m.selected > 0 {
+			if m.selected > m.minSelectable() {
 				m.selected--
 			}
 		case "down", "j":
@@ -243,23 +290,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selected++
 			}
 		case "enter", " ":
-			if len(m.groups) > 0 {
+			if m.hasSelectable() {
 				m.mode = modeMenu
 				m.menuIndex = 0
 			}
 		case "1":
-			if len(m.groups) > 0 {
+			if m.hasSelectable() {
 				m.mode = modeMusic
 				m.tickID++
 				return m, musicTick(m.tickID)
 			}
 		case "2":
-			if len(m.groups) > 0 {
+			if m.hasSelectable() {
 				m.mode = modeScreen
 			}
-		case "d", "в":
-			m.mode = modeRename
-			m.input = ""
+		case "s", "ы":
+			m.mode = modeSettings
+			m.menuIndex = 0
+		case "x", "ч":
+			if m.isOwner() {
+				if peer := m.focusedDevice().String(presence.KeyAccountID); peer != "" &&
+					peer != m.chat.localID && m.focusedDevice().String(presence.KeyRole) != "owner" {
+					m.confirmKick = peer
+				}
+			}
 		}
 	case tickMsg:
 		if m.mode == modeMusic && msg.id == m.tickID {
@@ -270,12 +324,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case FeedMsg:
 		m.groups = groupDevices(msg, m.chat.localID)
-		if m.selected >= len(m.groups) {
-			m.selected = len(m.groups) - 1
-		}
-		if m.selected < 0 {
-			m.selected = 0
-		}
+		m.clampSelection()
 		if m.mode == modeDM {
 			m.chat.MarkDMRead(m.dmPeer)
 		} else if m.mode == modeNone && m.focus == focusChat {
@@ -315,7 +364,8 @@ func (m model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.menuIndex--
 		}
 	case "down", "j":
-		if m.menuIndex < len(m.menu())-1 {
+		items, _ := m.currentMenu()
+		if m.menuIndex < len(items)-1 {
 			m.menuIndex++
 		}
 	case "enter", " ":
@@ -325,11 +375,11 @@ func (m model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) runMenu() (tea.Model, tea.Cmd) {
-	menu := m.menu()
-	if m.menuIndex < 0 || m.menuIndex >= len(menu) {
+	items, _ := m.currentMenu()
+	if m.menuIndex < 0 || m.menuIndex >= len(items) {
 		return m, nil
 	}
-	switch menu[m.menuIndex].action {
+	switch items[m.menuIndex].action {
 	case "music":
 		m.mode = modeMusic
 		m.tickID++
@@ -342,11 +392,6 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 		m.dmPeer = m.focusedDevice().String(presence.KeyAccountID)
 		m.dmPeerName = m.focusedName()
 		m.chat.MarkDMRead(m.dmPeer)
-	case "kick":
-		if peer := m.focusedDevice().String(presence.KeyAccountID); peer != "" {
-			m.ctrl.Kick(peer)
-		}
-		m.mode = modeNone
 	case "rename":
 		m.mode = modeRename
 		m.input = ""
@@ -540,7 +585,7 @@ func title() string {
 
 func (m model) View() string {
 	switch m.mode {
-	case modeMenu:
+	case modeMenu, modeSettings:
 		return m.menuModal()
 	case modeRename:
 		return m.renameModal()
@@ -587,18 +632,16 @@ func (m model) renderCards(width, avail int) string {
 	if len(m.groups) == 0 {
 		return dimStyle.Render("waiting for devices…")
 	}
-	// pin your own card at the top with a divider before the other members
-	if m.groups[0].key == m.chat.localID {
-		selfFocused := m.selected == 0 && m.focus == focusCards
-		self := renderCard(m.groups[0], m.blocks, m.custom, selfFocused, width, false)
-		divider := roomDivider(width)
+	// your own card is a static block pinned at the top (never selectable),
+	// with a divider before the list of other members
+	if m.selfPinned() {
+		self := renderCard(m.groups[0], m.blocks, m.custom, false, width, false)
 		used := strings.Count(self, "\n") + 1 + 1
 		others := m.scrollCards(m.groups[1:], width, max(avail-used, 3), m.selected-1)
-		out := self + "\n" + divider
-		if others != "" {
-			out += "\n" + others
+		if others == "" {
+			return self
 		}
-		return out
+		return self + "\n" + roomDivider(width) + "\n" + others
 	}
 	return m.scrollCards(m.groups, width, avail, m.selected)
 }
@@ -741,8 +784,9 @@ func (m model) menuModal() string {
 
 	boxW := clampBox(w/3, 46, w)
 
+	items, title := m.currentMenu()
 	var rows []string
-	for i, it := range m.menu() {
+	for i, it := range items {
 		cursor := "  "
 		label := dimStyle.Render(it.label)
 		if i == m.menuIndex {
@@ -756,7 +800,13 @@ func (m model) menuModal() string {
 		rows = append(rows, ansi.Truncate(row, max(boxW-modalPad, 4), "…"))
 	}
 
-	body := modalTitle.Render("menu") + dimStyle.Render(" · "+m.focusedName()) + "\n\n" +
+	head := modalTitle.Render("menu")
+	if m.mode == modeSettings {
+		head = modalTitle.Render("settings")
+	} else {
+		head += dimStyle.Render(" · " + title)
+	}
+	body := head + "\n\n" +
 		strings.Join(rows, "\n") + "\n\n" +
 		dimStyle.Render("↑↓ select · enter · esc")
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(body))
@@ -901,8 +951,20 @@ func (m model) footer() string {
 		return accentStyle.Render("enter") + dimStyle.Render(" send · ") +
 			accentStyle.Render("tab") + dimStyle.Render("/") + accentStyle.Render("esc") + dimStyle.Render(" cards")
 	}
+	if m.confirmKick != "" {
+		name := m.nameFor(m.confirmKick)
+		if name == "" {
+			name = "member"
+		}
+		return dmDotStyle.Render("remove "+name+"?") + dimStyle.Render(" ") +
+			accentStyle.Render("y") + dimStyle.Render(" / ") + accentStyle.Render("n")
+	}
 	hint := dimStyle.Render("↑↓ select · ") + accentStyle.Render("enter") + dimStyle.Render(" menu · ") +
-		accentStyle.Render("tab") + dimStyle.Render(" chat · ")
+		accentStyle.Render("tab") + dimStyle.Render(" chat · ") + accentStyle.Render("s") + dimStyle.Render(" settings · ")
+	if peer := m.focusedDevice(); m.isOwner() && peer.String(presence.KeyRole) != "owner" &&
+		peer.String(presence.KeyAccountID) != "" && peer.String(presence.KeyAccountID) != m.chat.localID {
+		hint += accentStyle.Render("x") + dimStyle.Render(" remove · ")
+	}
 	if n := m.chat.TotalDMUnread(); n > 0 {
 		hint += dmDotStyle.Render(fmt.Sprintf("● %d dm", n)) + dimStyle.Render(" · ")
 	}
