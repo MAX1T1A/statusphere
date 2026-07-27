@@ -92,10 +92,10 @@ const (
 	modeMenu
 	modeSettings
 	modeView
+	modeMusicPicks
 	modeUpdate
 	modeDM
 	modeRename
-	modeMusic
 	modeScreen
 )
 
@@ -161,9 +161,16 @@ type menuItem struct {
 }
 
 func (m model) personMenu() []menuItem {
+	music := menuItem{"music", "Music", "pick what to show"}
+	if m.expand != nil && m.expand.any(m.focusedDevice().String(presence.KeyAccountID), musicPieces) {
+		music.desc = "pick what to show · on"
+	}
 	items := []menuItem{
-		{"music", "Music", "now playing + weekly"},
+		music,
 		{"screen", "Screen time", "app usage today"},
+	}
+	if m.focusedDevice().String(presence.KeySpotifyURI) != "" {
+		items = append(items, menuItem{"sync", "Play the same track", "open it in your spotify"})
 	}
 	if peer := m.focusedDevice().String(presence.KeyAccountID); peer != "" && peer != m.chat.localID {
 		items = append(items, menuItem{"message", "Message " + m.focusedName(), "direct message"})
@@ -255,6 +262,9 @@ type model struct {
 	updateStage updateStage
 	updateRel   *selfupdate.Release
 	updateErr   string
+
+	expand    *expandState
+	pickIndex int
 }
 
 func (m model) selfPinned() bool {
@@ -331,7 +341,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeUpdate {
 			return m.updateModalKeys(msg)
 		}
-		if m.mode == modeMusic || m.mode == modeScreen {
+		if m.mode == modeMusicPicks {
+			return m.musicPickKeys(msg)
+		}
+		if m.mode == modeScreen {
 			return m.updateDetail(msg)
 		}
 		if m.mode != modeNone {
@@ -376,7 +389,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "1":
 			if m.hasSelectable() {
-				m.mode = modeMusic
+				m.mode = modeMusicPicks
+				m.pickIndex = 0
 				m.tickID++
 				return m, musicTick(m.tickID)
 			}
@@ -419,7 +433,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateStage = updateDone
 		}
 	case tickMsg:
-		if m.mode == modeMusic && msg.id == m.tickID {
+		if m.mode == modeMusicPicks && msg.id == m.tickID {
 			return m, musicTick(msg.id)
 		}
 	case tea.WindowSizeMsg:
@@ -496,11 +510,15 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 	}
 	switch items[m.menuIndex].action {
 	case "music":
-		m.mode = modeMusic
+		m.mode = modeMusicPicks
+		m.pickIndex = 0
 		m.tickID++
 		return m, musicTick(m.tickID)
 	case "screen":
 		m.mode = modeScreen
+	case "sync":
+		m.syncFocused()
+		m.mode = modeNone
 	case "message":
 		m.mode = modeDM
 		m.input = ""
@@ -530,6 +548,54 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	return m, nil
+}
+
+func (m model) musicPickKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q", "й":
+		m.mode = modeNone
+	case "left", "backspace":
+		m.mode = modeMenu
+		m.menuIndex = 0
+	case "up", "k":
+		if m.pickIndex > 0 {
+			m.pickIndex--
+		}
+	case "down", "j":
+		if m.pickIndex < len(musicPieces)-1 {
+			m.pickIndex++
+		}
+	case "enter", " ":
+		if account := m.focusedDevice().String(presence.KeyAccountID); account != "" &&
+			m.pickIndex >= 0 && m.pickIndex < len(musicPieces) {
+			m.expand.toggle(account, musicPieces[m.pickIndex].id)
+		}
+	}
+	return m, nil
+}
+
+func (m model) musicPickPopup(width int) []string {
+	account := m.focusedDevice().String(presence.KeyAccountID)
+	inner := max(min(width-6, 48), 24)
+	textW := max(inner-chatPanelBorderFocused.GetHorizontalPadding(), 12)
+
+	rows := []string{modalTitle.Render("music") + dimStyle.Render(" · "+m.focusedName()), ""}
+	for i, p := range musicPieces {
+		cursor := "  "
+		label := dimStyle.Render(p.label)
+		if i == m.pickIndex {
+			cursor = accentStyle.Render("▸ ")
+			label = accentStyle.Render(p.label)
+		}
+		row := cursor + checkbox(m.expand.enabled(account, p.id)) + label
+		if p.desc != "" {
+			row += dimStyle.Render("  " + p.desc)
+		}
+		rows = append(rows, ansi.Truncate(row, textW, "…"))
+	}
+
+	box := chatPanelBorderFocused.Width(inner).Render(strings.Join(rows, "\n"))
+	return indentLines(strings.Split(box, "\n"), 2)
 }
 
 func (m model) updateModalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -605,10 +671,6 @@ func (m model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeNone
 	case "left", "backspace":
 		m.mode = modeMenu
-	case "s", "ы":
-		if m.mode == modeMusic {
-			m.syncFocused()
-		}
 	}
 	return m, nil
 }
@@ -703,7 +765,7 @@ func customDivider() string {
 	return dimStyle.Render("── custom ──────")
 }
 
-func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardWidth int, unreadDM bool) string {
+func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardWidth int, unreadDM bool, musicDetail []string) string {
 	border := cardBorder
 	if focused {
 		border = cardBorderFocused
@@ -713,9 +775,12 @@ func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardW
 	d := g.devices[0]
 	sections := []string{groupHeader(g)}
 	if !d.Has(presence.KeyOffline) {
-		for _, b := range blocks {
+		for i, b := range blocks {
 			if out := strings.TrimRight(b.Render(d), "\n"); out != "" {
 				sections = append(sections, out)
+			}
+			if i == 0 && len(musicDetail) > 0 {
+				sections = append(sections, strings.Join(musicDetail, "\n"))
 			}
 		}
 		if custom.Render != nil {
@@ -764,8 +829,6 @@ func (m model) View() string {
 		return m.renameModal()
 	case modeDM:
 		return m.dmModal()
-	case modeMusic:
-		return m.detailModal("music", spotifyDetail(m.focusedDevice(), m.spotify, m.coListeners(), modalBoxW(m.width)-modalPad))
 	case modeScreen:
 		return m.detailModal("screen time", appDetail(m.focusedDevice(), m.summary, m.hourly, modalBoxW(m.width)-modalPad))
 	}
@@ -895,7 +958,7 @@ func (m model) renderCards(width, avail int) string {
 		return dimStyle.Render("waiting for devices…")
 	}
 	if m.selfPinned() {
-		self := renderCard(m.groups[0], m.blocks, m.custom, false, width, false)
+		self := renderCard(m.groups[0], m.blocks, m.custom, false, width, false, m.musicDetail(m.groups[0], width))
 		used := strings.Count(self, "\n") + 1 + 1
 		others := m.scrollCards(m.groups[1:], width, max(avail-used, 3), m.selected-1)
 		if others == "" {
@@ -914,7 +977,10 @@ func (m model) scrollCards(groups []deviceGroup, width, avail, selected int) str
 	heights := make([]int, len(groups))
 	for i, g := range groups {
 		focused := i == selected && m.focus == focusCards
-		cards[i] = renderCard(g, m.blocks, m.custom, focused, width, m.chat.DMUnread(g.key) > 0)
+		cards[i] = renderCard(g, m.blocks, m.custom, focused, width, m.chat.DMUnread(g.key) > 0, m.musicDetail(g, width))
+		if focused && m.mode == modeMusicPicks {
+			cards[i] += "\n" + strings.Join(m.musicPickPopup(width), "\n")
+		}
 		heights[i] = strings.Count(cards[i], "\n") + 1
 	}
 	pivot := max(selected, 0)
@@ -978,8 +1044,23 @@ func (m model) focusedDevice() presence.Snapshot {
 	return m.groups[m.selected].devices[0]
 }
 
+func (m model) musicDetail(g deviceGroup, width int) []string {
+	if len(g.devices) == 0 {
+		return nil
+	}
+	d := g.devices[0]
+	return musicExpansion(d, g.key, m.expand, musicExpandCtx{
+		cache:       m.spotify,
+		coListeners: m.coListenersFor(d),
+		width:       max(width-8, 12),
+	})
+}
+
 func (m model) coListeners() []string {
-	d := m.focusedDevice()
+	return m.coListenersFor(m.focusedDevice())
+}
+
+func (m model) coListenersFor(d presence.Snapshot) []string {
 	if d.String(presence.KeySpotifyStatus) != "playing" {
 		return nil
 	}
@@ -1264,6 +1345,10 @@ func (m model) nameFor(accountID string) string {
 }
 
 func (m model) footer() string {
+	if m.mode == modeMusicPicks {
+		return dimStyle.Render("↑↓ pick · ") + accentStyle.Render("enter") + dimStyle.Render(" toggle · ") +
+			accentStyle.Render("←") + dimStyle.Render(" menu · ") + accentStyle.Render("esc") + dimStyle.Render(" close")
+	}
 	if m.focus == focusChat {
 		return accentStyle.Render("enter") + dimStyle.Render(" send · ") +
 			accentStyle.Render("tab") + dimStyle.Render("/") + accentStyle.Render("esc") + dimStyle.Render(" cards")
@@ -1308,6 +1393,7 @@ func newModel(opts Options) model {
 		roomID:  opts.RoomID,
 		ctrl:    opts.Controller,
 		localID: opts.LocalID,
+		expand:  newExpandState(),
 	}
 }
 
@@ -1346,10 +1432,7 @@ func Snapshot(opts Options, devices []presence.Snapshot, selectDevice, mode stri
 		opts.RoomCache.Prime(opts.RoomID)
 	}
 
-	switch mode {
-	case "music":
-		m.mode = modeMusic
-	case "screen":
+	if mode == "screen" {
 		m.mode = modeScreen
 	}
 	return m.View()
