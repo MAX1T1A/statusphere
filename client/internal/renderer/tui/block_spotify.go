@@ -194,7 +194,7 @@ func renderProgress(d presence.Snapshot) string {
 	if length <= 0 {
 		return ""
 	}
-	const width = 22
+	const width = 14
 	filled := max(0, min(pos*width/length, width))
 	bar := progFill.Render(strings.Repeat("━", filled)) +
 		progMark.Render("●") +

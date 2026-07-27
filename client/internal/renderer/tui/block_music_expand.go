@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -103,77 +104,112 @@ func musicExpansion(d presence.Snapshot, account string, e *expandState, ctx mus
 }
 
 func packColumns(blocks [][]string, width, gap int) []string {
-	var out []string
-	var row [][]string
-	rowW := 0
+	var kept [][]string
+	for _, b := range blocks {
+		if len(b) > 0 {
+			kept = append(kept, b)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
 
-	rowHeight := func() int {
-		h := 0
-		for _, c := range row {
-			h = max(h, len(c))
+	for k := len(kept); k > 1; k-- {
+		if cols, ok := balanceColumns(kept, k, width, gap); ok {
+			return mergeColumns(cols, gap)
 		}
-		return h
 	}
-	rowWidth := func() int {
-		w := 0
-		for i, c := range row {
-			if i > 0 {
-				w += gap
+	return mergeColumns([][]string{stack(kept)}, gap)
+}
+
+func balanceColumns(blocks [][]string, k, width, gap int) ([][]string, bool) {
+	cols := make([][]string, k)
+	widths := make([]int, k)
+
+	prospective := func(target, bw int) int {
+		sum, used := 0, 0
+		for i := range cols {
+			w, occupied := widths[i], len(cols[i]) > 0
+			if i == target {
+				w, occupied = max(w, bw), true
 			}
-			w += linesWidth(c)
+			if !occupied {
+				continue
+			}
+			if used > 0 {
+				sum += gap
+			}
+			sum += w
+			used++
 		}
-		return w
-	}
-	flush := func() {
-		if len(row) == 0 {
-			return
-		}
-		if len(out) > 0 {
-			out = append(out, "")
-		}
-		merged := row[0]
-		for _, next := range row[1:] {
-			merged = strings.Split(zipColumns(merged, next, gap), "\n")
-		}
-		out = append(out, merged...)
-		row, rowW = nil, 0
+		return sum
 	}
 
 	for _, b := range blocks {
-		if len(b) == 0 {
-			continue
+		bw := linesWidth(b)
+		order := make([]int, k)
+		for i := range order {
+			order[i] = i
 		}
-		w := linesWidth(b)
+		sort.SliceStable(order, func(a, c int) bool { return len(cols[order[a]]) < len(cols[order[c]]) })
 
-		if len(row) == 0 {
-			row, rowW = [][]string{b}, w
-			continue
-		}
-
-		stacked := false
-		for i, c := range row {
-			colW := linesWidth(c)
-			grow := max(w-colW, 0)
-			if len(c)+1+len(b) <= rowHeight() && rowW+grow <= width {
-				row[i] = append(append(append([]string{}, c...), ""), b...)
-				rowW = rowWidth()
-				stacked = true
-				break
+		placed := false
+		for _, i := range order {
+			if prospective(i, bw) > width {
+				continue
 			}
+			widths[i] = max(widths[i], bw)
+			if len(cols[i]) > 0 {
+				cols[i] = append(cols[i], "")
+			}
+			cols[i] = append(cols[i], b...)
+			placed = true
+			break
 		}
-		if stacked {
-			continue
+		if !placed {
+			return nil, false
 		}
-
-		if rowW+gap+w <= width {
-			row = append(row, b)
-			rowW = rowWidth()
-			continue
-		}
-		flush()
-		row, rowW = [][]string{b}, w
 	}
-	flush()
+
+	var used [][]string
+	for _, c := range cols {
+		if len(c) > 0 {
+			used = append(used, c)
+		}
+	}
+	return used, len(used) == k
+}
+
+func columnsWidth(cols [][]string, gap int) int {
+	w := 0
+	for i, c := range cols {
+		if i > 0 {
+			w += gap
+		}
+		w += linesWidth(c)
+	}
+	return w
+}
+
+func mergeColumns(cols [][]string, gap int) []string {
+	if len(cols) == 0 {
+		return nil
+	}
+	merged := cols[0]
+	for _, next := range cols[1:] {
+		merged = strings.Split(zipColumns(merged, next, gap), "\n")
+	}
+	return merged
+}
+
+func stack(blocks [][]string) []string {
+	var out []string
+	for _, b := range blocks {
+		if len(out) > 0 {
+			out = append(out, "")
+		}
+		out = append(out, b...)
+	}
 	return out
 }
 
