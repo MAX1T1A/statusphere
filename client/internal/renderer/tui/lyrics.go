@@ -229,7 +229,7 @@ func renderLyricsLines(d presence.Snapshot, width int) []string {
 	pos, _ := currentPosition(d)
 	idx := currentLyricIndex(lines, pos)
 
-	const window = 5
+	const window = 4
 	lo := max(idx-1, 0)
 	if idx < 0 {
 		lo = 0

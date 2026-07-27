@@ -35,7 +35,7 @@ func TestSelfCardPinnedFirstWithDivider(t *testing.T) {
 	if m.groups[0].key != meAccount {
 		t.Fatalf("own card must be pinned first, got %q", m.groups[0].key)
 	}
-	out := m.renderCards(60, 40)
+	out, _ := m.renderCards(60, 40)
 	if !strings.Contains(out, "members") {
 		t.Fatalf("expected a divider before the other members:\n%s", out)
 	}
