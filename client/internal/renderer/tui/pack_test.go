@@ -47,14 +47,39 @@ func TestPackStacksUnderAShortColumn(t *testing.T) {
 	}
 }
 
-func TestPackWrapsWhenOutOfWidth(t *testing.T) {
+func TestPackStacksWhenTooWideToShare(t *testing.T) {
 	out := packColumns([][]string{block(3, 30, "A"), block(3, 30, "B")}, 40, 4)
 	joined := strings.Join(out, "\n")
 	if len(out) < 6 {
-		t.Fatalf("blocks too wide to share a row must wrap:\n%s", joined)
+		t.Fatalf("blocks too wide to share a row must stack:\n%s", joined)
 	}
 	if strings.Contains(out[0], "B") {
-		t.Fatalf("B should not sit on the first row: %q", out[0])
+		t.Fatalf("B should not sit beside A: %q", out[0])
+	}
+	for _, l := range out {
+		if ansi.StringWidth(l) > 40 {
+			t.Fatalf("stacked output overflows: %q", l)
+		}
+	}
+}
+
+func TestPackBalancesColumnHeights(t *testing.T) {
+	cover := block(10, 20, "COVER")
+	facts := block(2, 26, "FACTS")
+	weekly := block(4, 16, "WEEK")
+	tops := block(4, 28, "TOPS")
+
+	out := packColumns([][]string{cover, facts, weekly, tops}, 69, 4)
+	if len(out) > 14 {
+		t.Fatalf("columns should even out instead of running down one side (%d lines):\n%s", len(out), strings.Join(out, "\n"))
+	}
+	for _, tag := range []string{"COVER", "FACTS", "WEEK", "TOPS"} {
+		if !strings.Contains(strings.Join(out, "\n"), tag) {
+			t.Fatalf("%s went missing", tag)
+		}
+	}
+	if !strings.Contains(out[0], "COVER") || !strings.Contains(out[0], "FACTS") {
+		t.Fatalf("the first row should carry two columns: %q", out[0])
 	}
 }
 
