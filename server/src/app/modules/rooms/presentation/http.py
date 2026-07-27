@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from app.modules.rooms.application.commands.create_invite import CreateInvite
@@ -33,8 +33,10 @@ async def join(
 
 
 @router.get("/members")
-async def members(actor: Actor = Depends(require_actor), bus: UseCaseBus = Depends(get_bus)) -> dict:
-    result = await bus.dispatch(ListMembers(actor=actor))
+async def members(
+    room: str = Query(...), actor: Actor = Depends(require_actor), bus: UseCaseBus = Depends(get_bus)
+) -> dict:
+    result = await bus.dispatch(ListMembers(actor=actor, room=room))
     return {"members": [m.model_dump(mode="json") for m in result]}
 
 

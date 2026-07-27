@@ -1,10 +1,11 @@
 from app.modules.rooms.application.dto import MemberDTO
 from app.modules.rooms.application.interfaces import IMembershipReader
+from app.modules.rooms.domain.exceptions import NotRoomMember
 from app.shared_kernel.operation import AuthenticatedOperation
 
 
 class ListMembers(AuthenticatedOperation):
-    pass
+    room: str
 
 
 class ListMembersUseCase:
@@ -12,8 +13,7 @@ class ListMembersUseCase:
         self._reader = reader
 
     async def execute(self, op: ListMembers) -> list[MemberDTO]:
-        room_id = await self._reader.owned_room(op.actor.account_id)
-        if room_id is None:
-            return []
-        rows = await self._reader.list_members(room_id)
+        if not op.room or not await self._reader.is_member(op.room, op.actor.account_id):
+            raise NotRoomMember()
+        rows = await self._reader.list_members(op.room)
         return [MemberDTO(**row) for row in rows]

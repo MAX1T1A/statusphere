@@ -1,10 +1,12 @@
+from datetime import datetime
+
 import pytest
 
 from app.modules.rooms.application.commands.create_invite import CreateInvite, CreateInviteUseCase
 from app.modules.rooms.application.commands.join_room import JoinRoom, JoinRoomUseCase
 from app.modules.rooms.application.commands.kick_member import KickMember, KickMemberUseCase
 from app.modules.rooms.application.queries.list_members import ListMembers, ListMembersUseCase
-from app.modules.rooms.domain.exceptions import InvalidOrExpiredInvite, NoRoomToInvite
+from app.modules.rooms.domain.exceptions import InvalidOrExpiredInvite, NoRoomToInvite, NotRoomMember
 from app.modules.rooms.domain.policy import can_kick
 from app.modules.rooms.infrastructure.invite_codec import InviteCodec
 from app.shared_kernel.actor import Actor
@@ -27,8 +29,9 @@ def test_invite_codec_round_trip():
 
 
 class FakeReader:
-    def __init__(self, owned=None, role=None, members=None):
+    def __init__(self, owned=None, role=None, members=None, member=True):
         self._owned, self._role, self._members = owned, role, members or []
+        self._member = member
 
     async def owned_room(self, account):
         return self._owned
@@ -40,7 +43,7 @@ class FakeReader:
         return self._members
 
     async def is_member(self, room, account):
-        return True
+        return self._member
 
 
 class FakeCodec:
@@ -112,6 +115,14 @@ async def test_kick_self_denied():
     assert await uc.execute(KickMember(actor=ACTOR, target_account_id="owner1")) is False
 
 
-async def test_list_members_no_room():
-    uc = ListMembersUseCase(FakeReader(owned=None))
-    assert await uc.execute(ListMembers(actor=ACTOR)) == []
+async def test_list_members_ok():
+    members = [{"account_id": "owner1", "name": "Alice", "role": "owner", "joined_at": datetime(2026, 1, 1)}]
+    uc = ListMembersUseCase(FakeReader(members=members, member=True))
+    out = await uc.execute(ListMembers(actor=ACTOR, room="R"))
+    assert out[0].account_id == "owner1" and out[0].name == "Alice" and out[0].role == "owner"
+
+
+async def test_list_members_not_member():
+    uc = ListMembersUseCase(FakeReader(member=False))
+    with pytest.raises(NotRoomMember):
+        await uc.execute(ListMembers(actor=ACTOR, room="R"))

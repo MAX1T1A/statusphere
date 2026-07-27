@@ -26,7 +26,9 @@ class MembershipReader(IMembershipReader):
     async def list_members(self, room_id: str) -> list[dict]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT account_id, role, joined_at FROM room_members WHERE room_id = $1 ORDER BY joined_at",
+                "SELECT rm.account_id, a.name, rm.role, rm.joined_at "
+                "FROM room_members rm LEFT JOIN accounts a ON a.account_id = rm.account_id "
+                "WHERE rm.room_id = $1 ORDER BY rm.joined_at",
                 room_id,
             )
             return [dict(row) for row in rows]
