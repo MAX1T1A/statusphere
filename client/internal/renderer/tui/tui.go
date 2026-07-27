@@ -1,13 +1,16 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
 	"statusphere-client/internal/presence"
+	"statusphere-client/internal/selfupdate"
 	"statusphere-client/internal/stats"
+	"statusphere-client/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -89,11 +92,48 @@ const (
 	modeMenu
 	modeSettings
 	modeView
+	modeUpdate
 	modeDM
 	modeRename
 	modeMusic
 	modeScreen
 )
+
+type updateStage int
+
+const (
+	updateIdle updateStage = iota
+	updateChecking
+	updateCurrent
+	updateAvailable
+	updateInstalling
+	updateDone
+	updateFailed
+)
+
+type updateCheckedMsg struct {
+	rel *selfupdate.Release
+	err error
+}
+
+type updateAppliedMsg struct{ err error }
+
+func checkUpdateCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		rel, err := selfupdate.Latest(ctx)
+		return updateCheckedMsg{rel: rel, err: err}
+	}
+}
+
+func applyUpdateCmd(rel *selfupdate.Release) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		return updateAppliedMsg{err: selfupdate.Apply(ctx, rel)}
+	}
+}
 
 type focusArea int
 
@@ -134,8 +174,25 @@ func (m model) personMenu() []menuItem {
 }
 
 // settingsMenu holds your own account/app settings, opened from the main screen.
+// The update entry doubles as the result of the last check.
 func (m model) settingsMenu() []menuItem {
+	update := menuItem{"update", "Check for updates", version.Current()}
+	switch m.updateStage {
+	case updateChecking:
+		update = menuItem{"update", "Checking for updates…", ""}
+	case updateAvailable:
+		if m.updateRel != nil {
+			update = menuItem{"update", "Update to " + m.updateRel.Version, "restart applies it"}
+		}
+	case updateInstalling:
+		update = menuItem{"update", "Downloading update…", ""}
+	case updateCurrent:
+		update = menuItem{"update", "Check for updates", "up to date · " + version.Current()}
+	case updateDone:
+		update = menuItem{"update", "Update installed", "restart to apply"}
+	}
 	return []menuItem{
+		update,
 		{"rename", "Rename device", ""},
 		{"quit", "Quit", ""},
 	}
@@ -198,6 +255,10 @@ type model struct {
 	dmPeer      string
 	dmPeerName  string
 	confirmKick string
+
+	updateStage updateStage
+	updateRel   *selfupdate.Release
+	updateErr   string
 }
 
 // selfPinned reports whether the first card is your own (static, unselectable) block.
@@ -267,13 +328,16 @@ func groupDevices(snaps []presence.Snapshot, selfAccount string) []deviceGroup {
 	return groups
 }
 
-func (m model) Init() tea.Cmd { return nil }
+func (m model) Init() tea.Cmd { return checkUpdateCmd() }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if m.mode == modeMenu || m.mode == modeSettings || m.mode == modeView {
 			return m.updateMenu(msg)
+		}
+		if m.mode == modeUpdate {
+			return m.updateModalKeys(msg)
 		}
 		if m.mode == modeMusic || m.mode == modeScreen {
 			return m.updateDetail(msg)
@@ -342,6 +406,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.confirmKick = peer
 				}
 			}
+		}
+	case updateCheckedMsg:
+		// a check that was already in flight must not undo an install
+		if m.updateStage == updateInstalling || m.updateStage == updateDone {
+			return m, nil
+		}
+		switch {
+		case msg.err != nil:
+			m.updateStage, m.updateErr = updateFailed, msg.err.Error()
+		case msg.rel == nil:
+			m.updateStage, m.updateErr = updateFailed, "empty response from github"
+		case selfupdate.IsNewer(msg.rel.Version, version.Current()):
+			m.updateStage, m.updateRel = updateAvailable, msg.rel
+		default:
+			m.updateStage, m.updateRel = updateCurrent, msg.rel
+		}
+	case updateAppliedMsg:
+		if msg.err != nil {
+			m.updateStage, m.updateErr = updateFailed, msg.err.Error()
+		} else {
+			m.updateStage = updateDone
 		}
 	case tickMsg:
 		if m.mode == modeMusic && msg.id == m.tickID {
@@ -432,11 +517,55 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 		m.dmPeer = m.focusedDevice().String(presence.KeyAccountID)
 		m.dmPeerName = m.focusedName()
 		m.chat.MarkDMRead(m.dmPeer)
+	case "update":
+		m.mode = modeUpdate
+		switch m.updateStage {
+		case updateChecking, updateInstalling, updateDone:
+			// work already in flight (or finished) — just show its state
+			return m, nil
+		case updateAvailable:
+			if m.updateRel == nil {
+				m.updateStage, m.updateErr = updateFailed, "no release to install"
+				return m, nil
+			}
+			m.updateStage = updateInstalling
+			return m, applyUpdateCmd(m.updateRel)
+		}
+		m.updateStage = updateChecking
+		m.updateErr = ""
+		return m, checkUpdateCmd()
 	case "rename":
 		m.mode = modeRename
 		m.input = ""
 	case "quit":
 		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m model) updateModalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q", "й":
+		m.mode = modeNone
+	case "left", "backspace":
+		m.mode = modeSettings
+		m.menuIndex = 0
+	case "enter", " ":
+		switch m.updateStage {
+		case updateAvailable:
+			if m.updateRel == nil {
+				m.updateStage, m.updateErr = updateFailed, "no release to install"
+				return m, nil
+			}
+			m.updateStage = updateInstalling
+			return m, applyUpdateCmd(m.updateRel)
+		case updateFailed, updateCurrent:
+			m.updateStage = updateChecking
+			m.updateErr = ""
+			return m, checkUpdateCmd()
+		case updateDone:
+			m.mode = modeNone
+		}
 	}
 	return m, nil
 }
@@ -593,11 +722,7 @@ func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardW
 	cw := max(cardWidth-border.GetHorizontalBorderSize(), 12)
 
 	d := g.devices[0]
-	header := groupHeader(g)
-	if unreadDM {
-		header = dmDotStyle.Render("● ") + header
-	}
-	sections := []string{header}
+	sections := []string{groupHeader(g)}
 	if !d.Has(presence.KeyOffline) {
 		for _, b := range blocks {
 			if out := strings.TrimRight(b.Render(d), "\n"); out != "" {
@@ -616,6 +741,10 @@ func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardW
 	for i, ln := range lines {
 		lines[i] = ansi.Truncate(ln, textW, "…")
 	}
+	// unread DM marker sits in the far corner of the card, out of the way
+	if unreadDM && textW > 2 {
+		lines[0] = padLine(lines[0], textW-1) + notifStyle.Render("●")
+	}
 	return border.Width(cw).Render(strings.Join(lines, "\n"))
 }
 
@@ -623,10 +752,28 @@ func title() string {
 	return accentStyle.Render("s") + titleStyle.Render("tatu") + accentStyle.Render("s") + titleStyle.Render("phere")
 }
 
+// titleBar puts the wordmark on the left and the build version in the right
+// corner, with a notice when a newer release is waiting.
+func titleBar(width int, updateReady string) string {
+	left := title()
+	right := dimStyle.Render(version.Current())
+	if updateReady != "" {
+		right = dimStyle.Render("↑ " + updateReady + " available  " + version.Current())
+	}
+
+	gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
+	if gap < 1 {
+		return left
+	}
+	return left + strings.Repeat(" ", gap) + right
+}
+
 func (m model) View() string {
 	switch m.mode {
 	case modeMenu, modeSettings, modeView:
 		return m.menuModal()
+	case modeUpdate:
+		return m.updateModal()
 	case modeRename:
 		return m.renameModal()
 	case modeDM:
@@ -634,7 +781,7 @@ func (m model) View() string {
 	case modeMusic:
 		return m.detailModal("music", spotifyDetail(m.focusedDevice(), m.spotify, m.coListeners(), modalBoxW(m.width)-modalPad))
 	case modeScreen:
-		return m.detailModal("screen time", appDetail(m.focusedDevice(), m.summary, m.hourly))
+		return m.detailModal("screen time", appDetail(m.focusedDevice(), m.summary, m.hourly, modalBoxW(m.width)-modalPad))
 	}
 
 	width := m.width
@@ -658,14 +805,23 @@ func (m model) View() string {
 		cardsW = width - chatW - 1
 	}
 
+	head := titleBar(width, m.updateBadge())
+
 	cardsCol := m.renderCards(cardsW, avail)
 	if chatW == 0 {
-		return title() + "\n\n" + cardsCol + "\n\n" + footer
+		return head + "\n\n" + cardsCol + "\n\n" + footer
 	}
 
 	chatCol := m.sidePanel(chatW, avail)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, cardsCol, " ", chatCol)
-	return title() + "\n\n" + body + "\n\n" + footer
+	return head + "\n\n" + body + "\n\n" + footer
+}
+
+func (m model) updateBadge() string {
+	if m.updateStage == updateAvailable && m.updateRel != nil {
+		return m.updateRel.Version
+	}
+	return ""
 }
 
 func (m model) sidePanel(width, height int) string {
@@ -971,6 +1127,61 @@ func (m model) detailModal(kind, body string) string {
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(content))
 }
 
+func (m model) updateModal() string {
+	w, h := m.width, m.height
+	if w == 0 {
+		w = 80
+	}
+	if h == 0 {
+		h = 24
+	}
+	boxW := clampBox(w/3, 46, w)
+	contentW := max(boxW-modalPad, 4)
+
+	pending := ""
+	if m.updateRel != nil {
+		pending = m.updateRel.Version
+	}
+
+	var body, nav string
+	switch m.updateStage {
+	case updateChecking:
+		body = dimStyle.Render("checking for updates…")
+		nav = accentStyle.Render("esc") + dimStyle.Render(" cancel")
+	case updateCurrent:
+		body = appName.Render("you're up to date") + "\n" + dimStyle.Render(version.Current())
+		nav = accentStyle.Render("enter") + dimStyle.Render(" check again · ") + accentStyle.Render("esc") + dimStyle.Render(" close")
+	case updateAvailable:
+		body = appName.Render(pending+" is available") + "\n" +
+			dimStyle.Render("you have "+version.Current())
+		nav = accentStyle.Render("enter") + dimStyle.Render(" install · ") + accentStyle.Render("esc") + dimStyle.Render(" later")
+	case updateInstalling:
+		label := "downloading update…"
+		if pending != "" {
+			label = "downloading " + pending + "…"
+		}
+		body = dimStyle.Render(label)
+		nav = dimStyle.Render("please wait")
+	case updateDone:
+		body = appName.Render("update installed") + "\n" + dimStyle.Render("restart statusphere to run it")
+		nav = accentStyle.Render("esc") + dimStyle.Render(" close")
+	case updateFailed:
+		body = dmDotStyle.Render("update failed") + "\n" + dimStyle.Render(m.updateErr)
+		nav = accentStyle.Render("enter") + dimStyle.Render(" retry · ") + accentStyle.Render("esc") + dimStyle.Render(" close")
+	default:
+		body = dimStyle.Render("nothing to do")
+		nav = accentStyle.Render("esc") + dimStyle.Render(" close")
+	}
+
+	lines := strings.Split(body, "\n")
+	for i, ln := range lines {
+		lines[i] = ansi.Truncate(ln, contentW, "…")
+	}
+
+	content := modalTitle.Render("update") + "\n\n" + strings.Join(lines, "\n") + "\n\n" + nav
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(content))
+}
+
 func (m model) renameModal() string {
 	w, h := m.width, m.height
 	if w == 0 {
@@ -1094,7 +1305,7 @@ func (m model) footer() string {
 		hint += accentStyle.Render("x") + dimStyle.Render(" remove · ")
 	}
 	if n := m.chat.TotalDMUnread(); n > 0 {
-		hint += dmDotStyle.Render(fmt.Sprintf("● %d dm", n)) + dimStyle.Render(" · ")
+		hint += notifStyle.Render(fmt.Sprintf("● %d dm", n)) + dimStyle.Render(" · ")
 	}
 	return hint + accentStyle.Render("q") + dimStyle.Render(" quit")
 }
