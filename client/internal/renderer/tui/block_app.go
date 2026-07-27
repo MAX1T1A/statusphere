@@ -137,7 +137,7 @@ func BlockApp(cache *stats.Cache) Block {
 	}
 }
 
-func appDetail(d presence.Snapshot, cache, hourly *stats.Cache) string {
+func appDetail(d presence.Snapshot, cache, hourly *stats.Cache, width int) string {
 	var parts []string
 
 	app := d.String(presence.KeyActiveApp)
@@ -157,23 +157,36 @@ func appDetail(d presence.Snapshot, cache, hourly *stats.Cache) string {
 		parts = append(parts, line)
 	}
 
+	var apps, spark string
 	if cache != nil && d.DeviceID() != "" {
 		if s, ok := cache.Get(d.DeviceID()).(*stats.Summary); ok && s != nil {
-			if st := renderSummaryStats(s); st != "" {
-				parts = append(parts, st)
-			}
+			apps = renderSummaryStats(s)
+		}
+	}
+	if hourly != nil && d.DeviceID() != "" {
+		if h, ok := hourly.Get(d.DeviceID()).(*stats.Hourly); ok && h != nil {
+			spark = renderHourlySparkline(h)
 		}
 	}
 
-	if hourly != nil && d.DeviceID() != "" {
-		if h, ok := hourly.Get(d.DeviceID()).(*stats.Hourly); ok && h != nil {
-			if sp := renderHourlySparkline(h); sp != "" {
-				parts = append(parts, sp)
-			}
+	switch {
+	case apps != "" && spark != "":
+		left, right := strings.Split(apps, "\n"), strings.Split(spark, "\n")
+		// side by side while the modal is wide enough, stacked otherwise
+		if width >= linesWidth(left)+sparkGap+linesWidth(right) {
+			parts = append(parts, zipColumns(left, right, sparkGap))
+		} else {
+			parts = append(parts, apps, spark)
 		}
+	case apps != "":
+		parts = append(parts, apps)
+	case spark != "":
+		parts = append(parts, spark)
 	}
 	return strings.Join(parts, "\n\n")
 }
+
+const sparkGap = 6
 
 var sparkLevels = []rune("▁▂▃▄▅▆▇█")
 

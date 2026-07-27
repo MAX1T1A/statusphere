@@ -144,6 +144,41 @@ func TestScreenModalIncludesSparkline(t *testing.T) {
 	}
 }
 
+func TestScreenModalPutsSparklineBesideAppsWhenWide(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/stats/hourly" {
+			h := stats.Hourly{Hours: make([]int, 24)}
+			h.Hours[11] = 3600
+			json.NewEncoder(w).Encode(h)
+			return
+		}
+		json.NewEncoder(w).Encode(stats.Summary{Period: "day", Apps: []stats.AppStat{{App: "kitty", Seconds: 3600}}})
+	}))
+	defer srv.Close()
+
+	summary := stats.NewSummaryCache(srv.URL, "tok", "day", "room-1")
+	hourly := stats.NewHourlyCache(srv.URL, "tok", "room-1")
+	summary.Prime("bob-1")
+	hourly.Prime("bob-1")
+	d := presence.Snapshot{presence.KeyDeviceID: "bob-1"}
+
+	wide := appDetail(d, summary, hourly, 120)
+	for _, ln := range strings.Split(wide, "\n") {
+		if strings.Contains(ln, "screen time · day") && strings.Contains(ln, "activity · today") {
+			goto narrow
+		}
+	}
+	t.Fatalf("wide modal should place both headers on one row:\n%s", wide)
+
+narrow:
+	stacked := appDetail(d, summary, hourly, 30)
+	for _, ln := range strings.Split(stacked, "\n") {
+		if strings.Contains(ln, "screen time · day") && strings.Contains(ln, "activity · today") {
+			t.Fatalf("narrow modal must stack the blocks:\n%s", stacked)
+		}
+	}
+}
+
 func TestBoardShowsOfflineMemberName(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(stats.RoomScreen{Members: []stats.MemberScreen{

@@ -96,15 +96,25 @@ func TestSettingsOpensAndRenames(t *testing.T) {
 		t.Fatalf("s should open settings, mode=%v", m.mode)
 	}
 	items, _ := m.currentMenu()
-	if !hasAction(items, "rename") || !hasAction(items, "quit") {
-		t.Fatalf("settings should hold rename + quit, got %v", items)
+	for _, want := range []string{"update", "rename", "quit"} {
+		if !hasAction(items, want) {
+			t.Fatalf("settings should hold %q, got %v", want, items)
+		}
 	}
-	// rename is the first item; enter opens the rename input
-	m.menuIndex = 0
+	m.menuIndex = actionIndex(items, "rename")
 	next, _ := m.runMenu()
 	if next.(model).mode != modeRename {
 		t.Fatal("selecting Rename device should open the rename input")
 	}
+}
+
+func actionIndex(items []menuItem, action string) int {
+	for i, it := range items {
+		if it.action == action {
+			return i
+		}
+	}
+	return -1
 }
 
 func TestSelfCardNotSelectable(t *testing.T) {
