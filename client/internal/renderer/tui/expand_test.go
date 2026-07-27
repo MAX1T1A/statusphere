@@ -157,3 +157,35 @@ func TestMenuIsACenteredPopupOverTheRoom(t *testing.T) {
 		}
 	}
 }
+
+func TestEachPieceIsItsOwnTile(t *testing.T) {
+	m := musicModel(t)
+	for _, id := range []string{"progress", "album"} {
+		m.expand.toggle("acc-bob", id)
+	}
+	out := strings.Join(m.musicDetail(m.groups[m.selected], 90), "\n")
+	if got := strings.Count(out, "╭"); got != 2 {
+		t.Fatalf("two picked pieces should render as two tiles, got %d:\n%s", got, out)
+	}
+
+	m.expand.toggle("acc-bob", "album")
+	out = strings.Join(m.musicDetail(m.groups[m.selected], 90), "\n")
+	if got := strings.Count(out, "╭"); got != 1 {
+		t.Fatalf("unticking should drop that tile, got %d:\n%s", got, out)
+	}
+}
+
+func TestTracksAndArtistsArePickedSeparately(t *testing.T) {
+	ids := map[string]bool{}
+	for _, p := range musicPieces {
+		ids[p.id] = true
+	}
+	for _, want := range []string{"tracks", "artists"} {
+		if !ids[want] {
+			t.Fatalf("%q should be its own piece", want)
+		}
+	}
+	if ids["tops"] {
+		t.Fatal("the combined tops piece should be gone")
+	}
+}

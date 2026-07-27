@@ -23,8 +23,9 @@ var musicPieces = []piece{
 	{"album", "Album", "album name"},
 	{"together", "Listening together", "who's on the same track"},
 	{"lyrics", "Lyrics", "synced, follows the track"},
-	{"tops", "Top tracks & artists", "this week"},
-	{"weekly", "Weekly total", "daily listening chart"},
+	{"tracks", "Top tracks", "this week"},
+	{"artists", "Top artists", "this week"},
+	{"weekly", "Weekly chart", "daily listening"},
 }
 
 type expandState struct {
