@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -255,6 +256,7 @@ func (c *Config) Revoke(deviceID string) (bool, error) {
 
 type MemberInfo struct {
 	AccountID string `json:"account_id"`
+	Name      string `json:"name"`
 	Role      string `json:"role"`
 }
 
@@ -262,7 +264,8 @@ func (c *Config) Members() ([]MemberInfo, error) {
 	var resp struct {
 		Members []MemberInfo `json:"members"`
 	}
-	if err := do(http.MethodGet, c.endpoint("/rooms/members"), c.Token, nil, &resp); err != nil {
+	endpoint := c.endpoint("/rooms/members") + "?room=" + url.QueryEscape(c.RoomID)
+	if err := do(http.MethodGet, endpoint, c.Token, nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp.Members, nil

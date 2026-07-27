@@ -10,6 +10,7 @@ import (
 type noopController struct{}
 
 func (noopController) SendMessage(string, string) {}
+func (noopController) Kick(string)                {}
 func (noopController) Rename(string)              {}
 func (noopController) SyncSpotify(string)         {}
 func (noopController) SyncCustom([]string)        {}

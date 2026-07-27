@@ -9,6 +9,9 @@ const (
 	KeyNudge        = "nudge_message"
 	KeyCustomFields = "custom_fields"
 
+	KeyRole    = "_role"
+	KeyOffline = "_offline"
+
 	KeyUptimeHours  = "uptime_hours"
 	KeyCPUPercent   = "cpu_percent"
 	KeyMemUsedMB    = "memory_used_mb"

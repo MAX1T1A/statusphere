@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"statusphere-client/internal/auth"
@@ -34,6 +35,7 @@ import (
 const (
 	watchInterval = 2 * time.Second
 	refreshRate   = 1 * time.Second
+	memberPoll    = 15 * time.Second
 )
 
 type App struct {
@@ -46,6 +48,11 @@ type App struct {
 	ui        renderer.Renderer
 	chat      *tui.ChatStore
 	accountID string
+	cfg       *auth.Config
+
+	membersMu     sync.Mutex
+	members       []auth.MemberInfo
+	memberRefresh chan struct{}
 }
 
 func Run(ctx context.Context, uiMode string) error {
@@ -73,11 +80,13 @@ func Run(ctx context.Context, uiMode string) error {
 	defer ws.Close()
 
 	a := &App{
-		ws:        ws,
-		feed:      feed.New(),
-		custom:    cm,
-		notifier:  notifier.New(cfg.AccountID),
-		accountID: cfg.AccountID,
+		ws:            ws,
+		feed:          feed.New(),
+		custom:        cm,
+		notifier:      notifier.New(cfg.AccountID),
+		accountID:     cfg.AccountID,
+		cfg:           cfg,
+		memberRefresh: make(chan struct{}, 1),
 	}
 	a.watcher = watcher.New(coll, a.send, watchInterval)
 
@@ -93,6 +102,7 @@ func Run(ctx context.Context, uiMode string) error {
 		a.ui = t
 		a.chat = t.Chat
 		go a.loadHistory(cfg.ServerURL, cfg.Token, cfg.RoomID)
+		go a.pollMembers(ctx)
 	case "headless":
 		n := noop.NewNoop()
 		a.ui = n
@@ -104,9 +114,7 @@ func Run(ctx context.Context, uiMode string) error {
 		return fmt.Errorf("unknown ui mode: %s", uiMode)
 	}
 
-	if err := ws.Send(coll.Collect(ctx)); err != nil {
-		log.Printf("initial send: %v", err)
-	}
+	a.send(coll.Collect(ctx))
 
 	go a.watcher.Run(ctx)
 	go a.listen(ctx)
@@ -119,6 +127,15 @@ func (a *App) send(snap presence.Snapshot) {
 	if err := a.ws.Send(snap); err != nil {
 		log.Printf("send: %v", err)
 	}
+	// The server never echoes our own presence back to us, so reflect it into
+	// the local feed — otherwise we'd render our own membership row as offline.
+	local := snap.Clone()
+	local.Set(presence.KeyDeviceID, a.cfg.DeviceID)
+	local.Set(presence.KeyAccountID, a.accountID)
+	if dn := a.ws.DeviceName(); dn != "" {
+		local.Set(presence.KeyDeviceName, dn)
+	}
+	a.feed.Update(local)
 }
 
 func (a *App) listen(ctx context.Context) {
@@ -133,8 +150,10 @@ func (a *App) listen(ctx context.Context) {
 			return
 		}
 
-		a.feed.Update(presence.Snapshot(msg))
-		a.ui.UpdateDevices(a.feed.Snapshot())
+		snap := presence.Snapshot(msg)
+		a.feed.Update(snap)
+		a.maybeRefreshMembers(snap.String(presence.KeyAccountID))
+		a.render()
 	})
 }
 
@@ -150,7 +169,7 @@ func (a *App) handleMessage(msg map[string]any) {
 
 	if a.chat != nil {
 		a.chat.Ingest(from, name, to, text, at)
-		a.ui.UpdateDevices(a.feed.Snapshot())
+		a.render()
 	}
 
 	if a.accountID != "" && from != a.accountID && to == a.accountID && a.notifier != nil {
@@ -171,7 +190,7 @@ func (a *App) loadHistory(serverURL, token, roomID string) {
 		return
 	}
 	a.chat.LoadHistory(msgs)
-	a.ui.UpdateDevices(a.feed.Snapshot())
+	a.render()
 }
 
 func (a *App) refresh(ctx context.Context) {
@@ -182,7 +201,121 @@ func (a *App) refresh(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			a.ui.UpdateDevices(a.feed.Snapshot())
+			a.render()
+		}
+	}
+}
+
+func (a *App) render() {
+	a.ui.UpdateDevices(a.roster())
+}
+
+// roster merges the canonical room membership with live presence so that
+// offline members keep their card; a member is dropped only when the owner
+// removes them (server drops them from the member list). Before the first
+// member fetch (or if it failed) it falls back to whatever presence is live.
+func (a *App) roster() []presence.Snapshot {
+	live := a.feed.Snapshot()
+
+	a.membersMu.Lock()
+	members := a.members
+	a.membersMu.Unlock()
+
+	if len(members) == 0 {
+		return live
+	}
+
+	byAccount := map[string][]presence.Snapshot{}
+	for _, s := range live {
+		acc := s.String(presence.KeyAccountID)
+		if acc == "" {
+			acc = s.DeviceID()
+		}
+		if acc != "" {
+			byAccount[acc] = append(byAccount[acc], s)
+		}
+	}
+
+	out := make([]presence.Snapshot, 0, len(members))
+	for _, m := range members {
+		if devs := byAccount[m.AccountID]; len(devs) > 0 {
+			for _, d := range devs {
+				d.Set(presence.KeyRole, m.Role)
+				if d.String(presence.KeyAccountName) == "" && m.Name != "" {
+					d.Set(presence.KeyAccountName, m.Name)
+				}
+			}
+			out = append(out, devs...)
+			continue
+		}
+		label := m.Name
+		if label == "" {
+			label = shortID(m.AccountID)
+		}
+		out = append(out, presence.Snapshot{
+			presence.KeyAccountID:   m.AccountID,
+			presence.KeyAccountName: label,
+			presence.KeyRole:        m.Role,
+			presence.KeyOffline:     true,
+		})
+	}
+	return out
+}
+
+func shortID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
+}
+
+func (a *App) pollMembers(ctx context.Context) {
+	a.refreshMembers()
+	ticker := time.NewTicker(memberPoll)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		case <-a.memberRefresh:
+		}
+		a.refreshMembers()
+	}
+}
+
+func (a *App) refreshMembers() {
+	members, err := a.cfg.Members()
+	if err != nil {
+		log.Printf("members: %v", err)
+		return
+	}
+	a.membersMu.Lock()
+	a.members = members
+	a.membersMu.Unlock()
+	a.render()
+}
+
+// maybeRefreshMembers triggers an out-of-cycle member fetch when presence
+// arrives from an account not yet in the cached roster (a fresh join), so new
+// members appear promptly instead of waiting for the next poll.
+func (a *App) maybeRefreshMembers(accountID string) {
+	if accountID == "" {
+		return
+	}
+	a.membersMu.Lock()
+	known := len(a.members) == 0
+	for _, m := range a.members {
+		if m.AccountID == accountID {
+			known = true
+			break
+		}
+	}
+	a.membersMu.Unlock()
+	if !known {
+		select {
+		case a.memberRefresh <- struct{}{}:
+		default:
 		}
 	}
 }
@@ -191,6 +324,19 @@ func (a *App) SendMessage(to, text string) {
 	if err := a.ws.SendMessage(to, text); err != nil {
 		log.Printf("send message: %v", err)
 	}
+}
+
+func (a *App) Kick(accountID string) {
+	if accountID == "" {
+		return
+	}
+	go func() {
+		if _, err := a.cfg.Kick(accountID); err != nil {
+			log.Printf("kick: %v", err)
+			return
+		}
+		a.refreshMembers()
+	}()
 }
 
 func (a *App) Rename(name string) {

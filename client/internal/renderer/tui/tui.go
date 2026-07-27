@@ -24,6 +24,7 @@ func musicTick(id int) tea.Cmd {
 
 type Controller interface {
 	SendMessage(to, text string)
+	Kick(accountID string)
 	Rename(name string)
 	SyncSpotify(uri string)
 	SyncCustom(fields []string)
@@ -93,14 +94,29 @@ func (m model) menu() []menuItem {
 		{"screen", "Screen time", "app usage today"},
 		{"chat", "Chat", "room messages"},
 	}
-	if peer := m.focusedDevice().String(presence.KeyAccountID); peer != "" && peer != m.chat.localID {
+	focused := m.focusedDevice()
+	if peer := focused.String(presence.KeyAccountID); peer != "" && peer != m.chat.localID {
 		items = append(items, menuItem{"message", "Message " + m.focusedName(), "direct message"})
+		if m.isOwner() && focused.String(presence.KeyRole) != "owner" {
+			items = append(items, menuItem{"kick", "Remove from room", ""})
+		}
 	}
 	items = append(items,
 		menuItem{"rename", "Rename device", ""},
 		menuItem{"quit", "Quit", ""},
 	)
 	return items
+}
+
+func (m model) isOwner() bool {
+	for _, g := range m.groups {
+		for _, d := range g.devices {
+			if d.String(presence.KeyAccountID) == m.chat.localID {
+				return d.String(presence.KeyRole) == "owner"
+			}
+		}
+	}
+	return false
 }
 
 const (
@@ -279,6 +295,11 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 		m.dmPeer = m.focusedDevice().String(presence.KeyAccountID)
 		m.dmPeerName = m.focusedName()
 		m.chat.MarkDMRead(m.dmPeer)
+	case "kick":
+		if peer := m.focusedDevice().String(presence.KeyAccountID); peer != "" {
+			m.ctrl.Kick(peer)
+		}
+		m.mode = modeNone
 	case "rename":
 		m.mode = modeRename
 		m.input = ""

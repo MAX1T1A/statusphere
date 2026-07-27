@@ -88,8 +88,13 @@ func deviceLine(d presence.Snapshot) string {
 
 func groupHeader(g deviceGroup) string {
 	lines := make([]string, 0, len(g.devices)+1)
-	if name := g.devices[0].String(presence.KeyAccountName); name != "" {
+	head := g.devices[0]
+	if name := head.String(presence.KeyAccountName); name != "" {
 		lines = append(lines, accountName.Render(name))
+	}
+	if head.Has(presence.KeyOffline) {
+		lines = append(lines, offlineDot.Render("○")+uptimeDim.Render(" offline"))
+		return strings.Join(lines, "\n")
 	}
 	for _, d := range g.devices {
 		lines = append(lines, deviceLine(d))
