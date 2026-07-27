@@ -83,6 +83,11 @@ var (
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(cFocus).
 				Padding(0, 1)
+
+	popupBox = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(cFocus).
+			Padding(1, 3)
 )
 
 type inputMode int
@@ -574,10 +579,10 @@ func (m model) musicPickKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) musicPickPopup(width int) []string {
+func (m model) musicPickPopup(width int) string {
 	account := m.focusedDevice().String(presence.KeyAccountID)
-	inner := max(min(width-6, 48), 24)
-	textW := max(inner-chatPanelBorderFocused.GetHorizontalPadding(), 12)
+	inner := max(min(width-8, 50), 24)
+	textW := max(inner-popupBox.GetHorizontalPadding(), 12)
 
 	rows := []string{modalTitle.Render("music") + dimStyle.Render(" · "+m.focusedName()), ""}
 	for i, p := range musicPieces {
@@ -594,8 +599,7 @@ func (m model) musicPickPopup(width int) []string {
 		rows = append(rows, ansi.Truncate(row, textW, "…"))
 	}
 
-	box := chatPanelBorderFocused.Width(inner).Render(strings.Join(rows, "\n"))
-	return indentLines(strings.Split(box, "\n"), 2)
+	return popupBox.Width(inner).Render(strings.Join(rows, "\n"))
 }
 
 func (m model) updateModalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -780,7 +784,7 @@ func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardW
 				sections = append(sections, out)
 			}
 			if i == 0 && len(musicDetail) > 0 {
-				sections = append(sections, strings.Join(musicDetail, "\n"))
+				sections = append(sections, strings.Join(musicDetail, "\n"), "")
 			}
 		}
 		if custom.Render != nil {
@@ -853,13 +857,18 @@ func (m model) View() string {
 
 	head := titleBar(width, m.updateBadge())
 
-	cardsCol := m.renderCards(cardsW, avail)
-	if chatW == 0 {
-		return head + "\n\n" + cardsCol + "\n\n" + footer
+	cardsCol, selBottom := m.renderCards(cardsW, avail)
+
+	body := cardsCol
+	if chatW > 0 {
+		body = lipgloss.JoinHorizontal(lipgloss.Top, cardsCol, " ", m.sidePanel(chatW, avail))
 	}
 
-	chatCol := m.sidePanel(chatW, avail)
-	body := lipgloss.JoinHorizontal(lipgloss.Top, cardsCol, " ", chatCol)
+	if m.mode == modeMusicPicks {
+		popup := m.musicPickPopup(cardsW)
+		col := max(cardsW-lipgloss.Width(popup)-2, 2)
+		body = overlay(body, popup, selBottom, col)
+	}
 	return head + "\n\n" + body + "\n\n" + footer
 }
 
@@ -953,48 +962,50 @@ func shortAccount(id string) string {
 	return id
 }
 
-func (m model) renderCards(width, avail int) string {
+func (m model) renderCards(width, avail int) (string, int) {
 	if len(m.groups) == 0 {
-		return dimStyle.Render("waiting for devices…")
+		return dimStyle.Render("waiting for devices…"), 0
 	}
 	if m.selfPinned() {
 		self := renderCard(m.groups[0], m.blocks, m.custom, false, width, false, m.musicDetail(m.groups[0], width))
 		used := strings.Count(self, "\n") + 1 + 1
-		others := m.scrollCards(m.groups[1:], width, max(avail-used, 3), m.selected-1)
+		others, selBottom := m.scrollCards(m.groups[1:], width, max(avail-used, 3), m.selected-1)
 		if others == "" {
-			return self
+			return self, used
 		}
-		return self + "\n" + roomDivider(width) + "\n" + others
+		return self + "\n" + roomDivider(width) + "\n" + others, used + selBottom
 	}
 	return m.scrollCards(m.groups, width, avail, m.selected)
 }
 
-func (m model) scrollCards(groups []deviceGroup, width, avail, selected int) string {
+func (m model) scrollCards(groups []deviceGroup, width, avail, selected int) (string, int) {
 	if len(groups) == 0 {
-		return ""
+		return "", 0
 	}
 	cards := make([]string, len(groups))
 	heights := make([]int, len(groups))
 	for i, g := range groups {
 		focused := i == selected && m.focus == focusCards
 		cards[i] = renderCard(g, m.blocks, m.custom, focused, width, m.chat.DMUnread(g.key) > 0, m.musicDetail(g, width))
-		if focused && m.mode == modeMusicPicks {
-			cards[i] += "\n" + strings.Join(m.musicPickPopup(width), "\n")
-		}
 		heights[i] = strings.Count(cards[i], "\n") + 1
 	}
 	pivot := max(selected, 0)
 	lo, hi := scrollWindow(heights, pivot, avail)
 
 	var parts []string
+	offset := 0
 	if lo > 0 {
 		parts = append(parts, dimStyle.Render(fmt.Sprintf("  ↑ %d more", lo)))
+		offset++
+	}
+	for i := lo; i <= pivot && i <= hi; i++ {
+		offset += heights[i]
 	}
 	parts = append(parts, lipgloss.JoinVertical(lipgloss.Left, cards[lo:hi+1]...))
 	if hi < len(cards)-1 {
 		parts = append(parts, dimStyle.Render(fmt.Sprintf("  ↓ %d more", len(cards)-1-hi)))
 	}
-	return strings.Join(parts, "\n")
+	return strings.Join(parts, "\n"), offset
 }
 
 func roomDivider(width int) string {
