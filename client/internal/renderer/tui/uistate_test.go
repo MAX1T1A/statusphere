@@ -41,7 +41,6 @@ func TestGroupUnreadClearsWhenChatVisible(t *testing.T) {
 		t.Fatal("expected 1 unread")
 	}
 
-	// chat panel is on the main screen -> auto-read on the next feed tick
 	m.panel = panelChat
 	m = send(m, FeedMsg{})
 	if m.chat.GroupUnread() != 0 {
@@ -60,7 +59,6 @@ func TestGroupUnreadKeptWhileBoardActive(t *testing.T) {
 		t.Fatal("board view must keep the unread bell")
 	}
 
-	// switching back to chat via the picker clears it instantly
 	m = send(m, key("v"))
 	m.menuIndex = 0
 	next, _ := m.runMenu()

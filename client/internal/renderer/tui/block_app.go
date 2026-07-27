@@ -172,7 +172,6 @@ func appDetail(d presence.Snapshot, cache, hourly *stats.Cache, width int) strin
 	switch {
 	case apps != "" && spark != "":
 		left, right := strings.Split(apps, "\n"), strings.Split(spark, "\n")
-		// side by side while the modal is wide enough, stacked otherwise
 		if width >= linesWidth(left)+sparkGap+linesWidth(right) {
 			parts = append(parts, zipColumns(left, right, sparkGap))
 		} else {

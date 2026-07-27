@@ -23,9 +23,8 @@ const (
 )
 
 var (
-	APIBase = "https://api.github.com"
-	client  = &http.Client{Timeout: 30 * time.Second}
-	// a real build is several MB; anything tiny means a truncated download
+	APIBase            = "https://api.github.com"
+	client             = &http.Client{Timeout: 30 * time.Second}
 	minAssetSize int64 = 1 << 20
 )
 
@@ -34,7 +33,6 @@ type Release struct {
 	AssetURL string
 }
 
-// Latest reports the newest published release and the asset for this platform.
 func Latest(ctx context.Context) (*Release, error) {
 	url := fmt.Sprintf("%s/repos/%s/releases/latest", strings.TrimRight(APIBase, "/"), repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -80,8 +78,6 @@ func Latest(ctx context.Context) (*Release, error) {
 	return rel, nil
 }
 
-// Apply downloads the release binary and swaps it in place of the running one.
-// The replacement takes effect on the next start.
 func Apply(ctx context.Context, rel *Release) error {
 	exe, err := os.Executable()
 	if err != nil {
@@ -111,7 +107,6 @@ func applyTo(ctx context.Context, rel *Release, exe string) error {
 		return fmt.Errorf("download: status %d", resp.StatusCode)
 	}
 
-	// stage next to the target so the final swap is an atomic same-fs rename
 	tmp, err := os.CreateTemp(filepath.Dir(exe), ".statusphere-update-*")
 	if err != nil {
 		return fmt.Errorf("cannot write to %s: %w", filepath.Dir(exe), err)
@@ -119,8 +114,6 @@ func applyTo(ctx context.Context, rel *Release, exe string) error {
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
 
-	// read one byte past the cap so an oversize asset is an error, never a
-	// silently truncated binary
 	written, err := io.Copy(tmp, io.LimitReader(resp.Body, maxAsset+1))
 	if err != nil {
 		tmp.Close()
@@ -142,14 +135,16 @@ func applyTo(ctx context.Context, rel *Release, exe string) error {
 	if n := resp.ContentLength; n > 0 && written != n {
 		return fmt.Errorf("incomplete download: got %d of %d bytes", written, n)
 	}
-	if err := os.Chmod(tmpName, 0o755); err != nil {
+	mode := os.FileMode(0o755)
+	if fi, err := os.Stat(exe); err == nil {
+		mode = fi.Mode().Perm() | 0o100
+	}
+	if err := os.Chmod(tmpName, mode); err != nil {
 		return err
 	}
 	return os.Rename(tmpName, exe)
 }
 
-// IsNewer reports whether latest is a higher version than current. A dev build
-// is always considered outdated so a real release can replace it.
 func IsNewer(latest, current string) bool {
 	if latest == "" {
 		return false

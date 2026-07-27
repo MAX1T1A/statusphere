@@ -80,7 +80,7 @@ func TestKickConfirmCancels(t *testing.T) {
 
 func TestNonOwnerCannotKick(t *testing.T) {
 	ctrl := &recordingCtrl{}
-	m := rosterModel("member") // not the owner
+	m := rosterModel("member")
 	m.ctrl = ctrl
 	selectAccount(&m, "acc-bob")
 	m = send(m, key("x"))
@@ -118,8 +118,7 @@ func actionIndex(items []menuItem, action string) int {
 }
 
 func TestSelfCardNotSelectable(t *testing.T) {
-	m := rosterModel("owner") // groups: [me(self), bob, ann]
-	// selection starts at the first non-self member and up-arrow cannot reach self
+	m := rosterModel("owner")
 	m.clampSelection()
 	if m.selected != 1 {
 		t.Fatalf("selection should skip the pinned self card, got %d", m.selected)

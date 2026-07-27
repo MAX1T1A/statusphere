@@ -33,7 +33,6 @@ func TestVOpensPanelPickerAndSwitches(t *testing.T) {
 		t.Fatalf("selecting Screen today should switch the panel, panel=%v mode=%v", m.panel, m.mode)
 	}
 
-	// tab must not focus the board (nothing to type there)
 	m = send(m, key("tab"))
 	if m.focus != focusCards {
 		t.Fatal("tab must be a no-op while the board view is active")
