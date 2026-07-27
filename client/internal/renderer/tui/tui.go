@@ -355,7 +355,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clampSelection()
 		if m.mode == modeDM {
 			m.chat.MarkDMRead(m.dmPeer)
-		} else if m.mode == modeNone && m.focus == focusChat {
+		} else if m.mode == modeNone && m.panel == panelChat {
 			m.chat.MarkGroupRead()
 		}
 	}
@@ -411,9 +411,11 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 		switch items[m.menuIndex].action {
 		case "chat":
 			m.panel = panelChat
+			m.chat.MarkGroupRead()
 		case "board":
 			m.panel = panelBoard
 		}
+		savePanelView(m.panel)
 		m.mode = modeNone
 		return m, nil
 	}
@@ -1119,6 +1121,7 @@ func newModel(opts Options) model {
 
 func New(opts Options) *TUI {
 	m := newModel(opts)
+	m.panel = loadPanelView()
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	return &TUI{prog: p, Chat: m.chat}
 }
