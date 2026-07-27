@@ -14,6 +14,7 @@ import (
 )
 
 func TestVOpensPanelPickerAndSwitches(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := chatModel()
 
 	m = send(m, key("v"))
