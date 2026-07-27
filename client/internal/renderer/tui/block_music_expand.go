@@ -11,10 +11,12 @@ import (
 	"statusphere-client/internal/stats"
 )
 
-var musicPanelBorder = lipgloss.NewStyle().
+var musicTileBorder = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	BorderForeground(cOffline).
-	Padding(0, 2)
+	Padding(0, 1)
+
+const tileGap = 2
 
 type musicExpandCtx struct {
 	cache       *stats.Cache
@@ -29,78 +31,64 @@ func musicExpansion(d presence.Snapshot, account string, e *expandState, ctx mus
 	on := func(id string) bool { return e.enabled(account, id) }
 
 	var s *stats.SpotifyStats
-	if (on("tops") || on("weekly")) && ctx.cache != nil && d.DeviceID() != "" {
+	if (on("tracks") || on("artists") || on("weekly")) && ctx.cache != nil && d.DeviceID() != "" {
 		if got, ok := ctx.cache.Get(d.DeviceID()).(*stats.SpotifyStats); ok {
 			s = got
 		}
 	}
 
-	inner := max(ctx.width-musicPanelBorder.GetHorizontalFrameSize(), 16)
+	frame := musicTileBorder.GetHorizontalFrameSize()
+	body := max(ctx.width-frame, 12)
 
-	var facts []string
+	var tiles [][]string
+	add := func(lines []string) {
+		if len(lines) == 0 {
+			return
+		}
+		for i, l := range lines {
+			lines[i] = ansi.Truncate(l, body, "…")
+		}
+		w := linesWidth(lines) + musicTileBorder.GetHorizontalPadding()
+		tiles = append(tiles, strings.Split(musicTileBorder.Width(w).Render(strings.Join(lines, "\n")), "\n"))
+	}
+
+	if on("cover") {
+		if art := getCover(d.String(presence.KeySpotifyArtURL)); art != "" {
+			add(strings.Split(strings.TrimRight(art, "\n"), "\n"))
+		}
+	}
 	if on("progress") {
 		if p := renderProgress(d); p != "" {
-			facts = append(facts, p)
+			add([]string{p})
 		}
 	}
 	if on("album") {
 		if album := d.String(presence.KeySpotifyAlbum); album != "" && album != d.String(presence.KeySpotifyTrack) {
-			facts = append(facts, spotDim.Render(album))
+			add([]string{spotDim.Render(album)})
 		}
 	}
 	if on("together") && len(ctx.coListeners) > 0 {
-		facts = append(facts, spotDim.Render("· with "+strings.Join(ctx.coListeners, ", ")+" now"))
+		add([]string{spotDim.Render("with " + strings.Join(ctx.coListeners, ", ") + " now")})
 	}
-
-	var cover []string
-	if on("cover") {
-		if art := getCover(d.String(presence.KeySpotifyArtURL)); art != "" {
-			cover = strings.Split(strings.TrimRight(art, "\n"), "\n")
-		}
-	}
-
-	body := joinSideBySide(cover, facts, inner)
-
-	var extras [][]string
 	if on("weekly") {
 		if st := renderSpotifyStats(s); st != "" {
-			extras = append(extras, strings.Split(st, "\n"))
+			add(strings.Split(st, "\n"))
 		}
 	}
-	if on("tops") {
-		tops := append([]string{}, topTracksLines(s)...)
-		if artists := topArtistsLines(s); len(artists) > 0 {
-			if len(tops) > 0 {
-				tops = append(tops, "")
-			}
-			tops = append(tops, artists...)
-		}
-		if len(tops) > 0 {
-			extras = append(extras, tops)
-		}
+	if on("tracks") {
+		add(topTracksLines(s))
+	}
+	if on("artists") {
+		add(topArtistsLines(s))
 	}
 	if on("lyrics") {
-		if ly := renderLyricsLines(d, inner); len(ly) > 0 {
-			extras = append(extras, ly)
-		}
+		add(renderLyricsLines(d, max(body, 12)))
 	}
 
-	blocks := [][]string{}
-	if len(body) > 0 {
-		blocks = append(blocks, body)
-	}
-	blocks = append(blocks, extras...)
-	body = packColumns(blocks, inner, 4)
-
-	if len(body) == 0 {
+	if len(tiles) == 0 {
 		return nil
 	}
-
-	for i, l := range body {
-		body[i] = ansi.Truncate(l, inner, "…")
-	}
-	panel := musicPanelBorder.Width(inner).Render(strings.Join(body, "\n"))
-	return indentLines(strings.Split(panel, "\n"), 2)
+	return indentLines(packColumns(tiles, ctx.width, tileGap), 2)
 }
 
 func packColumns(blocks [][]string, width, gap int) []string {
@@ -114,12 +102,27 @@ func packColumns(blocks [][]string, width, gap int) []string {
 		return nil
 	}
 
-	for k := len(kept); k > 1; k-- {
-		if cols, ok := balanceColumns(kept, k, width, gap); ok {
-			return mergeColumns(cols, gap)
+	best := [][]string{stack(kept)}
+	bestH, bestWaste := len(best[0]), 0
+
+	for k := 2; k <= len(kept); k++ {
+		cols, ok := balanceColumns(kept, k, width, gap)
+		if !ok {
+			continue
+		}
+		h := 0
+		for _, c := range cols {
+			h = max(h, len(c))
+		}
+		waste := 0
+		for _, c := range cols {
+			waste += h - len(c)
+		}
+		if h < bestH || (h == bestH && waste < bestWaste) {
+			best, bestH, bestWaste = cols, h, waste
 		}
 	}
-	return mergeColumns([][]string{stack(kept)}, gap)
+	return mergeColumns(best, gap)
 }
 
 func balanceColumns(blocks [][]string, k, width, gap int) ([][]string, bool) {
@@ -159,9 +162,6 @@ func balanceColumns(blocks [][]string, k, width, gap int) ([][]string, bool) {
 				continue
 			}
 			widths[i] = max(widths[i], bw)
-			if len(cols[i]) > 0 {
-				cols[i] = append(cols[i], "")
-			}
 			cols[i] = append(cols[i], b...)
 			placed = true
 			break
@@ -180,17 +180,6 @@ func balanceColumns(blocks [][]string, k, width, gap int) ([][]string, bool) {
 	return used, len(used) == k
 }
 
-func columnsWidth(cols [][]string, gap int) int {
-	w := 0
-	for i, c := range cols {
-		if i > 0 {
-			w += gap
-		}
-		w += linesWidth(c)
-	}
-	return w
-}
-
 func mergeColumns(cols [][]string, gap int) []string {
 	if len(cols) == 0 {
 		return nil
@@ -205,25 +194,7 @@ func mergeColumns(cols [][]string, gap int) []string {
 func stack(blocks [][]string) []string {
 	var out []string
 	for _, b := range blocks {
-		if len(out) > 0 {
-			out = append(out, "")
-		}
 		out = append(out, b...)
 	}
 	return out
-}
-
-func joinSideBySide(left, right []string, width int) []string {
-	switch {
-	case len(left) == 0:
-		return right
-	case len(right) == 0:
-		return left
-	}
-	if linesWidth(left)+4+linesWidth(right) > width {
-		out := append([]string{}, left...)
-		out = append(out, "")
-		return append(out, right...)
-	}
-	return strings.Split(zipColumns(left, right, 4), "\n")
 }
