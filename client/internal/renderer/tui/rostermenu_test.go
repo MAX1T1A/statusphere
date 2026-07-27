@@ -30,7 +30,7 @@ func rosterModel(myRole string) model {
 func TestOfflineMemberCardRenders(t *testing.T) {
 	m := rosterModel("owner")
 	selectAccount(&m, "acc-ann")
-	out := renderCard(m.groups[m.selected], m.blocks, m.custom, true, 60, false)
+	out := renderCard(m.groups[m.selected], m.blocks, m.custom, true, 60, false, nil)
 	if !strings.Contains(out, "Ann") || !strings.Contains(out, "offline") {
 		t.Fatalf("offline member card should show name + offline:\n%s", out)
 	}
