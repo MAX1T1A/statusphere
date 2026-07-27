@@ -14,6 +14,7 @@ async def provide_pool() -> Pool:
         host=postgres.host,
         port=postgres.port,
         max_size=postgres.pool_size,
+        server_settings={"timezone": "UTC"},
     )
 
     async with pool.acquire() as conn:
