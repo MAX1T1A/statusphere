@@ -676,6 +676,7 @@ func (m model) sidePanel(width, height int) string {
 func (m model) boardPanel(width, height int) string {
 	innerW := max(width-4, 8)
 	innerH := max(height-2, 4)
+	textW := max(innerW-chatPanelBorder.GetHorizontalPadding(), 8)
 
 	header := modalTitle.Render("screen today")
 	if m.chat.GroupUnread() > 0 {
@@ -693,9 +694,10 @@ func (m model) boardPanel(width, height int) string {
 				maxSec = mem.Seconds
 			}
 		}
-		const nameW = 11
+		const nameW, durW = 11, 6
+		barW := max(textW-nameW-durW-3, 4)
 		for i, mem := range rs.Members {
-			if i >= innerH-1 || maxSec == 0 {
+			if i >= innerH-2 || maxSec == 0 {
 				break
 			}
 			name := m.nameFor(mem.AccountID)
@@ -710,25 +712,25 @@ func (m model) boardPanel(width, height int) string {
 			if mem.AccountID == m.chat.localID {
 				who = chatYou.Render(padded)
 			}
-			barW := max(innerW-nameW-8, 4)
+			dur := durShort(mem.Seconds)
+			if len(dur) < durW {
+				dur = strings.Repeat(" ", durW-len(dur)) + dur
+			}
 			filled := min(max(mem.Seconds*barW/maxSec, 1), barW)
-			bar := lipgloss.NewStyle().Foreground(cAccent).Render(strings.Repeat("█", filled)) +
-				lipgloss.NewStyle().Foreground(lipgloss.Color("237")).Render(strings.Repeat("░", barW-filled))
-			lines = append(lines, who+" "+bar+" "+sumTime.Render(durShort(mem.Seconds)))
+			barStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(barColors[i%len(barColors)]))
+			row := who + " " + sumTime.Render(dur) + "  " + barStyle.Render(strings.Repeat("█", filled))
+			lines = append(lines, ansi.Truncate(row, textW, "…"))
 		}
 	}
 
-	for len(lines) < innerH-1 {
+	for len(lines) < innerH-2 {
 		lines = append(lines, "")
 	}
-	if len(lines) > innerH-1 {
-		lines = lines[:innerH-1]
-	}
-	for i, ln := range lines {
-		lines[i] = ansi.Truncate(ln, innerW, "…")
+	if len(lines) > innerH-2 {
+		lines = lines[:innerH-2]
 	}
 
-	inner := header + "\n" + strings.Join(lines, "\n")
+	inner := header + "\n\n" + strings.Join(lines, "\n")
 	return chatPanelBorder.Width(innerW).Height(innerH).Render(inner)
 }
 
@@ -804,6 +806,7 @@ func (m model) groupChatPanel(width, height int) string {
 	}
 	innerW := max(width-4, 8)
 	innerH := max(height-2, 4)
+	textW := max(innerW-border.GetHorizontalPadding(), 8)
 
 	header := modalTitle.Render("group chat")
 	if !focused && m.chat.GroupUnread() > 0 {
@@ -814,10 +817,10 @@ func (m model) groupChatPanel(width, height int) string {
 	if focused {
 		caret = inputCaret.Render("▏")
 	}
-	input := ansi.Truncate(inputStyle.Render("› "+m.chatInput), innerW, "…") + caret
+	input := ansi.Truncate(inputStyle.Render("› "+m.chatInput), textW-1, "…") + caret
 
 	msgArea := max(innerH-2, 1)
-	wrapped := strings.Split(lipgloss.NewStyle().Width(innerW).Render(m.renderThread(m.chat.GroupEntries())), "\n")
+	wrapped := strings.Split(lipgloss.NewStyle().Width(textW).Render(m.renderThread(m.chat.GroupEntries())), "\n")
 	if len(wrapped) > msgArea {
 		wrapped = wrapped[len(wrapped)-msgArea:]
 	}
