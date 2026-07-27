@@ -31,7 +31,7 @@ func TestGroupChatPanelRenders(t *testing.T) {
 }
 
 func TestSelfCardPinnedFirstWithDivider(t *testing.T) {
-	m := chatModel() // meAccount + acc-bob; self must sort first
+	m := chatModel()
 	if m.groups[0].key != meAccount {
 		t.Fatalf("own card must be pinned first, got %q", m.groups[0].key)
 	}
@@ -43,7 +43,6 @@ func TestSelfCardPinnedFirstWithDivider(t *testing.T) {
 
 func TestDMModalRendersAndResolvesNameFromHistory(t *testing.T) {
 	m := chatModel()
-	// history has no from_name; name must resolve from the room roster
 	m.chat.Ingest("acc-bob", "", meAccount, "psst just you", "")
 	m.mode = modeDM
 	m.dmPeer = "acc-bob"

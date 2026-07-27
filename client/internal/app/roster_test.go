@@ -20,7 +20,6 @@ func TestRosterFallbackToLiveBeforeMembers(t *testing.T) {
 
 func TestRosterKeepsOfflineMembersDropsNonMembers(t *testing.T) {
 	a := &App{feed: feed.New()}
-	// bob online (and a member); eve online but NOT a member (kicked); ann a member but offline
 	a.feed.Update(presence.Snapshot{presence.KeyDeviceID: "bob-1", presence.KeyAccountID: "acc-bob"})
 	a.feed.Update(presence.Snapshot{presence.KeyDeviceID: "eve-1", presence.KeyAccountID: "acc-eve"})
 	a.members = []auth.MemberInfo{
@@ -50,9 +49,6 @@ func TestRosterKeepsOfflineMembersDropsNonMembers(t *testing.T) {
 }
 
 func TestRosterSelfIsOnlineWithNameFromMembers(t *testing.T) {
-	// self presence has account/device id but no account_name (server never
-	// echoes it back to us); roster must show self ONLINE with the name from
-	// the member list, never as an offline placeholder.
 	a := &App{feed: feed.New()}
 	a.feed.Update(presence.Snapshot{presence.KeyDeviceID: "me-dev", presence.KeyAccountID: "acc-me"})
 	a.members = []auth.MemberInfo{{AccountID: "acc-me", Name: "Me", Role: "owner"}}
@@ -84,14 +80,14 @@ func TestMaybeRefreshMembersSignalsOnUnknown(t *testing.T) {
 	a := &App{memberRefresh: make(chan struct{}, 1)}
 	a.members = []auth.MemberInfo{{AccountID: "acc-bob"}}
 
-	a.maybeRefreshMembers("acc-bob") // known -> no signal
+	a.maybeRefreshMembers("acc-bob")
 	select {
 	case <-a.memberRefresh:
 		t.Fatal("known account should not trigger a refresh")
 	default:
 	}
 
-	a.maybeRefreshMembers("acc-new") // unknown -> signal
+	a.maybeRefreshMembers("acc-new")
 	select {
 	case <-a.memberRefresh:
 	default:

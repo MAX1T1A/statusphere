@@ -130,8 +130,6 @@ func (a *App) send(snap presence.Snapshot) {
 	if err := a.ws.Send(snap); err != nil {
 		log.Printf("send: %v", err)
 	}
-	// The server never echoes our own presence back to us, so reflect it into
-	// the local feed — otherwise we'd render our own membership row as offline.
 	local := snap.Clone()
 	local.Set(presence.KeyDeviceID, a.cfg.DeviceID)
 	local.Set(presence.KeyAccountID, a.accountID)
@@ -213,10 +211,6 @@ func (a *App) render() {
 	a.ui.UpdateDevices(a.roster())
 }
 
-// roster merges the canonical room membership with live presence so that
-// offline members keep their card; a member is dropped only when the owner
-// removes them (server drops them from the member list). Before the first
-// member fetch (or if it failed) it falls back to whatever presence is live.
 func (a *App) roster() []presence.Snapshot {
 	live := a.feed.Snapshot()
 
@@ -299,9 +293,6 @@ func (a *App) refreshMembers() {
 	a.render()
 }
 
-// maybeRefreshMembers triggers an out-of-cycle member fetch when presence
-// arrives from an account not yet in the cached roster (a fresh join), so new
-// members appear promptly instead of waiting for the next poll.
 func (a *App) maybeRefreshMembers(accountID string) {
 	if accountID == "" {
 		return

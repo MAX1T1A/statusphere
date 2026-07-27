@@ -160,8 +160,6 @@ type menuItem struct {
 	desc   string
 }
 
-// personMenu is the action menu for the focused OTHER member (your own card is
-// a static block and never opens a menu).
 func (m model) personMenu() []menuItem {
 	items := []menuItem{
 		{"music", "Music", "now playing + weekly"},
@@ -173,8 +171,6 @@ func (m model) personMenu() []menuItem {
 	return items
 }
 
-// settingsMenu holds your own account/app settings, opened from the main screen.
-// The update entry doubles as the result of the last check.
 func (m model) settingsMenu() []menuItem {
 	update := menuItem{"update", "Check for updates", version.Current()}
 	switch m.updateStage {
@@ -261,12 +257,10 @@ type model struct {
 	updateErr   string
 }
 
-// selfPinned reports whether the first card is your own (static, unselectable) block.
 func (m model) selfPinned() bool {
 	return len(m.groups) > 0 && m.groups[0].key == m.chat.localID
 }
 
-// minSelectable is the lowest selectable card index; your own pinned card is skipped.
 func (m model) minSelectable() int {
 	if m.selfPinned() {
 		return 1
@@ -283,7 +277,6 @@ func (m *model) clampSelection() {
 	}
 }
 
-// hasSelectable reports whether there is at least one selectable (non-self) member.
 func (m model) hasSelectable() bool {
 	return len(m.groups) > m.minSelectable()
 }
@@ -315,7 +308,6 @@ func groupDevices(snaps []presence.Snapshot, selfAccount string) []deviceGroup {
 		})
 		groups = append(groups, deviceGroup{key: key, devices: devs})
 	}
-	// your own card is pinned to the top; everyone else is alphabetical
 	sort.Slice(groups, func(i, j int) bool {
 		if groups[i].key == selfAccount {
 			return true
@@ -353,7 +345,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateChatFocus(msg), nil
 		}
 
-		// a pending "remove member" confirmation intercepts the next keypress
 		if m.confirmKick != "" {
 			if msg.String() == "y" || msg.String() == "н" {
 				m.ctrl.Kick(m.confirmKick)
@@ -408,7 +399,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case updateCheckedMsg:
-		// a check that was already in flight must not undo an install
 		if m.updateStage == updateInstalling || m.updateStage == updateDone {
 			return m, nil
 		}
@@ -521,7 +511,6 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 		m.mode = modeUpdate
 		switch m.updateStage {
 		case updateChecking, updateInstalling, updateDone:
-			// work already in flight (or finished) — just show its state
 			return m, nil
 		case updateAvailable:
 			if m.updateRel == nil {
@@ -741,7 +730,6 @@ func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardW
 	for i, ln := range lines {
 		lines[i] = ansi.Truncate(ln, textW, "…")
 	}
-	// unread DM marker sits in the far corner of the card, out of the way
 	if unreadDM && textW > 2 {
 		lines[0] = padLine(lines[0], textW-1) + notifStyle.Render("●")
 	}
@@ -752,8 +740,6 @@ func title() string {
 	return accentStyle.Render("s") + titleStyle.Render("tatu") + accentStyle.Render("s") + titleStyle.Render("phere")
 }
 
-// titleBar puts the wordmark on the left and the build version in the right
-// corner, with a notice when a newer release is waiting.
 func titleBar(width int, updateReady string) string {
 	left := title()
 	right := dimStyle.Render(version.Current())
@@ -795,9 +781,6 @@ func (m model) View() string {
 
 	footer := ansi.Truncate(m.footer(), width, "…")
 
-	// Two columns: cards (2/3) on the left, the always-open group chat (1/3)
-	// on the right. On a narrow terminal there is no room to split, so the
-	// cards take the full width and the chat is reachable via its own view.
 	chatW := 0
 	cardsW := width
 	if width >= 64 {
@@ -911,8 +894,6 @@ func (m model) renderCards(width, avail int) string {
 	if len(m.groups) == 0 {
 		return dimStyle.Render("waiting for devices…")
 	}
-	// your own card is a static block pinned at the top (never selectable),
-	// with a divider before the list of other members
 	if m.selfPinned() {
 		self := renderCard(m.groups[0], m.blocks, m.custom, false, width, false)
 		used := strings.Count(self, "\n") + 1 + 1

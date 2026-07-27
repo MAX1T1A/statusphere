@@ -78,7 +78,6 @@ func TestUpdateFlowStages(t *testing.T) {
 	stubVersion(t, "v0.3.0")
 	m := chatModel()
 
-	// settings -> pick "Check for updates" -> checking + a command is issued
 	m.mode = modeSettings
 	m.menuIndex = 0
 	next, cmd := m.runMenu()
@@ -90,7 +89,6 @@ func TestUpdateFlowStages(t *testing.T) {
 		t.Fatal("modal should show the checking state")
 	}
 
-	// a newer release arrives
 	m = send(m, updateCheckedMsg{rel: &selfupdate.Release{Version: "v0.4.0", AssetURL: "http://x"}})
 	if m.updateStage != updateAvailable {
 		t.Fatalf("stage = %v, want available", m.updateStage)
@@ -103,14 +101,12 @@ func TestUpdateFlowStages(t *testing.T) {
 		t.Fatalf("badge = %q", m.updateBadge())
 	}
 
-	// enter installs
 	next, cmd = m.updateModalKeys(key("enter"))
 	m = next.(model)
 	if m.updateStage != updateInstalling || cmd == nil {
 		t.Fatalf("enter should start installing, stage=%v", m.updateStage)
 	}
 
-	// install succeeds
 	m = send(m, updateAppliedMsg{})
 	if m.updateStage != updateDone {
 		t.Fatalf("stage = %v, want done", m.updateStage)
@@ -142,7 +138,6 @@ func TestUpToDateAndFailurePaths(t *testing.T) {
 		t.Fatalf("failure should surface the reason:\n%s", view)
 	}
 
-	// enter retries
 	next, cmd := m.updateModalKeys(key("enter"))
 	if next.(model).updateStage != updateChecking || cmd == nil {
 		t.Fatal("enter should retry after a failure")
@@ -159,7 +154,6 @@ func TestUpdateModalEscapes(t *testing.T) {
 	if next.(model).mode != modeNone {
 		t.Fatal("esc should close the update modal")
 	}
-	// the pending update survives so the badge stays visible
 	if next.(model).updateStage != updateAvailable {
 		t.Fatal("closing the modal must not discard the pending update")
 	}
@@ -178,7 +172,6 @@ func TestNoSecondInstallWhileOneIsRunning(t *testing.T) {
 		t.Fatal("first install should start")
 	}
 
-	// escaping the modal must not let a second install start from settings
 	next, _ = m.updateModalKeys(key("esc"))
 	m = next.(model)
 	m.mode = modeSettings
@@ -208,7 +201,6 @@ func TestStaleCheckDoesNotUndoInstall(t *testing.T) {
 		t.Fatal("install should complete")
 	}
 
-	// the startup check finally lands — it must not resurrect "available"
 	m = send(m, updateCheckedMsg{rel: &selfupdate.Release{Version: "v0.4.0", AssetURL: "http://x"}})
 	if m.updateStage != updateDone {
 		t.Fatalf("stale check overwrote the installed state: %v", m.updateStage)
@@ -229,7 +221,7 @@ func TestInstallWithoutReleaseFailsInsteadOfPanicking(t *testing.T) {
 	if cmd != nil || m.updateStage != updateFailed {
 		t.Fatalf("a nil release must fail cleanly, stage=%v cmd=%v", m.updateStage, cmd != nil)
 	}
-	_ = m.View() // must not panic
+	_ = m.View()
 }
 
 func TestInstallingRendersWithoutReleaseInfo(t *testing.T) {

@@ -47,7 +47,7 @@ func TestTabFocusesChatAndSends(t *testing.T) {
 		{presence.KeyDeviceID: "me-1", presence.KeyAccountID: meAccount, presence.KeyLastSeen: int64(0)},
 	}, meAccount)
 
-	m = send(m, key("tab")) // cards -> chat
+	m = send(m, key("tab"))
 	if m.focus != focusChat {
 		t.Fatal("tab from cards should focus the chat")
 	}
@@ -67,7 +67,7 @@ func TestTabFocusesChatAndSends(t *testing.T) {
 		t.Fatal("chat draft should clear after send")
 	}
 
-	m = send(m, key("esc")) // chat -> cards
+	m = send(m, key("esc"))
 	if m.focus != focusCards {
 		t.Fatal("esc from chat should return focus to cards")
 	}

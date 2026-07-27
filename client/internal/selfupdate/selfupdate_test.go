@@ -134,7 +134,6 @@ func TestApplyReplacesBinaryAtomically(t *testing.T) {
 		t.Fatalf("replacement is not executable: %v", info.Mode())
 	}
 
-	// no staging leftovers
 	entries, _ := os.ReadDir(dir)
 	if len(entries) != 1 {
 		names := []string{}
@@ -178,6 +177,31 @@ func TestApplyKeepsBinaryOnHTTPError(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(exe); string(got) != "old binary" {
 		t.Fatal("binary must survive a failed download")
+	}
+}
+
+func TestApplyKeepsExistingPermissions(t *testing.T) {
+	payload := strings.Repeat("B", 2<<20)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, payload)
+	}))
+	defer srv.Close()
+
+	for _, mode := range []os.FileMode{0o700, 0o750, 0o755} {
+		dir := t.TempDir()
+		exe := filepath.Join(dir, "statusphere")
+		os.WriteFile(exe, []byte("old binary"), 0o600)
+		if err := os.Chmod(exe, mode); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := applyTo(context.Background(), &Release{AssetURL: srv.URL}, exe); err != nil {
+			t.Fatal(err)
+		}
+		fi, _ := os.Stat(exe)
+		if fi.Mode().Perm() != mode {
+			t.Errorf("permissions widened: %04o -> %04o", mode, fi.Mode().Perm())
+		}
 	}
 }
 

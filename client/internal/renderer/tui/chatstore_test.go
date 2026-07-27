@@ -118,7 +118,6 @@ func TestLoadHistoryRoutesWithoutUnread(t *testing.T) {
 	if len(dm) != 2 {
 		t.Fatalf("dm history = %d, want 2", len(dm))
 	}
-	// order preserved as supplied; self flag derived from sender
 	if dm[0].Self || !dm[1].Self {
 		t.Fatalf("history self flags wrong: %+v", dm)
 	}
@@ -126,9 +125,7 @@ func TestLoadHistoryRoutesWithoutUnread(t *testing.T) {
 
 func TestLoadHistoryOrdersAndDedupsAgainstLive(t *testing.T) {
 	c := NewChatStore(meAccount)
-	// a live message lands before history finishes loading
 	c.Ingest("acc-bob", "Bob", "", "live newest", "2026-07-26T10:00:05Z")
-	// history (older) plus a duplicate of the live message (same author/text/timestamp)
 	c.LoadHistory([]chat.Message{
 		{From: "acc-bob", To: "", Text: "old one", At: "2026-07-26T10:00:01Z"},
 		{From: "acc-bob", To: "", Text: "old two", At: "2026-07-26T10:00:02Z"},
@@ -152,12 +149,10 @@ func TestLoadHistoryOrdersAndDedupsAgainstLive(t *testing.T) {
 }
 
 func TestLoadHistoryThenLiveEchoNoDup(t *testing.T) {
-	// history-first ordering: LoadHistory runs before the live echo of the same message arrives
 	c := NewChatStore(meAccount)
 	c.LoadHistory([]chat.Message{
 		{From: "acc-bob", To: "", Text: "shared", At: "2026-07-26T10:00:03Z"},
 	})
-	// same persisted message now arrives live (identical from/text/at)
 	c.Ingest("acc-bob", "Bob", "", "shared", "2026-07-26T10:00:03Z")
 
 	if got := len(c.GroupEntries()); got != 1 {
