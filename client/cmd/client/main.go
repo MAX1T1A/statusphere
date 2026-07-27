@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	uiMode = flag.String("ui", "tui", "UI mode: tui, headless")
+	uiMode = flag.String("ui", "tui", "UI mode: tui, headless, json (roster as JSON lines on stdout, for external UIs)")
 
 	screenshotFlag = flag.Bool("screenshot", false, "Render a room member's card offscreen as ANSI to stdout")
 	ssDeviceFlag   = flag.String("ss-device", "", "Target device id for --screenshot (default: a member who is playing)")
