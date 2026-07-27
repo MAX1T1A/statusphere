@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"statusphere-client/internal/version"
 )
@@ -255,5 +256,106 @@ func (zeros) Read(p []byte) (int, error) {
 func TestApplyWithoutReleaseIsAnError(t *testing.T) {
 	if err := applyTo(context.Background(), nil, "/nonexistent"); err == nil {
 		t.Fatal("expected an error for a nil release")
+	}
+}
+
+func TestIsNewerHandlesOddTags(t *testing.T) {
+	old := version.Version
+	version.Version = "v0.3.0"
+	t.Cleanup(func() { version.Version = old })
+
+	cases := []struct {
+		latest, current string
+		want            bool
+		why             string
+	}{
+		{"v0.4", "v0.3.0", true, "short tag must not read as older"},
+		{"nightly", "v0.3.0", true, "unparseable tag differs -> offer it"},
+		{"v0.3.0", "v0.3.0", false, "identical tags"},
+		{"nightly", "nightly", false, "identical unparseable tags"},
+		{"v1.2.3.4", "v1.2.3", true, "four-part tag differs"},
+		{"v0.4.0", "v0.4.0-rc1", true, "final release beats its own rc"},
+		{"v0.4.0-rc2", "v0.4.0", false, "rc must not replace the final"},
+		{"v0.5.0-rc1", "v0.4.0", true, "newer rc still wins on numbers"},
+	}
+	for _, c := range cases {
+		if got := IsNewer(c.latest, c.current); got != c.want {
+			t.Errorf("IsNewer(%q,%q)=%v want %v — %s", c.latest, c.current, got, c.want, c.why)
+		}
+	}
+}
+
+func TestSweepRemovesOnlyStaleStagedFiles(t *testing.T) {
+	dir := t.TempDir()
+	fresh := filepath.Join(dir, ".statusphere-update-fresh")
+	stale := filepath.Join(dir, ".statusphere-update-stale")
+	keep := filepath.Join(dir, "statusphere")
+	for _, f := range []string{fresh, stale, keep} {
+		os.WriteFile(f, []byte("x"), 0o600)
+	}
+	os.Chtimes(stale, time.Now().Add(-2*time.Hour), time.Now().Add(-2*time.Hour))
+
+	sweepStaged(dir)
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Error("a stale staged file should be swept")
+	}
+	for _, f := range []string{fresh, keep} {
+		if _, err := os.Stat(f); err != nil {
+			t.Errorf("%s must survive the sweep", filepath.Base(f))
+		}
+	}
+}
+
+func TestDownloadIsNotCappedByTheMetadataClientTimeout(t *testing.T) {
+	payload := strings.Repeat("B", 2<<20)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		half := len(payload) / 2
+		w.Write([]byte(payload[:half]))
+		w.(http.Flusher).Flush()
+		time.Sleep(300 * time.Millisecond)
+		w.Write([]byte(payload[half:]))
+	}))
+	defer srv.Close()
+
+	restore := client.Timeout
+	client.Timeout = 100 * time.Millisecond
+	t.Cleanup(func() { client.Timeout = restore })
+
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "statusphere")
+	os.WriteFile(exe, []byte("old"), 0o755)
+
+	if err := applyTo(context.Background(), &Release{AssetURL: srv.URL}, exe); err != nil {
+		t.Fatalf("a slow download must not be killed by the metadata client timeout: %v", err)
+	}
+	if got, _ := os.ReadFile(exe); len(got) != len(payload) {
+		t.Fatalf("installed %d bytes, want %d", len(got), len(payload))
+	}
+}
+
+func TestDownloadStillObeysContext(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(4<<20))
+		for i := 0; i < 40; i++ {
+			w.Write(make([]byte, 100<<10))
+			w.(http.Flusher).Flush()
+			time.Sleep(50 * time.Millisecond)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "statusphere")
+	os.WriteFile(exe, []byte("old"), 0o755)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if err := applyTo(ctx, &Release{AssetURL: srv.URL}, exe); err == nil {
+		t.Fatal("the context deadline must still abort a download")
+	}
+	if got, _ := os.ReadFile(exe); string(got) != "old" {
+		t.Fatal("binary must survive an aborted download")
 	}
 }

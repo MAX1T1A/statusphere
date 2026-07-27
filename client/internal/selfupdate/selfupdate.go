@@ -23,9 +23,11 @@ const (
 )
 
 var (
-	APIBase            = "https://api.github.com"
-	client             = &http.Client{Timeout: 30 * time.Second}
-	minAssetSize int64 = 1 << 20
+	APIBase              = "https://api.github.com"
+	client               = &http.Client{Timeout: 30 * time.Second}
+	downloadClient       = &http.Client{}
+	minAssetSize   int64 = 1 << 20
+	staleStaged          = time.Hour
 )
 
 type Release struct {
@@ -98,7 +100,7 @@ func applyTo(ctx context.Context, rel *Release, exe string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := client.Do(req)
+	resp, err := downloadClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -106,6 +108,8 @@ func applyTo(ctx context.Context, rel *Release, exe string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download: status %d", resp.StatusCode)
 	}
+
+	sweepStaged(filepath.Dir(exe))
 
 	tmp, err := os.CreateTemp(filepath.Dir(exe), ".statusphere-update-*")
 	if err != nil {
@@ -145,6 +149,20 @@ func applyTo(ctx context.Context, rel *Release, exe string) error {
 	return os.Rename(tmpName, exe)
 }
 
+func sweepStaged(dir string) {
+	matches, err := filepath.Glob(filepath.Join(dir, ".statusphere-update-*"))
+	if err != nil {
+		return
+	}
+	for _, m := range matches {
+		fi, err := os.Stat(m)
+		if err != nil || fi.IsDir() || time.Since(fi.ModTime()) < staleStaged {
+			continue
+		}
+		os.Remove(m)
+	}
+}
+
 func IsNewer(latest, current string) bool {
 	if latest == "" {
 		return false
@@ -152,30 +170,36 @@ func IsNewer(latest, current string) bool {
 	if version.IsDev() || current == "" {
 		return true
 	}
-	l, c := parse(latest), parse(current)
+
+	l, lPre, lOK := parse(latest)
+	c, cPre, cOK := parse(current)
+	if !lOK || !cOK {
+		return strings.TrimSpace(latest) != strings.TrimSpace(current)
+	}
+
 	for i := 0; i < 3; i++ {
 		if l[i] != c[i] {
 			return l[i] > c[i]
 		}
 	}
-	return false
+	return cPre != "" && lPre == ""
 }
 
-func parse(v string) [3]int {
-	var out [3]int
+func parse(v string) (nums [3]int, pre string, ok bool) {
 	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
 	if i := strings.IndexAny(v, "-+"); i >= 0 {
-		v = v[:i]
+		pre, v = v[i+1:], v[:i]
 	}
-	for i, part := range strings.SplitN(v, ".", 3) {
-		if i > 2 {
-			break
-		}
+	parts := strings.Split(v, ".")
+	if len(parts) > 3 {
+		return nums, pre, false
+	}
+	for i, part := range parts {
 		n, err := strconv.Atoi(part)
-		if err != nil {
-			return out
+		if err != nil || n < 0 {
+			return nums, pre, false
 		}
-		out[i] = n
+		nums[i] = n
 	}
-	return out
+	return nums, pre, true
 }
