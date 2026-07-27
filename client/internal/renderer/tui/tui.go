@@ -68,6 +68,15 @@ var (
 			BorderForeground(cAccent).
 			Padding(1, 4)
 	modalTitle = lipgloss.NewStyle().Bold(true).Foreground(cAccent)
+
+	chatPanelBorder = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(cBorder).
+			Padding(0, 1)
+	chatPanelBorderFocused = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(cFocus).
+				Padding(0, 1)
 )
 
 type inputMode int
@@ -75,11 +84,17 @@ type inputMode int
 const (
 	modeNone inputMode = iota
 	modeMenu
-	modeChat
 	modeDM
 	modeRename
 	modeMusic
 	modeScreen
+)
+
+type focusArea int
+
+const (
+	focusCards focusArea = iota
+	focusChat
 )
 
 type menuItem struct {
@@ -92,7 +107,6 @@ func (m model) menu() []menuItem {
 	items := []menuItem{
 		{"music", "Music", "now playing + weekly"},
 		{"screen", "Screen time", "app usage today"},
-		{"chat", "Chat", "room messages"},
 	}
 	focused := m.focusedDevice()
 	if peer := focused.String(presence.KeyAccountID); peer != "" && peer != m.chat.localID {
@@ -143,14 +157,16 @@ type model struct {
 	height    int
 
 	mode       inputMode
+	focus      focusArea
 	input      string
+	chatInput  string
 	ctrl       Controller
 	localID    string
 	dmPeer     string
 	dmPeerName string
 }
 
-func groupDevices(snaps []presence.Snapshot) []deviceGroup {
+func groupDevices(snaps []presence.Snapshot, selfAccount string) []deviceGroup {
 	byKey := make(map[string][]presence.Snapshot)
 	var order []string
 	for _, d := range snaps {
@@ -177,7 +193,16 @@ func groupDevices(snaps []presence.Snapshot) []deviceGroup {
 		})
 		groups = append(groups, deviceGroup{key: key, devices: devs})
 	}
-	sort.Slice(groups, func(i, j int) bool { return groups[i].key < groups[j].key })
+	// your own card is pinned to the top; everyone else is alphabetical
+	sort.Slice(groups, func(i, j int) bool {
+		if groups[i].key == selfAccount {
+			return true
+		}
+		if groups[j].key == selfAccount {
+			return false
+		}
+		return groups[i].key < groups[j].key
+	})
 	return groups
 }
 
@@ -196,9 +221,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateInput(msg), nil
 		}
 
-		switch msg.String() {
-		case "q", "й", "ctrl+c":
+		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
+		}
+		if m.focus == focusChat {
+			return m.updateChatFocus(msg), nil
+		}
+
+		switch msg.String() {
+		case "q", "й":
+			return m, tea.Quit
+		case "tab":
+			m.focus = focusChat
+			m.chat.MarkGroupRead()
 		case "up", "k":
 			if m.selected > 0 {
 				m.selected--
@@ -222,10 +257,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.groups) > 0 {
 				m.mode = modeScreen
 			}
-		case "n", "т", "c", "с":
-			m.mode = modeChat
-			m.input = ""
-			m.chat.MarkGroupRead()
 		case "d", "в":
 			m.mode = modeRename
 			m.input = ""
@@ -238,21 +269,41 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case FeedMsg:
-		m.groups = groupDevices(msg)
+		m.groups = groupDevices(msg, m.chat.localID)
 		if m.selected >= len(m.groups) {
 			m.selected = len(m.groups) - 1
 		}
 		if m.selected < 0 {
 			m.selected = 0
 		}
-		switch m.mode {
-		case modeChat:
-			m.chat.MarkGroupRead()
-		case modeDM:
+		if m.mode == modeDM {
 			m.chat.MarkDMRead(m.dmPeer)
+		} else if m.mode == modeNone && m.focus == focusChat {
+			m.chat.MarkGroupRead()
 		}
 	}
 	return m, nil
+}
+
+func (m model) updateChatFocus(msg tea.KeyMsg) model {
+	switch msg.String() {
+	case "tab", "esc":
+		m.focus = focusCards
+	case "enter":
+		if text := strings.TrimSpace(m.chatInput); text != "" {
+			m.ctrl.SendMessage("", text)
+		}
+		m.chatInput = ""
+	case "backspace":
+		if r := []rune(m.chatInput); len(r) > 0 {
+			m.chatInput = string(r[:len(r)-1])
+		}
+	default:
+		if r := []rune(msg.String()); len(r) == 1 && len([]rune(m.chatInput)) < maxMessageLen {
+			m.chatInput += msg.String()
+		}
+	}
+	return m
 }
 
 func (m model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -285,10 +336,6 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 		return m, musicTick(m.tickID)
 	case "screen":
 		m.mode = modeScreen
-	case "chat":
-		m.mode = modeChat
-		m.input = ""
-		m.chat.MarkGroupRead()
 	case "message":
 		m.mode = modeDM
 		m.input = ""
@@ -314,11 +361,6 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 	case "enter":
 		text := strings.TrimSpace(m.input)
 		switch m.mode {
-		case modeChat:
-			if text != "" {
-				m.ctrl.SendMessage("", text)
-			}
-			m.input = ""
 		case modeDM:
 			if text != "" && m.dmPeer != "" {
 				m.ctrl.SendMessage(m.dmPeer, text)
@@ -341,13 +383,13 @@ func (m model) updateInput(msg tea.KeyMsg) model {
 		m.mode = modeMenu
 		m.input = ""
 	case "backspace":
-		if m.mode == modeChat || m.mode == modeDM || m.mode == modeRename {
+		if m.mode == modeDM || m.mode == modeRename {
 			if runes := []rune(m.input); len(runes) > 0 {
 				m.input = string(runes[:len(runes)-1])
 			}
 		}
 	default:
-		if m.mode == modeChat || m.mode == modeDM || m.mode == modeRename {
+		if m.mode == modeDM || m.mode == modeRename {
 			m.typeInput(msg.String())
 		}
 	}
@@ -463,8 +505,7 @@ func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardW
 	if focused {
 		border = cardBorderFocused
 	}
-	cardPad := border.GetHorizontalBorderSize() + border.GetHorizontalPadding()
-	cw := max(cardWidth-cardPad, 12)
+	cw := max(cardWidth-border.GetHorizontalBorderSize(), 12)
 
 	d := g.devices[0]
 	header := groupHeader(g)
@@ -472,14 +513,16 @@ func renderCard(g deviceGroup, blocks []Block, custom Block, focused bool, cardW
 		header = dmDotStyle.Render("● ") + header
 	}
 	sections := []string{header}
-	for _, b := range blocks {
-		if out := strings.TrimRight(b.Render(d), "\n"); out != "" {
-			sections = append(sections, out)
+	if !d.Has(presence.KeyOffline) {
+		for _, b := range blocks {
+			if out := strings.TrimRight(b.Render(d), "\n"); out != "" {
+				sections = append(sections, out)
+			}
 		}
-	}
-	if custom.Render != nil {
-		if out := strings.TrimRight(custom.Render(d), "\n"); out != "" {
-			sections = append(sections, customDivider(), out)
+		if custom.Render != nil {
+			if out := strings.TrimRight(custom.Render(d), "\n"); out != "" {
+				sections = append(sections, customDivider(), out)
+			}
 		}
 	}
 
@@ -501,8 +544,6 @@ func (m model) View() string {
 		return m.menuModal()
 	case modeRename:
 		return m.renameModal()
-	case modeChat:
-		return m.chatModal()
 	case modeDM:
 		return m.dmModal()
 	case modeMusic:
@@ -518,22 +559,63 @@ func (m model) View() string {
 	if width < 24 {
 		width = 24
 	}
+	avail := max(m.height-6, 3)
 
 	footer := ansi.Truncate(m.footer(), width, "…")
 
-	if len(m.groups) == 0 {
-		return title() + "\n\n" + dimStyle.Render("waiting for devices…") + "\n\n" + footer
+	// Two columns: cards (2/3) on the left, the always-open group chat (1/3)
+	// on the right. On a narrow terminal there is no room to split, so the
+	// cards take the full width and the chat is reachable via its own view.
+	chatW := 0
+	cardsW := width
+	if width >= 64 {
+		chatW = width / 3
+		cardsW = width - chatW - 1
 	}
 
-	cards := make([]string, len(m.groups))
-	heights := make([]int, len(m.groups))
-	for i, g := range m.groups {
-		cards[i] = renderCard(g, m.blocks, m.custom, i == m.selected, width, m.chat.DMUnread(g.key) > 0)
+	cardsCol := m.renderCards(cardsW, avail)
+	if chatW == 0 {
+		return title() + "\n\n" + cardsCol + "\n\n" + footer
+	}
+
+	chatCol := m.groupChatPanel(chatW, avail)
+	body := lipgloss.JoinHorizontal(lipgloss.Top, cardsCol, " ", chatCol)
+	return title() + "\n\n" + body + "\n\n" + footer
+}
+
+func (m model) renderCards(width, avail int) string {
+	if len(m.groups) == 0 {
+		return dimStyle.Render("waiting for devices…")
+	}
+	// pin your own card at the top with a divider before the other members
+	if m.groups[0].key == m.chat.localID {
+		selfFocused := m.selected == 0 && m.focus == focusCards
+		self := renderCard(m.groups[0], m.blocks, m.custom, selfFocused, width, false)
+		divider := roomDivider(width)
+		used := strings.Count(self, "\n") + 1 + 1
+		others := m.scrollCards(m.groups[1:], width, max(avail-used, 3), m.selected-1)
+		out := self + "\n" + divider
+		if others != "" {
+			out += "\n" + others
+		}
+		return out
+	}
+	return m.scrollCards(m.groups, width, avail, m.selected)
+}
+
+func (m model) scrollCards(groups []deviceGroup, width, avail, selected int) string {
+	if len(groups) == 0 {
+		return ""
+	}
+	cards := make([]string, len(groups))
+	heights := make([]int, len(groups))
+	for i, g := range groups {
+		focused := i == selected && m.focus == focusCards
+		cards[i] = renderCard(g, m.blocks, m.custom, focused, width, m.chat.DMUnread(g.key) > 0)
 		heights[i] = strings.Count(cards[i], "\n") + 1
 	}
-
-	avail := max(m.height-6, 3)
-	lo, hi := scrollWindow(heights, m.selected, avail)
+	pivot := max(selected, 0)
+	lo, hi := scrollWindow(heights, pivot, avail)
 
 	var parts []string
 	if lo > 0 {
@@ -543,8 +625,46 @@ func (m model) View() string {
 	if hi < len(cards)-1 {
 		parts = append(parts, dimStyle.Render(fmt.Sprintf("  ↓ %d more", len(cards)-1-hi)))
 	}
+	return strings.Join(parts, "\n")
+}
 
-	return title() + "\n\n" + strings.Join(parts, "\n") + "\n\n" + footer
+func roomDivider(width int) string {
+	label := "─ members "
+	tail := max(width-lipgloss.Width(label)-1, 0)
+	return dimStyle.Render("─" + label + strings.Repeat("─", tail))
+}
+
+func (m model) groupChatPanel(width, height int) string {
+	focused := m.focus == focusChat
+	border := chatPanelBorder
+	if focused {
+		border = chatPanelBorderFocused
+	}
+	innerW := max(width-4, 8)
+	innerH := max(height-2, 4)
+
+	header := modalTitle.Render("group chat")
+	if !focused && m.chat.GroupUnread() > 0 {
+		header += " " + notifStyle.Render("●")
+	}
+
+	caret := ""
+	if focused {
+		caret = inputCaret.Render("▏")
+	}
+	input := ansi.Truncate(inputStyle.Render("› "+m.chatInput), innerW, "…") + caret
+
+	msgArea := max(innerH-2, 1)
+	wrapped := strings.Split(lipgloss.NewStyle().Width(innerW).Render(m.renderThread(m.chat.GroupEntries())), "\n")
+	if len(wrapped) > msgArea {
+		wrapped = wrapped[len(wrapped)-msgArea:]
+	}
+	for len(wrapped) < msgArea {
+		wrapped = append([]string{""}, wrapped...)
+	}
+
+	inner := header + "\n" + strings.Join(wrapped, "\n") + "\n" + input
+	return border.Width(innerW).Height(innerH).Render(inner)
 }
 
 func (m model) focusedDevice() presence.Snapshot {
@@ -690,26 +810,6 @@ func (m model) renameModal() string {
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Render(body))
 }
 
-func (m model) chatModal() string {
-	w, h := m.width, m.height
-	if w == 0 {
-		w = 80
-	}
-	if h == 0 {
-		h = 24
-	}
-
-	boxW := modalBoxW(w)
-	contentW := max(boxW-modalPad, 4)
-
-	logLines := m.chatLines(m.chat.GroupEntries(), contentW, h)
-	body := modalTitle.Render("group chat") + dimStyle.Render("  · everyone in the room") + "\n\n" +
-		strings.Join(logLines, "\n") + "\n\n" +
-		inputStyle.Render("› "+m.input) + inputCaret.Render("▏") + "\n\n" +
-		accentStyle.Render("←") + dimStyle.Render(" back · ") + accentStyle.Render("enter") + dimStyle.Render(" send · ") + accentStyle.Render("esc") + dimStyle.Render(" room")
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modalBox.Width(boxW).Render(body))
-}
-
 func (m model) dmModal() string {
 	w, h := m.width, m.height
 	if w == 0 {
@@ -797,10 +897,12 @@ func (m model) nameFor(accountID string) string {
 }
 
 func (m model) footer() string {
-	hint := dimStyle.Render("↑↓ select · ") + accentStyle.Render("enter") + dimStyle.Render(" menu · ")
-	if m.chat.GroupUnread() > 0 {
-		hint += notifStyle.Render("● c chat") + dimStyle.Render(" · ")
+	if m.focus == focusChat {
+		return accentStyle.Render("enter") + dimStyle.Render(" send · ") +
+			accentStyle.Render("tab") + dimStyle.Render("/") + accentStyle.Render("esc") + dimStyle.Render(" cards")
 	}
+	hint := dimStyle.Render("↑↓ select · ") + accentStyle.Render("enter") + dimStyle.Render(" menu · ") +
+		accentStyle.Render("tab") + dimStyle.Render(" chat · ")
 	if n := m.chat.TotalDMUnread(); n > 0 {
 		hint += dmDotStyle.Render(fmt.Sprintf("● %d dm", n)) + dimStyle.Render(" · ")
 	}
@@ -832,7 +934,7 @@ func New(opts Options) *TUI {
 
 func Snapshot(opts Options, devices []presence.Snapshot, selectDevice, mode string, width, height int) string {
 	m := newModel(opts)
-	m.groups = groupDevices(devices)
+	m.groups = groupDevices(devices, opts.LocalAccountID)
 	m.width = width
 	m.height = height
 
