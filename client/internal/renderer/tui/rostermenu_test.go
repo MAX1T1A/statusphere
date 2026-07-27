@@ -23,7 +23,7 @@ func rosterModel(myRole string) model {
 		{presence.KeyDeviceID: "me-1", presence.KeyAccountID: meAccount, presence.KeyAccountName: "Me", presence.KeyRole: myRole, presence.KeyLastSeen: int64(0)},
 		{presence.KeyDeviceID: "bob-1", presence.KeyAccountID: "acc-bob", presence.KeyAccountName: "Bob", presence.KeyRole: "member", presence.KeyLastSeen: int64(0)},
 		{presence.KeyAccountID: "acc-ann", presence.KeyAccountName: "Ann", presence.KeyRole: "member", presence.KeyOffline: true},
-	})
+	}, meAccount)
 	return m
 }
 

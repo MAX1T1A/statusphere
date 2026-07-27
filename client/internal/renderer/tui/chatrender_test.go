@@ -13,21 +13,31 @@ func chatModel() model {
 	m.groups = groupDevices([]presence.Snapshot{
 		{presence.KeyDeviceID: "bob-1", presence.KeyAccountID: "acc-bob", presence.KeyAccountName: "Bob", presence.KeyLastSeen: int64(0)},
 		{presence.KeyDeviceID: "me-1", presence.KeyAccountID: meAccount, presence.KeyAccountName: "Me", presence.KeyLastSeen: int64(0)},
-	})
+	}, meAccount)
 	return m
 }
 
-func TestGroupModalRenders(t *testing.T) {
+func TestGroupChatPanelRenders(t *testing.T) {
 	m := chatModel()
 	m.chat.Ingest("acc-bob", "Bob", "", "hey everyone", "")
 	m.chat.Ingest(meAccount, "Me", "", "hi bob", "")
-	m.mode = modeChat
 
-	out := m.View()
+	out := m.groupChatPanel(40, 16)
 	for _, want := range []string{"group chat", "hey everyone", "hi bob", "Bob", "you"} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("group modal missing %q\n%s", want, out)
+			t.Fatalf("group chat panel missing %q\n%s", want, out)
 		}
+	}
+}
+
+func TestSelfCardPinnedFirstWithDivider(t *testing.T) {
+	m := chatModel() // meAccount + acc-bob; self must sort first
+	if m.groups[0].key != meAccount {
+		t.Fatalf("own card must be pinned first, got %q", m.groups[0].key)
+	}
+	out := m.renderCards(60, 40)
+	if !strings.Contains(out, "members") {
+		t.Fatalf("expected a divider before the other members:\n%s", out)
 	}
 }
 
@@ -50,12 +60,12 @@ func TestDMModalRendersAndResolvesNameFromHistory(t *testing.T) {
 func TestMenuIncludesMessageForOtherNotSelf(t *testing.T) {
 	m := chatModel()
 
-	m.selected = 0 // Bob
+	selectAccount(&m, "acc-bob")
 	if !hasAction(m.menu(), "message") {
 		t.Fatal("expected Message item when focused on another account")
 	}
 
-	m.selected = 1 // Me
+	selectAccount(&m, meAccount)
 	if hasAction(m.menu(), "message") {
 		t.Fatal("Message item must be hidden when focused on self")
 	}
