@@ -137,7 +137,7 @@ func BlockApp(cache *stats.Cache) Block {
 	}
 }
 
-func appDetail(d presence.Snapshot, cache *stats.Cache) string {
+func appDetail(d presence.Snapshot, cache, hourly *stats.Cache) string {
 	var parts []string
 
 	app := d.String(presence.KeyActiveApp)
@@ -164,5 +164,46 @@ func appDetail(d presence.Snapshot, cache *stats.Cache) string {
 			}
 		}
 	}
+
+	if hourly != nil && d.DeviceID() != "" {
+		if h, ok := hourly.Get(d.DeviceID()).(*stats.Hourly); ok && h != nil {
+			if sp := renderHourlySparkline(h); sp != "" {
+				parts = append(parts, sp)
+			}
+		}
+	}
 	return strings.Join(parts, "\n\n")
+}
+
+var sparkLevels = []rune("▁▂▃▄▅▆▇█")
+
+func renderHourlySparkline(h *stats.Hourly) string {
+	if h == nil || len(h.Hours) != 24 {
+		return ""
+	}
+	maxSec := 0
+	for _, s := range h.Hours {
+		if s > maxSec {
+			maxSec = s
+		}
+	}
+	if maxSec == 0 {
+		return ""
+	}
+
+	active := lipgloss.NewStyle().Foreground(cAccent)
+	idle := lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
+	var spark strings.Builder
+	for _, s := range h.Hours {
+		if s == 0 {
+			spark.WriteString(idle.Render("▁"))
+			continue
+		}
+		lvl := s * (len(sparkLevels) - 1) / maxSec
+		spark.WriteString(active.Render(string(sparkLevels[lvl])))
+	}
+
+	return sumHeader.Render("activity · today") + "\n" +
+		spark.String() + "\n" +
+		sumTime.Render("00    06    12    18  23")
 }
