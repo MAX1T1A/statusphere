@@ -20,6 +20,7 @@ import (
 	"statusphere-client/internal/notifier"
 	"statusphere-client/internal/presence"
 	"statusphere-client/internal/renderer"
+	"statusphere-client/internal/renderer/jsonline"
 	"statusphere-client/internal/renderer/noop"
 	"statusphere-client/internal/renderer/tui"
 	"statusphere-client/internal/stats"
@@ -113,6 +114,14 @@ func Run(ctx context.Context, uiMode string) error {
 			<-ctx.Done()
 			n.Stop()
 		}()
+	case "json":
+		j := jsonline.New(os.Stdout)
+		a.ui = j
+		go func() {
+			<-ctx.Done()
+			j.Stop()
+		}()
+		go a.pollMembers(ctx)
 	default:
 		return fmt.Errorf("unknown ui mode: %s", uiMode)
 	}
