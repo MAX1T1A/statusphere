@@ -33,6 +33,9 @@ type Controller interface {
 type Options struct {
 	SpotifyCache   *stats.Cache
 	SummaryCache   *stats.Cache
+	HourlyCache    *stats.Cache
+	RoomCache      *stats.Cache
+	RoomID         string
 	LocalID        string
 	LocalAccountID string
 	Controller     Controller
@@ -85,6 +88,7 @@ const (
 	modeNone inputMode = iota
 	modeMenu
 	modeSettings
+	modeView
 	modeDM
 	modeRename
 	modeMusic
@@ -97,6 +101,18 @@ const (
 	focusCards focusArea = iota
 	focusChat
 )
+
+type panelView int
+
+const (
+	panelChat panelView = iota
+	panelBoard
+)
+
+var panelViews = []menuItem{
+	{"chat", "Chat", "room messages"},
+	{"board", "Screen today", "who's been at the screen"},
+}
 
 type menuItem struct {
 	action string
@@ -126,8 +142,11 @@ func (m model) settingsMenu() []menuItem {
 }
 
 func (m model) currentMenu() ([]menuItem, string) {
-	if m.mode == modeSettings {
+	switch m.mode {
+	case modeSettings:
 		return m.settingsMenu(), "settings"
+	case modeView:
+		return panelViews, "panel"
 	}
 	return m.personMenu(), m.focusedName()
 }
@@ -168,10 +187,14 @@ type model struct {
 
 	mode        inputMode
 	focus       focusArea
+	panel       panelView
 	input       string
 	chatInput   string
 	ctrl        Controller
 	localID     string
+	roomID      string
+	hourly      *stats.Cache
+	room        *stats.Cache
 	dmPeer      string
 	dmPeerName  string
 	confirmKick string
@@ -249,7 +272,7 @@ func (m model) Init() tea.Cmd { return nil }
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if m.mode == modeMenu || m.mode == modeSettings {
+		if m.mode == modeMenu || m.mode == modeSettings || m.mode == modeView {
 			return m.updateMenu(msg)
 		}
 		if m.mode == modeMusic || m.mode == modeScreen {
@@ -279,8 +302,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "й":
 			return m, tea.Quit
 		case "tab":
-			m.focus = focusChat
-			m.chat.MarkGroupRead()
+			if m.panel == panelChat {
+				m.focus = focusChat
+				m.chat.MarkGroupRead()
+			}
 		case "up", "k":
 			if m.selected > m.minSelectable() {
 				m.selected--
@@ -307,6 +332,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s", "ы":
 			m.mode = modeSettings
 			m.menuIndex = 0
+		case "v", "м":
+			m.mode = modeView
+			m.menuIndex = int(m.panel)
 		case "x", "ч":
 			if m.isOwner() {
 				if peer := m.focusedDevice().String(presence.KeyAccountID); peer != "" &&
@@ -377,6 +405,16 @@ func (m model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) runMenu() (tea.Model, tea.Cmd) {
 	items, _ := m.currentMenu()
 	if m.menuIndex < 0 || m.menuIndex >= len(items) {
+		return m, nil
+	}
+	if m.mode == modeView {
+		switch items[m.menuIndex].action {
+		case "chat":
+			m.panel = panelChat
+		case "board":
+			m.panel = panelBoard
+		}
+		m.mode = modeNone
 		return m, nil
 	}
 	switch items[m.menuIndex].action {
@@ -585,7 +623,7 @@ func title() string {
 
 func (m model) View() string {
 	switch m.mode {
-	case modeMenu, modeSettings:
+	case modeMenu, modeSettings, modeView:
 		return m.menuModal()
 	case modeRename:
 		return m.renameModal()
@@ -594,7 +632,7 @@ func (m model) View() string {
 	case modeMusic:
 		return m.detailModal("music", spotifyDetail(m.focusedDevice(), m.spotify, m.coListeners(), modalBoxW(m.width)-modalPad))
 	case modeScreen:
-		return m.detailModal("screen time", appDetail(m.focusedDevice(), m.summary))
+		return m.detailModal("screen time", appDetail(m.focusedDevice(), m.summary, m.hourly))
 	}
 
 	width := m.width
@@ -623,9 +661,90 @@ func (m model) View() string {
 		return title() + "\n\n" + cardsCol + "\n\n" + footer
 	}
 
-	chatCol := m.groupChatPanel(chatW, avail)
+	chatCol := m.sidePanel(chatW, avail)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, cardsCol, " ", chatCol)
 	return title() + "\n\n" + body + "\n\n" + footer
+}
+
+func (m model) sidePanel(width, height int) string {
+	if m.panel == panelBoard {
+		return m.boardPanel(width, height)
+	}
+	return m.groupChatPanel(width, height)
+}
+
+func (m model) boardPanel(width, height int) string {
+	innerW := max(width-4, 8)
+	innerH := max(height-2, 4)
+
+	header := modalTitle.Render("screen today")
+	if m.chat.GroupUnread() > 0 {
+		header += " " + notifStyle.Render("●")
+	}
+
+	var lines []string
+	rs, _ := m.roomScreen()
+	if rs == nil || len(rs.Members) == 0 {
+		lines = append(lines, dimStyle.Render("no activity yet"))
+	} else {
+		maxSec := 0
+		for _, mem := range rs.Members {
+			if mem.Seconds > maxSec {
+				maxSec = mem.Seconds
+			}
+		}
+		const nameW = 11
+		for i, mem := range rs.Members {
+			if i >= innerH-1 || maxSec == 0 {
+				break
+			}
+			name := m.nameFor(mem.AccountID)
+			if name == "" {
+				name = shortAccount(mem.AccountID)
+			}
+			if runes := []rune(name); len(runes) > nameW {
+				name = string(runes[:nameW-1]) + "…"
+			}
+			padded := name + strings.Repeat(" ", nameW-len([]rune(name)))
+			who := chatName.Render(padded)
+			if mem.AccountID == m.chat.localID {
+				who = chatYou.Render(padded)
+			}
+			barW := max(innerW-nameW-8, 4)
+			filled := min(max(mem.Seconds*barW/maxSec, 1), barW)
+			bar := lipgloss.NewStyle().Foreground(cAccent).Render(strings.Repeat("█", filled)) +
+				lipgloss.NewStyle().Foreground(lipgloss.Color("237")).Render(strings.Repeat("░", barW-filled))
+			lines = append(lines, who+" "+bar+" "+sumTime.Render(durShort(mem.Seconds)))
+		}
+	}
+
+	for len(lines) < innerH-1 {
+		lines = append(lines, "")
+	}
+	if len(lines) > innerH-1 {
+		lines = lines[:innerH-1]
+	}
+	for i, ln := range lines {
+		lines[i] = ansi.Truncate(ln, innerW, "…")
+	}
+
+	inner := header + "\n" + strings.Join(lines, "\n")
+	return chatPanelBorder.Width(innerW).Height(innerH).Render(inner)
+}
+
+func (m model) roomScreen() (*stats.RoomScreen, bool) {
+	if m.room == nil || m.roomID == "" {
+		return nil, false
+	}
+	rs, ok := m.room.Get(m.roomID).(*stats.RoomScreen)
+	return rs, ok
+}
+
+func shortAccount(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
 }
 
 func (m model) renderCards(width, avail int) string {
@@ -800,11 +919,12 @@ func (m model) menuModal() string {
 		rows = append(rows, ansi.Truncate(row, max(boxW-modalPad, 4), "…"))
 	}
 
-	head := modalTitle.Render("menu")
-	if m.mode == modeSettings {
+	head := modalTitle.Render("menu") + dimStyle.Render(" · "+title)
+	switch m.mode {
+	case modeSettings:
 		head = modalTitle.Render("settings")
-	} else {
-		head += dimStyle.Render(" · " + title)
+	case modeView:
+		head = modalTitle.Render("panel") + dimStyle.Render(" · right side")
 	}
 	body := head + "\n\n" +
 		strings.Join(rows, "\n") + "\n\n" +
@@ -959,8 +1079,11 @@ func (m model) footer() string {
 		return dmDotStyle.Render("remove "+name+"?") + dimStyle.Render(" ") +
 			accentStyle.Render("y") + dimStyle.Render(" / ") + accentStyle.Render("n")
 	}
-	hint := dimStyle.Render("↑↓ select · ") + accentStyle.Render("enter") + dimStyle.Render(" menu · ") +
-		accentStyle.Render("tab") + dimStyle.Render(" chat · ") + accentStyle.Render("s") + dimStyle.Render(" settings · ")
+	hint := dimStyle.Render("↑↓ select · ") + accentStyle.Render("enter") + dimStyle.Render(" menu · ")
+	if m.panel == panelChat {
+		hint += accentStyle.Render("tab") + dimStyle.Render(" chat · ")
+	}
+	hint += accentStyle.Render("v") + dimStyle.Render(" panel · ") + accentStyle.Render("s") + dimStyle.Render(" settings · ")
 	if peer := m.focusedDevice(); m.isOwner() && peer.String(presence.KeyRole) != "owner" &&
 		peer.String(presence.KeyAccountID) != "" && peer.String(presence.KeyAccountID) != m.chat.localID {
 		hint += accentStyle.Render("x") + dimStyle.Render(" remove · ")
@@ -983,6 +1106,9 @@ func newModel(opts Options) model {
 		chat:    NewChatStore(opts.LocalAccountID),
 		spotify: opts.SpotifyCache,
 		summary: opts.SummaryCache,
+		hourly:  opts.HourlyCache,
+		room:    opts.RoomCache,
+		roomID:  opts.RoomID,
 		ctrl:    opts.Controller,
 		localID: opts.LocalID,
 	}
@@ -1014,6 +1140,12 @@ func Snapshot(opts Options, devices []presence.Snapshot, selectDevice, mode stri
 	}
 	if opts.SummaryCache != nil {
 		opts.SummaryCache.Prime(target)
+	}
+	if opts.HourlyCache != nil {
+		opts.HourlyCache.Prime(target)
+	}
+	if opts.RoomCache != nil && opts.RoomID != "" {
+		opts.RoomCache.Prime(opts.RoomID)
 	}
 
 	switch mode {

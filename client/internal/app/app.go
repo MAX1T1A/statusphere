@@ -95,6 +95,9 @@ func Run(ctx context.Context, uiMode string) error {
 		t := tui.New(tui.Options{
 			SpotifyCache:   stats.NewSpotifyCache(cfg.ServerURL, cfg.Token, cfg.RoomID),
 			SummaryCache:   stats.NewSummaryCache(cfg.ServerURL, cfg.Token, "day", cfg.RoomID),
+			HourlyCache:    stats.NewHourlyCache(cfg.ServerURL, cfg.Token, cfg.RoomID),
+			RoomCache:      stats.NewRoomScreenCache(cfg.ServerURL, cfg.Token, cfg.RoomID),
+			RoomID:         cfg.RoomID,
 			LocalID:        cfg.DeviceID,
 			LocalAccountID: cfg.AccountID,
 			Controller:     a,
@@ -406,6 +409,9 @@ func Screenshot(ctx context.Context, so ScreenshotOpts) (string, error) {
 	opts := tui.Options{
 		SpotifyCache:   stats.NewSpotifyCache(cfg.ServerURL, cfg.Token, cfg.RoomID),
 		SummaryCache:   stats.NewSummaryCache(cfg.ServerURL, cfg.Token, "day", cfg.RoomID),
+		HourlyCache:    stats.NewHourlyCache(cfg.ServerURL, cfg.Token, cfg.RoomID),
+		RoomCache:      stats.NewRoomScreenCache(cfg.ServerURL, cfg.Token, cfg.RoomID),
+		RoomID:         cfg.RoomID,
 		LocalID:        cfg.DeviceID,
 		LocalAccountID: cfg.AccountID,
 	}
