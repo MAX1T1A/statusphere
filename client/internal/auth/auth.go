@@ -117,7 +117,8 @@ func Register(serverURL string) (*Config, error) {
 	secret := newSecret()
 
 	var resp accountResponse
-	if err := do(http.MethodPost, serverURL+"/accounts/register", "", map[string]string{"secret": secret}, &resp); err != nil {
+	body := map[string]string{"secret": secret, "name": deviceName()}
+	if err := do(http.MethodPost, serverURL+"/accounts/register", "", body, &resp); err != nil {
 		return nil, fmt.Errorf("register: %w", err)
 	}
 
