@@ -36,6 +36,7 @@ var (
 	membersFlag   = flag.Bool("members", false, "List members of your room")
 	kickFlag      = flag.String("kick", "", "Remove a member by <account_id>")
 	setNameFlag   = flag.String("set-name", "", "Set your account's display name")
+	postPhotoFlag = flag.String("post-photo", "", "Share <path> as your current photo status, replacing any previous one")
 )
 
 func main() {
@@ -101,6 +102,15 @@ func dispatch() error {
 		})
 	case *membersFlag:
 		return withConfig(listMembers)
+	case *postPhotoFlag != "":
+		return withConfig(func(c *auth.Config) error {
+			info, err := c.PostPhoto(*postPhotoFlag)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Shared. Visible to your room until %s\n", info.ExpiresAt)
+			return nil
+		})
 	case *kickFlag != "":
 		return withConfig(func(c *auth.Config) error {
 			ok, err := c.Kick(*kickFlag)
