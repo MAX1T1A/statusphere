@@ -8,6 +8,7 @@ from app.shared_kernel.operation import Operation
 
 class RegisterAccount(Operation):
     secret: str
+    name: str | None = None
 
 
 class RegisterAccountUseCase:
@@ -21,7 +22,7 @@ class RegisterAccountUseCase:
 
         async with self._uow_factory() as uow:
             await uow.accounts.create_account(account_id, verifier(op.secret))
-            await uow.accounts.create_device(device_id, account_id, None)
+            await uow.accounts.create_device(device_id, account_id, op.name)
 
         room_id = await self._directory.create_room_for_owner(account_id)
         return AccountSessionDTO(
