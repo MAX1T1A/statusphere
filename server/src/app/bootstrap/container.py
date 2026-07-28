@@ -15,6 +15,10 @@ from app.modules.chats.application.commands.send_message import SendMessage, Sen
 from app.modules.chats.application.queries.get_history import GetMessageHistory, GetMessageHistoryUseCase
 from app.modules.chats.infrastructure.readers import MessageReader
 from app.modules.chats.infrastructure.uow import ChatsUnitOfWork
+from app.modules.photo.application.commands.post_photo import PostPhoto, PostPhotoUseCase
+from app.modules.photo.application.queries.get_photo_blob import GetPhotoBlob, GetPhotoBlobUseCase
+from app.modules.photo.application.queries.list_room_photos import ListRoomPhotos, ListRoomPhotosUseCase
+from app.modules.photo.infrastructure.store import PhotoStore
 from app.modules.presence.application.commands.ingest_snapshot import (
     IngestPresenceSnapshot,
     IngestPresenceSnapshotUseCase,
@@ -54,6 +58,7 @@ class Container:
     room_directory: RoomDirectory
     hub: RealtimeHub
     sampler: Sampler
+    photos: PhotoStore
 
 
 def build_container(pool: Pool) -> Container:
@@ -103,6 +108,12 @@ def build_container(pool: Pool) -> Container:
     sampler = Sampler(SnapshotWriter(pool), interval)
     bus.register(IngestPresenceSnapshot, IngestPresenceSnapshotUseCase(hub, sampler))
 
+    settings = get_settings()
+    photo_store = PhotoStore(pool, settings.photos_dir, settings.photo_expiry_minutes)
+    bus.register(PostPhoto, PostPhotoUseCase(photo_store, membership_reader, hub))
+    bus.register(ListRoomPhotos, ListRoomPhotosUseCase(photo_store, membership_reader))
+    bus.register(GetPhotoBlob, GetPhotoBlobUseCase(photo_store, membership_reader))
+
     return Container(
         pool=pool,
         bus=bus,
@@ -111,4 +122,5 @@ def build_container(pool: Pool) -> Container:
         room_directory=room_directory,
         hub=hub,
         sampler=sampler,
+        photos=photo_store,
     )
