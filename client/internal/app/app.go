@@ -54,6 +54,9 @@ type App struct {
 	membersMu     sync.Mutex
 	members       []auth.MemberInfo
 	memberRefresh chan struct{}
+
+	labelsMu sync.Mutex
+	labels   map[string]string
 }
 
 func Run(ctx context.Context, uiMode string) error {
@@ -239,6 +242,7 @@ func (a *App) roster() []presence.Snapshot {
 		}
 		if acc != "" {
 			byAccount[acc] = append(byAccount[acc], s)
+			a.rememberLabel(acc, s)
 		}
 	}
 
@@ -256,6 +260,9 @@ func (a *App) roster() []presence.Snapshot {
 		}
 		label := m.Name
 		if label == "" {
+			label = a.lastLabel(m.AccountID)
+		}
+		if label == "" {
 			label = shortID(m.AccountID)
 		}
 		out = append(out, presence.Snapshot{
@@ -266,6 +273,30 @@ func (a *App) roster() []presence.Snapshot {
 		})
 	}
 	return out
+}
+
+// rememberLabel keeps the label a device carried while it was online, so its owner
+// does not turn into a raw account id the moment the feed drops them.
+func (a *App) rememberLabel(accountID string, s presence.Snapshot) {
+	label := s.String(presence.KeyAccountName)
+	if label == "" {
+		label = s.DeviceName()
+	}
+	if label == "" {
+		return
+	}
+	a.labelsMu.Lock()
+	defer a.labelsMu.Unlock()
+	if a.labels == nil {
+		a.labels = map[string]string{}
+	}
+	a.labels[accountID] = label
+}
+
+func (a *App) lastLabel(accountID string) string {
+	a.labelsMu.Lock()
+	defer a.labelsMu.Unlock()
+	return a.labels[accountID]
 }
 
 func shortID(id string) string {

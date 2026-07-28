@@ -1,6 +1,9 @@
 from asyncpg.pool import Pool
 
 from app.modules.accounts.application.interfaces import IAccountReader
+from app.platform.db.names import display_name_expr
+
+DISPLAY_NAME_SQL = f"SELECT {display_name_expr()} FROM accounts a WHERE a.account_id = $1"
 
 
 class AccountReader(IAccountReader):
@@ -22,7 +25,7 @@ class AccountReader(IAccountReader):
 
     async def name_of(self, account_id: str) -> str:
         async with self._pool.acquire() as conn:
-            return await conn.fetchval("SELECT name FROM accounts WHERE account_id = $1", account_id) or ""
+            return await conn.fetchval(DISPLAY_NAME_SQL, account_id) or ""
 
     async def list_devices(self, account_id: str) -> list[dict]:
         async with self._pool.acquire() as conn:

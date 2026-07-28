@@ -76,6 +76,23 @@ func TestRosterOfflineLabelFallsBackToShortID(t *testing.T) {
 	}
 }
 
+func TestRosterOfflineLabelKeepsLastSeenName(t *testing.T) {
+	a := &App{feed: feed.New()}
+	a.members = []auth.MemberInfo{{AccountID: "0123456789abcdef", Role: "member"}}
+	a.feed.Update(presence.Snapshot{
+		presence.KeyDeviceID:   "d1",
+		presence.KeyAccountID:  "0123456789abcdef",
+		presence.KeyDeviceName: "thinkpad",
+	})
+	a.roster()
+
+	a.feed = feed.New() // the device aged out of the feed
+	got := a.roster()
+	if len(got) != 1 || got[0].String(presence.KeyAccountName) != "thinkpad" {
+		t.Fatalf("offline card should keep the name seen while online, got %+v", got)
+	}
+}
+
 func TestMaybeRefreshMembersSignalsOnUnknown(t *testing.T) {
 	a := &App{memberRefresh: make(chan struct{}, 1)}
 	a.members = []auth.MemberInfo{{AccountID: "acc-bob"}}
