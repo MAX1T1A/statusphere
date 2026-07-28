@@ -30,6 +30,8 @@ class Settings:
     presence_key: bytes
     sampler_interval: int
     logging_level: int
+    photos_dir: str
+    photo_expiry_minutes: int
 
 
 def _load_presence_key() -> bytes:
@@ -61,4 +63,6 @@ def get_settings() -> Settings:
         auth_secret=auth_secret,
         sampler_interval=int(os.environ.get("SAMPLER_INTERVAL", 30)),
         logging_level=_resolve_level(os.environ.get("LOGGING_LEVEL", "INFO")),
+        photos_dir=os.environ.get("PHOTOS_DIR", "/data/photos"),
+        photo_expiry_minutes=int(os.environ.get("PHOTO_EXPIRY_MINUTES", 180)),
     )

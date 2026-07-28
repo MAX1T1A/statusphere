@@ -6,6 +6,7 @@ services:
       - "8000"
     volumes:
       - ./src:/app/src
+      - photos_data:/data/photos
     environment:
       LOGGING_LEVEL: ${LOGGING_LEVEL}
       POSTGRES_DB_HOST: db
@@ -17,6 +18,8 @@ services:
       AUTH_SECRET: ${AUTH_SECRET}
       PRESENCE_KEY: ${PRESENCE_KEY}
       SAMPLER_INTERVAL: ${SAMPLER_INTERVAL}
+      PHOTOS_DIR: /data/photos
+      PHOTO_EXPIRY_MINUTES: ${PHOTO_EXPIRY_MINUTES:-180}
     depends_on:
       db:
         condition: service_healthy
@@ -38,3 +41,4 @@ services:
 
 volumes:
   pgdata:
+  photos_data:

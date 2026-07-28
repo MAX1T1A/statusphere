@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from app.modules.accounts.presentation.errors import ERROR_STATUS_MAP as ACCOUNTS_ERRORS
 from app.modules.chats.presentation.errors import ERROR_STATUS_MAP as CHATS_ERRORS
+from app.modules.photo.presentation.errors import ERROR_STATUS_MAP as PHOTO_ERRORS
 from app.modules.rooms.presentation.errors import ERROR_STATUS_MAP as ROOMS_ERRORS
 from app.shared_kernel.exceptions import DeviceRevoked, DomainError, InvalidToken
 
@@ -12,6 +13,7 @@ ERROR_STATUS_MAP: dict[type[DomainError], int] = {
     **ACCOUNTS_ERRORS,
     **CHATS_ERRORS,
     **ROOMS_ERRORS,
+    **PHOTO_ERRORS,
 }
 
 

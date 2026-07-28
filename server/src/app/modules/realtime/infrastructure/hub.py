@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import AsyncGenerator
 
 from app.modules.chats.public import IMessageDelivery
+from app.modules.photo.public import IPhotoBroadcast
 from app.modules.presence.application.interfaces import IPresenceBroadcast
 
 
@@ -19,7 +20,7 @@ class _Room:
     subscribers: list[_Subscriber] = field(default_factory=list)
 
 
-class RealtimeHub(IMessageDelivery, IPresenceBroadcast):
+class RealtimeHub(IMessageDelivery, IPresenceBroadcast, IPhotoBroadcast):
     def __init__(self) -> None:
         self._rooms: dict[str, _Room] = {}
 
@@ -55,6 +56,23 @@ class RealtimeHub(IMessageDelivery, IPresenceBroadcast):
                     subscriber.queue.put_nowait(stamped)
                 except asyncio.QueueFull:
                     pass
+
+    async def publish_photo(
+        self, room_token: str, account_id: str, photo_id: str, created_at: str, expires_at: str
+    ) -> None:
+        room = self._get_or_create(room_token)
+        envelope = {
+            "type": "photo_status",
+            "account_id": account_id,
+            "photo_id": photo_id,
+            "created_at": created_at,
+            "expires_at": expires_at,
+        }
+        for subscriber in room.subscribers:
+            try:
+                subscriber.queue.put_nowait(envelope)
+            except asyncio.QueueFull:
+                pass
 
     async def deliver(
         self, room_token: str, from_account: str, from_name: str, to_account: str, text: str, at: str

@@ -89,3 +89,21 @@ async def create_all_tables(conn: asyncpg.Connection) -> None:
 
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_lookup ON messages (room_token, created_at DESC)")
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_dm ON messages (room_token, from_account, to_account)")
+
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS photo_shares (
+            account_id TEXT PRIMARY KEY REFERENCES accounts(account_id) ON DELETE CASCADE,
+            room_token TEXT NOT NULL,
+            photo_id TEXT NOT NULL,
+            mime TEXT NOT NULL,
+            width INT NOT NULL,
+            height INT NOT NULL,
+            byte_size INT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            expires_at TIMESTAMPTZ NOT NULL
+        )
+    """
+    )
+
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_photo_shares_room ON photo_shares (room_token)")
