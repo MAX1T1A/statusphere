@@ -20,6 +20,7 @@ devices_router = APIRouter(prefix="/devices", tags=["devices"])
 
 class RegisterRequest(BaseModel):
     secret: str
+    name: str | None = None
 
 
 class RecoverRequest(BaseModel):
@@ -48,7 +49,7 @@ class RevokeRequest(BaseModel):
 @accounts_router.post("/register")
 @limit(5)
 async def register(request: Request, body: RegisterRequest, bus: UseCaseBus = Depends(get_bus)) -> AccountSessionDTO:
-    return await bus.dispatch(RegisterAccount(secret=body.secret))
+    return await bus.dispatch(RegisterAccount(secret=body.secret, name=body.name))
 
 
 @accounts_router.post("/recover")
