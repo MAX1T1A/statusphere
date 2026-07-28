@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"statusphere-client/internal/feed"
 	"statusphere-client/internal/media"
 	"statusphere-client/internal/notifier"
+	"statusphere-client/internal/photo"
 	"statusphere-client/internal/presence"
 	"statusphere-client/internal/renderer"
 	"statusphere-client/internal/renderer/jsonline"
@@ -48,6 +51,8 @@ type App struct {
 
 	ui        renderer.Renderer
 	chat      *tui.ChatStore
+	jsonSink  *jsonline.JSONLine
+	photos    *photo.Store
 	accountID string
 	cfg       *auth.Config
 
@@ -88,6 +93,7 @@ func Run(ctx context.Context, uiMode string) error {
 		feed:          feed.New(),
 		custom:        cm,
 		notifier:      notifier.New(cfg.AccountID),
+		photos:        photo.New(),
 		accountID:     cfg.AccountID,
 		cfg:           cfg,
 		memberRefresh: make(chan struct{}, 1),
@@ -120,11 +126,13 @@ func Run(ctx context.Context, uiMode string) error {
 	case "json":
 		j := jsonline.New(os.Stdout)
 		a.ui = j
+		a.jsonSink = j
 		go func() {
 			<-ctx.Done()
 			j.Stop()
 		}()
 		go a.pollMembers(ctx)
+		go a.pollPhotos(ctx)
 	default:
 		return fmt.Errorf("unknown ui mode: %s", uiMode)
 	}
@@ -160,6 +168,11 @@ func (a *App) listen(ctx context.Context) {
 
 		if kind, _ := msg["type"].(string); kind == "msg" {
 			a.handleMessage(msg)
+			return
+		}
+
+		if kind, _ := msg["type"].(string); kind == "photo_status" {
+			a.handlePhotoStatus(msg)
 			return
 		}
 
@@ -221,6 +234,22 @@ func (a *App) refresh(ctx context.Context) {
 
 func (a *App) render() {
 	a.ui.UpdateDevices(a.roster())
+	if a.jsonSink != nil {
+		a.jsonSink.UpdatePhotos(photoOutputs(a.photos.Snapshot()))
+	}
+}
+
+func photoOutputs(photos []photo.Photo) []jsonline.PhotoOut {
+	out := make([]jsonline.PhotoOut, 0, len(photos))
+	for _, p := range photos {
+		out = append(out, jsonline.PhotoOut{
+			AccountID: p.AccountID,
+			Path:      "file://" + p.LocalPath,
+			CreatedAt: p.CreatedAt.Format(time.RFC3339),
+			ExpiresAt: p.ExpiresAt.Format(time.RFC3339),
+		})
+	}
+	return out
 }
 
 func (a *App) roster() []presence.Snapshot {
@@ -331,6 +360,112 @@ func (a *App) refreshMembers() {
 	a.members = members
 	a.membersMu.Unlock()
 	a.render()
+}
+
+// handlePhotoStatus reacts to a live "photo_status" broadcast: another device
+// (or this one) just shared a new photo. Fetching and caching it happens off
+// the WS read loop since it's a network round-trip plus disk I/O.
+func (a *App) handlePhotoStatus(msg map[string]any) {
+	if a.jsonSink == nil {
+		return
+	}
+	accountID, _ := msg["account_id"].(string)
+	photoID, _ := msg["photo_id"].(string)
+	createdAt, _ := msg["created_at"].(string)
+	expiresAt, _ := msg["expires_at"].(string)
+	go a.cachePhoto(accountID, photoID, createdAt, expiresAt)
+}
+
+func (a *App) pollPhotos(ctx context.Context) {
+	a.refreshPhotos()
+	ticker := time.NewTicker(memberPoll)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		a.refreshPhotos()
+	}
+}
+
+// refreshPhotos seeds the room's current shares on startup/reconnect, closing
+// the "I just connected, is a photo already live" gap the WS push alone leaves.
+func (a *App) refreshPhotos() {
+	list, err := a.cfg.ListRoomPhotos()
+	if err != nil {
+		log.Printf("photos: %v", err)
+		return
+	}
+	for _, p := range list {
+		a.cachePhoto(p.AccountID, p.PhotoID, p.CreatedAt, p.ExpiresAt)
+	}
+}
+
+// cachePhoto fetches a photo's bytes to a content-addressed local file (unless
+// already cached) and records it in a.photos. The content-addressed filename
+// (account+photo id) is what makes Quickshell's path-keyed thumbnail cache bust
+// correctly on every new share, instead of silently keeping a stale image.
+func (a *App) cachePhoto(accountID, photoID, createdAt, expiresAt string) {
+	if accountID == "" || photoID == "" {
+		return
+	}
+	created, err := time.Parse(time.RFC3339, createdAt)
+	if err != nil {
+		return
+	}
+	expires, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil || time.Now().After(expires) {
+		return
+	}
+
+	dir := filepath.Join(config.CacheDir(), "photos")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		log.Printf("photo cache dir: %v", err)
+		return
+	}
+	localName := accountID + "-" + photoID + ".jpg"
+	localPath := filepath.Join(dir, localName)
+
+	if _, err := os.Stat(localPath); err != nil {
+		data, err := auth.FetchPhotoBlob(a.cfg.ServerURL, a.cfg.Token, a.cfg.RoomID, accountID, photoID)
+		if err != nil {
+			log.Printf("photo fetch: %v", err)
+			return
+		}
+		if err := os.WriteFile(localPath, data, 0o600); err != nil {
+			log.Printf("photo write: %v", err)
+			return
+		}
+		prunePhotoFiles(dir, accountID, localName)
+	}
+
+	a.photos.Update(photo.Photo{
+		AccountID: accountID,
+		PhotoID:   photoID,
+		LocalPath: localPath,
+		CreatedAt: created,
+		ExpiresAt: expires,
+	})
+	a.render()
+}
+
+// prunePhotoFiles removes an account's older cached photos once a new one has
+// replaced it - a share is a single "current" item, not a history.
+func prunePhotoFiles(dir, accountID, keep string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	prefix := accountID + "-"
+	for _, e := range entries {
+		name := e.Name()
+		if name == keep || !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, name))
+	}
 }
 
 func (a *App) maybeRefreshMembers(accountID string) {
