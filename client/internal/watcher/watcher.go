@@ -23,6 +23,7 @@ var volatileKeys = map[string]bool{
 type Watcher struct {
 	collector *collector.Collector
 	onChange  func(presence.Snapshot)
+	filter    func(presence.Snapshot) presence.Snapshot
 	interval  time.Duration
 	heartbeat time.Duration
 
@@ -45,6 +46,14 @@ func New(c *collector.Collector, onChange func(presence.Snapshot), interval time
 	}
 }
 
+// SetFilter installs the privacy filter. It runs before change detection, so
+// what the watcher compares - and resends - is what the room actually sees:
+// flipping incognito is itself a change, and hiding a field does not keep
+// resending the same visible snapshot.
+func (w *Watcher) SetFilter(f func(presence.Snapshot) presence.Snapshot) {
+	w.filter = f
+}
+
 func (w *Watcher) InjectOnce(key string, value any) {
 	w.injectMu.Lock()
 	w.inject[key] = value
@@ -65,20 +74,24 @@ func (w *Watcher) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			w.tick(ctx)
+			w.Tick(ctx)
 		case <-w.trigger:
-			w.tick(ctx)
+			w.Tick(ctx)
 		}
 	}
 }
 
-func (w *Watcher) tick(ctx context.Context) {
+func (w *Watcher) Tick(ctx context.Context) {
 	snap := w.collector.Collect(ctx)
 
 	w.injectMu.Lock()
 	maps.Copy(snap, w.inject)
 	w.inject = make(map[string]any)
 	w.injectMu.Unlock()
+
+	if w.filter != nil {
+		snap = w.filter(snap)
+	}
 
 	changed := w.last == nil || !w.last.EqualExcept(snap, volatileKeys)
 	heartbeatDue := time.Since(w.lastSent) >= w.heartbeat

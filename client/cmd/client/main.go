@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"statusphere-client/internal/app"
 	"statusphere-client/internal/auth"
+	"statusphere-client/internal/privacy"
 )
 
 var (
@@ -37,6 +39,10 @@ var (
 	kickFlag      = flag.String("kick", "", "Remove a member by <account_id>")
 	setNameFlag   = flag.String("set-name", "", "Set your account's display name")
 	postPhotoFlag = flag.String("post-photo", "", "Share <path> as your current photo status, replacing any previous one")
+
+	incognitoFlag = flag.String("incognito", "", "Hide what you're doing from the room: on, off, status, or a duration like 45m")
+	noteFlag      = flag.String("note", "", "Short note the room sees next to your hidden badge (empty clears it)")
+	publishedFlag = flag.Bool("published", false, "Print the snapshot this device would send right now, after the privacy filter")
 )
 
 func main() {
@@ -52,6 +58,12 @@ func dispatch() error {
 	switch {
 	case *screenshotFlag:
 		return runScreenshot()
+	case *incognitoFlag != "":
+		return runIncognito(*incognitoFlag)
+	case isSet("note"):
+		return runNote(*noteFlag)
+	case *publishedFlag:
+		return runPublished()
 	case *registerFlag != "":
 		return register(*registerFlag)
 	case *linkFlag != "":
@@ -149,6 +161,110 @@ func runScreenshot() error {
 	}
 	fmt.Print(out)
 	return nil
+}
+
+func runIncognito(arg string) error {
+	if isSet("note") {
+		if _, err := privacy.SetNote(strings.TrimSpace(*noteFlag)); err != nil {
+			return err
+		}
+	}
+
+	switch strings.ToLower(strings.TrimSpace(arg)) {
+	case "status":
+		p, err := privacy.Load()
+		if err != nil {
+			return err
+		}
+		fmt.Print(incognitoStatus(p))
+		return nil
+	case "on":
+		return applyIncognito(privacy.ModeIncognito, 0)
+	case "off":
+		return applyIncognito(privacy.ModeNormal, 0)
+	}
+
+	d, err := time.ParseDuration(arg)
+	if err != nil || d <= 0 {
+		return fmt.Errorf("--incognito takes on, off, status, or a duration like 45m")
+	}
+	return applyIncognito(privacy.ModeIncognito, d)
+}
+
+func applyIncognito(mode string, d time.Duration) error {
+	p, err := privacy.Set(mode, d)
+	if err != nil {
+		return err
+	}
+	fmt.Print(incognitoStatus(p))
+	return nil
+}
+
+func incognitoStatus(p privacy.Policy) string {
+	var b strings.Builder
+
+	if p.Hidden() {
+		b.WriteString("Hidden")
+		if until, ok := p.Expires(); ok {
+			fmt.Fprintf(&b, " until %s (%s left)", until.Format("15:04"), timeLeft(time.Until(until)))
+		}
+		if p.Note != "" {
+			fmt.Fprintf(&b, " · note %q", p.Note)
+		}
+		b.WriteString("\n")
+	} else {
+		b.WriteString("Visible\n")
+	}
+
+	prof := p.Active()
+	fmt.Fprintf(&b, "Room sees:  apps %s · music %s · system %s · custom %s\n", prof.Apps, prof.Music, prof.System, prof.Custom)
+	if p.Hidden() && !p.Announce {
+		b.WriteString("Announce off: the room sees a quiet card, with no reason given.\n")
+	}
+	fmt.Fprintf(&b, "Full check: statusphere --published\nSettings:   %s\n", privacy.Path())
+	return b.String()
+}
+
+func timeLeft(d time.Duration) string {
+	d = d.Round(time.Minute)
+	if d >= time.Hour {
+		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
+	}
+	return fmt.Sprintf("%dm", int(d.Minutes()))
+}
+
+func runNote(note string) error {
+	p, err := privacy.SetNote(strings.TrimSpace(note))
+	if err != nil {
+		return err
+	}
+	if p.Note == "" {
+		fmt.Println("Note cleared")
+		return nil
+	}
+	fmt.Printf("Note set to %q, shown while you're hidden\n", p.Note)
+	return nil
+}
+
+func runPublished() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := app.Published(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Println(out)
+	return nil
+}
+
+func isSet(name string) bool {
+	found := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
 }
 
 func joinRoom(arg string) error {
