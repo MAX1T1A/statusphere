@@ -9,8 +9,10 @@ const (
 	KeyNudge        = "nudge_message"
 	KeyCustomFields = "custom_fields"
 
-	KeyRole    = "_role"
-	KeyOffline = "_offline"
+	KeyRole          = "_role"
+	KeyOffline       = "_offline"
+	KeyIncognito     = "_incognito"
+	KeyIncognitoNote = "_incognito_note"
 
 	KeyUptimeHours  = "uptime_hours"
 	KeyCPUPercent   = "cpu_percent"
@@ -22,6 +24,9 @@ const (
 	KeyActiveApp       = "active_app"
 	KeyActiveWindow    = "active_window"
 	KeyActiveWorkspace = "active_workspace"
+
+	// KeyMusic is whatever mpris player is playing, browsers included.
+	KeyMusic = "music"
 
 	KeySpotifyStatus   = "spotify_status"
 	KeySpotifyTrack    = "spotify_track"

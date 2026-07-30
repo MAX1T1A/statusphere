@@ -22,6 +22,7 @@ import (
 	"statusphere-client/internal/notifier"
 	"statusphere-client/internal/photo"
 	"statusphere-client/internal/presence"
+	"statusphere-client/internal/privacy"
 	"statusphere-client/internal/renderer"
 	"statusphere-client/internal/renderer/jsonline"
 	"statusphere-client/internal/renderer/noop"
@@ -73,14 +74,7 @@ func Run(ctx context.Context, uiMode string) error {
 
 	setupLogging()
 
-	sysCtx := detector.Detect()
-	custom.EnsureConfig()
-	cm := custom.Load()
-
-	providers := collector.Active(sysCtx)
-	providers = append(providers, cm.Providers()...)
-	providers = append(providers, cm.FieldsProvider())
-	coll := collector.New(providers...)
+	coll, cm := newCollector()
 
 	ws := transport.NewWS(cfg.ServerURL, cfg.Token, cfg.DeviceID, cfg.RoomID)
 	if err := ws.Connect(ctx); err != nil {
@@ -99,6 +93,7 @@ func Run(ctx context.Context, uiMode string) error {
 		memberRefresh: make(chan struct{}, 1),
 	}
 	a.watcher = watcher.New(coll, a.send, watchInterval)
+	a.watcher.SetFilter(privacy.Shared().Apply)
 
 	switch uiMode {
 	case "tui":
@@ -137,13 +132,37 @@ func Run(ctx context.Context, uiMode string) error {
 		return fmt.Errorf("unknown ui mode: %s", uiMode)
 	}
 
-	a.send(coll.Collect(ctx))
+	a.watcher.Tick(ctx)
 
 	go a.watcher.Run(ctx)
 	go a.listen(ctx)
 	go a.refresh(ctx)
 
 	return a.ui.Run()
+}
+
+func newCollector() (*collector.Collector, *custom.Manager) {
+	sysCtx := detector.Detect()
+	custom.EnsureConfig()
+	privacy.EnsureConfig()
+	cm := custom.Load()
+
+	providers := collector.Active(sysCtx)
+	providers = append(providers, cm.Providers()...)
+	providers = append(providers, cm.FieldsProvider())
+	return collector.New(providers...), cm
+}
+
+// Published renders the snapshot this device would send right now, after the
+// privacy filter. It is the answer to "prove that you're not sending it".
+func Published(ctx context.Context) (string, error) {
+	coll, _ := newCollector()
+	snap := privacy.Shared().Apply(coll.Collect(ctx))
+	data, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func (a *App) send(snap presence.Snapshot) {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"statusphere-client/internal/presence"
+	"statusphere-client/internal/privacy"
 	"statusphere-client/internal/selfupdate"
 	"statusphere-client/internal/stats"
 	"statusphere-client/internal/version"
@@ -475,6 +476,12 @@ func (m model) runMenu() (tea.Model, tea.Cmd) {
 		m.tickID++
 		return m, musicTick(m.tickID)
 	case rowCheck:
+		if m.mode == modeSettings {
+			if row.id == "incognito" {
+				_, _ = privacy.Toggle()
+			}
+			return m, nil
+		}
 		if account := m.focusedDevice().String(presence.KeyAccountID); account != "" {
 			m.expand.toggle(account, row.id)
 		}

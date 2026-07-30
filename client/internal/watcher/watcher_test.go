@@ -39,24 +39,54 @@ func newWatcher(cur *presence.Snapshot, cap *capture) *Watcher {
 	return w
 }
 
+// The filter runs before change detection, so a hidden app switch is not a
+// change and turning the filter on is.
+func TestFilterDrivesChangeDetection(t *testing.T) {
+	cap := &capture{}
+	cur := presence.Snapshot{presence.KeyActiveApp: "kitty"}
+	w := newWatcher(&cur, cap)
+	ctx := context.Background()
+
+	hide := false
+	w.SetFilter(func(s presence.Snapshot) presence.Snapshot {
+		if hide {
+			delete(s, presence.KeyActiveApp)
+		}
+		return s
+	})
+
+	w.Tick(ctx)
+	hide = true
+	w.Tick(ctx)
+	if cap.count() != 2 {
+		t.Fatalf("hiding a field should reach the room, got %d sends", cap.count())
+	}
+
+	cur[presence.KeyActiveApp] = "firefox"
+	w.Tick(ctx)
+	if cap.count() != 2 {
+		t.Fatalf("switching apps while hidden changes nothing visible, got %d sends", cap.count())
+	}
+}
+
 func TestTickSendsOnStableChangeAndDedups(t *testing.T) {
 	cap := &capture{}
 	cur := presence.Snapshot{presence.KeyActiveApp: "kitty"}
 	w := newWatcher(&cur, cap)
 	ctx := context.Background()
 
-	w.tick(ctx)
+	w.Tick(ctx)
 	if cap.count() != 1 {
 		t.Fatalf("first tick should send, got %d", cap.count())
 	}
 
-	w.tick(ctx)
+	w.Tick(ctx)
 	if cap.count() != 1 {
 		t.Fatalf("unchanged tick should not send, got %d", cap.count())
 	}
 
 	cur[presence.KeyActiveApp] = "firefox"
-	w.tick(ctx)
+	w.Tick(ctx)
 	if cap.count() != 2 {
 		t.Fatalf("stable change should send, got %d", cap.count())
 	}
@@ -69,20 +99,20 @@ func TestTickIgnoresVolatileUntilHeartbeat(t *testing.T) {
 	w.heartbeat = 20 * time.Millisecond
 	ctx := context.Background()
 
-	w.tick(ctx)
+	w.Tick(ctx)
 	if cap.count() != 1 {
 		t.Fatalf("first tick should send, got %d", cap.count())
 	}
 
 	cur[presence.KeyUptimeHours] = 2.0
-	w.tick(ctx)
+	w.Tick(ctx)
 	if cap.count() != 1 {
 		t.Fatalf("volatile-only change should not send before heartbeat, got %d", cap.count())
 	}
 
 	time.Sleep(30 * time.Millisecond)
 	cur[presence.KeyUptimeHours] = 3.0
-	w.tick(ctx)
+	w.Tick(ctx)
 	if cap.count() != 2 {
 		t.Fatalf("heartbeat should force a send, got %d", cap.count())
 	}

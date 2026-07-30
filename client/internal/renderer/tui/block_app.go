@@ -19,6 +19,23 @@ var (
 	sumTime   = lipgloss.NewStyle().Foreground(cDim)
 )
 
+var appHidden = lipgloss.NewStyle().Italic(true).Foreground(cAccent)
+
+// A hidden card should still say something. The line is picked from the account
+// id so it stays put per person instead of flickering on every render.
+var hiddenLines = []string{"off the radar", "somewhere else", "heads down", "out of frame", "keeping it quiet", "doing something"}
+
+func hiddenLine(d presence.Snapshot) string {
+	if note := d.String(presence.KeyIncognitoNote); note != "" {
+		return note
+	}
+	sum := 0
+	for _, r := range d.String(presence.KeyAccountID) {
+		sum += int(r)
+	}
+	return hiddenLines[sum%len(hiddenLines)]
+}
+
 var barColors = []string{"#c084fc", "#a78bfa", "#818cf8", "#7dd3fc", "#67e8f9", "#5eead4", "#a5b4fc"}
 
 const (
@@ -104,6 +121,9 @@ func BlockApp(cache *stats.Cache) Block {
 			workspace := d.String(presence.KeyActiveWorkspace)
 
 			if app == "" && win == "" {
+				if d.Has(presence.KeyIncognito) {
+					return sectionLabel("app") + appHidden.Render("◍ "+hiddenLine(d))
+				}
 				return sectionLabel("app") + appWindow.Render("—")
 			}
 
@@ -145,6 +165,9 @@ func appDetail(d presence.Snapshot, cache, hourly *stats.Cache, width int) strin
 	if len(win) > maxWindowTitle {
 		runes := []rune(win)
 		win = string(runes[:maxWindowTitle-1]) + "…"
+	}
+	if app == "" && win == "" && d.Has(presence.KeyIncognito) {
+		parts = append(parts, appHidden.Render("◍ "+hiddenLine(d)))
 	}
 	if app != "" || win != "" {
 		line := appName.Render(app)

@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"statusphere-client/internal/presence"
+	"statusphere-client/internal/privacy"
 	"statusphere-client/internal/version"
 )
 
@@ -94,9 +95,26 @@ func (m model) settingsRows() []menuRow {
 	}
 	return []menuRow{
 		update,
+		incognitoRow(),
 		{kind: rowAction, id: "rename", label: "Rename device"},
 		{kind: rowAction, id: "quit", label: "Quit"},
 	}
+}
+
+func incognitoRow() menuRow {
+	p := privacy.Shared().Policy()
+	row := menuRow{kind: rowCheck, id: "incognito", label: "Incognito", desc: "hide what you're doing", checked: p.Hidden()}
+	switch {
+	case !p.Hidden():
+	case p.Note != "":
+		row.desc = p.Note
+	default:
+		row.desc = "the room sees a quiet card"
+	}
+	if until, ok := p.Expires(); ok {
+		row.desc = "back at " + until.Format("15:04")
+	}
+	return row
 }
 
 func (m model) panelRows() []menuRow {
