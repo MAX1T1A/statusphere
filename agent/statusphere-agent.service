@@ -16,7 +16,9 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/statusphere/.config/statusphere /home/statusphere/.cache/statusphere
+# Its own home, not just the config dir: the cache dir appears on first run, and
+# a ReadWritePaths entry that does not exist yet fails the unit with 226/NAMESPACE
+ReadWritePaths=/home/statusphere
 
 [Install]
 WantedBy=multi-user.target

@@ -23,7 +23,7 @@ func init() {
 	p := &player{}
 	collector.Register(collector.Descriptor{
 		Provider: collector.Provider{Name: "spotify", Collect: p.collect},
-		Applies:  collector.OnOS("linux"),
+		Applies:  collector.When(collector.OnOS("linux"), collector.OnSessionBus()),
 	})
 }
 
