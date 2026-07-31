@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"statusphere-client/internal/health"
 	"statusphere-client/internal/presence"
 
 	"github.com/charmbracelet/lipgloss"
@@ -17,6 +18,8 @@ var (
 	accountName = lipgloss.NewStyle().Bold(true).Foreground(cAccent)
 	deviceName  = lipgloss.NewStyle().Bold(true).Foreground(cName)
 	uptimeDim   = lipgloss.NewStyle().Foreground(cDim)
+	healthWarn  = lipgloss.NewStyle().Foreground(cIdle)
+	healthCrit  = lipgloss.NewStyle().Bold(true).Foreground(cDMDot)
 )
 
 func statusDot(d presence.Snapshot) string {
@@ -63,6 +66,9 @@ func deviceMeta(d presence.Snapshot) []string {
 			meta = append(meta, fmt.Sprintf("mem %.1f/%.1fG", used/1024, total/1024))
 		}
 	}
+	if disk, ok := d.Float(presence.KeyDiskUsedPercent); ok {
+		meta = append(meta, fmt.Sprintf("disk %.0f%%", disk))
+	}
 	if load, ok := d.Float(presence.KeyLoadAvg1m); ok {
 		meta = append(meta, fmt.Sprintf("load %.2f", load))
 	}
@@ -80,10 +86,36 @@ func deviceLine(d presence.Snapshot) string {
 		name = id
 	}
 	line := statusDot(d) + " " + deviceName.Render(name)
+	if d.IsServer() {
+		line += uptimeDim.Render(" · server")
+	}
 	if meta := deviceMeta(d); len(meta) > 0 {
 		line += uptimeDim.Render(" · " + strings.Join(meta, " · "))
 	}
+	if badge := healthBadge(d); badge != "" {
+		line += " " + badge
+	}
 	return line
+}
+
+// healthBadge is the machine's own verdict, computed where the numbers came
+// from - see internal/health. Nothing to show means nothing is wrong.
+func healthBadge(d presence.Snapshot) string {
+	switch d.String(presence.KeyHealth) {
+	case health.LevelCrit:
+		return healthCrit.Render("▲ " + healthText(d))
+	case health.LevelWarn:
+		return healthWarn.Render("▲ " + healthText(d))
+	default:
+		return ""
+	}
+}
+
+func healthText(d presence.Snapshot) string {
+	if note := d.String(presence.KeyHealthNote); note != "" {
+		return note
+	}
+	return d.String(presence.KeyHealth)
 }
 
 func groupHeader(g deviceGroup) string {

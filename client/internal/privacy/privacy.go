@@ -78,8 +78,10 @@ var (
 	musicKeys = append([]string{presence.KeySpotifyStatus}, musicDetailKeys...)
 
 	systemKeys = []string{
-		presence.KeyUptimeHours, presence.KeyCPUPercent, presence.KeyMemUsedMB,
+		presence.KeyUptimeHours, presence.KeyCPUPercent, presence.KeyCPUCount, presence.KeyMemUsedMB,
 		presence.KeyMemTotalMB, presence.KeyLoadAvg1m, presence.KeyPackageCount,
+		presence.KeyDiskUsedPercent, presence.KeyDiskFreeGB,
+		presence.KeyHealth, presence.KeyHealthNote,
 	}
 
 	// knownKeys is what the filter can classify. Anything else is a field some
@@ -89,6 +91,7 @@ var (
 		presence.KeyDeviceID, presence.KeyAccountID, presence.KeyAccountName, presence.KeyDeviceName,
 		presence.KeyLastSeen, presence.KeyNudge, presence.KeyCustomFields,
 		presence.KeyRole, presence.KeyOffline, presence.KeyIncognito, presence.KeyIncognitoNote,
+		presence.KeyKind,
 	)
 )
 

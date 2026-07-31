@@ -124,6 +124,14 @@ func BlockApp(cache *stats.Cache) Block {
 				if d.Has(presence.KeyIncognito) {
 					return sectionLabel("app") + appHidden.Render("◍ "+hiddenLine(d))
 				}
+				// A server has no window to report; the interesting line is how
+				// it is holding up, which is what the room came to see.
+				if d.IsServer() {
+					if badge := healthBadge(d); badge != "" {
+						return sectionLabel("host") + badge
+					}
+					return sectionLabel("host") + appWindow.Render("all good")
+				}
 				return sectionLabel("app") + appWindow.Render("—")
 			}
 

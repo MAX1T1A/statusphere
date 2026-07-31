@@ -1,0 +1,22 @@
+[Unit]
+Description=Statusphere presence agent
+Documentation=https://github.com/MAX1T1A/statusphere
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=statusphere
+# Nothing to look at here, and metrics move slowly - see agent/README.md
+ExecStart=/usr/local/bin/statusphere --ui headless --interval 30s
+Restart=always
+RestartSec=10s
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/statusphere/.config/statusphere /home/statusphere/.cache/statusphere
+
+[Install]
+WantedBy=multi-user.target
