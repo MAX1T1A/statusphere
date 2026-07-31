@@ -51,6 +51,10 @@ func OnDEWM(dewm string) func(detector.Context) bool {
 	return func(c detector.Context) bool { return c.DEWM == dewm }
 }
 
+func OnSessionBus() func(detector.Context) bool {
+	return func(c detector.Context) bool { return c.SessionBus }
+}
+
 func When(preds ...func(detector.Context) bool) func(detector.Context) bool {
 	return func(c detector.Context) bool {
 		for _, p := range preds {
