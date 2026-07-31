@@ -1,0 +1,18 @@
+{
+  "mode": "normal",
+  "announce": true,
+  "profiles": {
+    "normal": {
+      "apps": "off",
+      "music": "off",
+      "system": "on",
+      "custom": "on"
+    },
+    "incognito": {
+      "apps": "off",
+      "music": "off",
+      "system": "on",
+      "custom": "on"
+    }
+  }
+}
