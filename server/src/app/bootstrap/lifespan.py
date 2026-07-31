@@ -1,3 +1,4 @@
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -12,7 +13,8 @@ from app.platform.db.pool import provide_pool
 async def lifespan(app: FastAPI):
     configure_logging()
     pool = await provide_pool()
-    container = build_container(pool)
+    # monotonic, so uptime survives the clock being stepped under it
+    container = build_container(pool, started_at=time.monotonic(), version=app.version)
     app.state.container = container
     container.sampler.start()
 

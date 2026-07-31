@@ -1,0 +1,18 @@
+{
+  "docker": {
+    "cmd": "docker ps --format '{{.Names}}' | wc -l | tr -d '\\n' | awk '{print $1\" up\"}'",
+    "repeat_seconds": 300
+  },
+  "docker_down": {
+    "cmd": "docker ps -a --filter 'status=exited' --format '{{.Names}}' | paste -sd, -",
+    "repeat_seconds": 300
+  },
+  "backup": {
+    "cmd": "find /var/backups -name '*.sql.gz' -printf '%C@\\n' | sort -n | tail -1 | awk '{printf \"%dh\", (systime()-$1)/3600}'",
+    "repeat_seconds": 3600
+  },
+  "tls": {
+    "cmd": "echo | openssl s_client -connect localhost:443 2>/dev/null | openssl x509 -noout -enddate | cut -d= -f2 | xargs -I{} date -d {} +%s | awk '{printf \"%dd\", ($1-systime())/86400}'",
+    "repeat_seconds": 21600
+  }
+}

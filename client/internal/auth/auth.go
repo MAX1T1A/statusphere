@@ -27,6 +27,10 @@ type Config struct {
 	DeviceID      string `json:"device_id"`
 	Token         string `json:"token"`
 	RoomID        string `json:"room_id"`
+	// Kind is what this machine is - see presence.Kind*. It lives in the config
+	// rather than in a flag so a restart cannot silently change what the room
+	// thinks it is looking at.
+	Kind string `json:"kind,omitempty"`
 }
 
 func ConfigPath() string { return config.File(fileName) }

@@ -11,11 +11,14 @@ import (
 
 	"statusphere-client/internal/app"
 	"statusphere-client/internal/auth"
+	"statusphere-client/internal/presence"
 	"statusphere-client/internal/privacy"
 )
 
 var (
-	uiMode = flag.String("ui", "tui", "UI mode: tui, headless, json (roster as JSON lines on stdout, for external UIs)")
+	uiMode      = flag.String("ui", "tui", "UI mode: tui, headless, json (roster as JSON lines on stdout, for external UIs)")
+	intervalArg = flag.Duration("interval", 2*time.Second, "How often to collect and publish (a headless box wants seconds, not milliseconds)")
+	setKindFlag = flag.String("set-kind", "", "What this machine is: desktop or server (server cards are read for metrics, not for open windows)")
 
 	screenshotFlag = flag.Bool("screenshot", false, "Render a room member's card offscreen as ANSI to stdout")
 	ssDeviceFlag   = flag.String("ss-device", "", "Target device id for --screenshot (default: a member who is playing)")
@@ -64,6 +67,8 @@ func dispatch() error {
 		return runNote(*noteFlag)
 	case *publishedFlag:
 		return runPublished()
+	case isSet("set-kind"):
+		return runSetKind(*setKindFlag)
 	case *registerFlag != "":
 		return register(*registerFlag)
 	case *linkFlag != "":
@@ -141,9 +146,38 @@ func dispatch() error {
 }
 
 func run() error {
+	// The roster drops a device it has not heard from in five minutes, so an
+	// interval anywhere near that makes the card blink offline between ticks.
+	if *intervalArg < time.Second || *intervalArg > 2*time.Minute {
+		return fmt.Errorf("--interval takes 1s to 2m, got %s", *intervalArg)
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	return app.Run(ctx, *uiMode)
+	return app.Run(ctx, app.Options{UI: *uiMode, Interval: *intervalArg})
+}
+
+func runSetKind(kind string) error {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	switch kind {
+	case presence.KindDesktop, presence.KindServer:
+	case "":
+		kind = presence.KindDesktop
+	default:
+		return fmt.Errorf("--set-kind takes %s or %s", presence.KindDesktop, presence.KindServer)
+	}
+
+	return withConfig(func(c *auth.Config) error {
+		c.Kind = kind
+		if kind == presence.KindDesktop {
+			c.Kind = ""
+		}
+		if err := c.Save(); err != nil {
+			return err
+		}
+		fmt.Printf("This machine now reports itself as a %s (restart the running client to publish it)\n", kind)
+		return nil
+	})
 }
 
 func runScreenshot() error {

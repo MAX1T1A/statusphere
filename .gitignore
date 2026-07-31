@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local deploy helper (personal host, not shared)
+Taskfile.yml
+agent/README.md

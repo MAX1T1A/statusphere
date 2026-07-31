@@ -15,6 +15,8 @@ from app.modules.chats.application.commands.send_message import SendMessage, Sen
 from app.modules.chats.application.queries.get_history import GetMessageHistory, GetMessageHistoryUseCase
 from app.modules.chats.infrastructure.readers import MessageReader
 from app.modules.chats.infrastructure.uow import ChatsUnitOfWork
+from app.modules.healthcheck.application.queries.get_health import GetHealth, GetHealthUseCase
+from app.modules.healthcheck.infrastructure.probe import HealthProbe
 from app.modules.photo.application.commands.post_photo import PostPhoto, PostPhotoUseCase
 from app.modules.photo.application.queries.get_photo_blob import GetPhotoBlob, GetPhotoBlobUseCase
 from app.modules.photo.application.queries.list_room_photos import ListRoomPhotos, ListRoomPhotosUseCase
@@ -61,7 +63,7 @@ class Container:
     photos: PhotoStore
 
 
-def build_container(pool: Pool) -> Container:
+def build_container(pool: Pool, started_at: float = 0.0, version: str = "") -> Container:
     bus = UseCaseBus()
 
     account_reader = AccountReader(pool)
@@ -107,6 +109,8 @@ def build_container(pool: Pool) -> Container:
 
     sampler = Sampler(SnapshotWriter(pool), interval)
     bus.register(IngestPresenceSnapshot, IngestPresenceSnapshotUseCase(hub, sampler))
+
+    bus.register(GetHealth, GetHealthUseCase(HealthProbe(pool), started_at, version))
 
     settings = get_settings()
     photo_store = PhotoStore(pool, settings.photos_dir, settings.photo_expiry_minutes)

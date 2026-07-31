@@ -18,6 +18,7 @@ import (
 	"statusphere-client/internal/config"
 	"statusphere-client/internal/detector"
 	"statusphere-client/internal/feed"
+	"statusphere-client/internal/health"
 	"statusphere-client/internal/media"
 	"statusphere-client/internal/notifier"
 	"statusphere-client/internal/photo"
@@ -65,7 +66,15 @@ type App struct {
 	labels   map[string]string
 }
 
-func Run(ctx context.Context, uiMode string) error {
+// Options is how the process was started. Interval is the collect-and-publish
+// period: a desktop wants it short so the room follows what you do, a headless
+// box that only reports metrics wants it long so it stops burning cycles.
+type Options struct {
+	UI       string
+	Interval time.Duration
+}
+
+func Run(ctx context.Context, opts Options) error {
 	cfg, err := auth.Load()
 	if err != nil {
 		return fmt.Errorf("no config found; register first:\n"+
@@ -74,7 +83,12 @@ func Run(ctx context.Context, uiMode string) error {
 
 	setupLogging()
 
-	coll, cm := newCollector()
+	interval := opts.Interval
+	if interval <= 0 {
+		interval = watchInterval
+	}
+
+	coll, cm := newCollector(cfg.Kind)
 
 	ws := transport.NewWS(cfg.ServerURL, cfg.Token, cfg.DeviceID, cfg.RoomID)
 	if err := ws.Connect(ctx); err != nil {
@@ -92,10 +106,14 @@ func Run(ctx context.Context, uiMode string) error {
 		cfg:           cfg,
 		memberRefresh: make(chan struct{}, 1),
 	}
-	a.watcher = watcher.New(coll, a.send, watchInterval)
-	a.watcher.SetFilter(privacy.Shared().Apply)
+	a.watcher = watcher.New(coll, a.send, interval)
+	// Health is judged before the privacy filter runs, so hiding the numbers
+	// also hides the verdict drawn from them.
+	a.watcher.SetFilter(func(snap presence.Snapshot) presence.Snapshot {
+		return privacy.Shared().Apply(health.Shared().Annotate(snap))
+	})
 
-	switch uiMode {
+	switch opts.UI {
 	case "tui":
 		t := tui.New(tui.Options{
 			SpotifyCache:   stats.NewSpotifyCache(cfg.ServerURL, cfg.Token, cfg.RoomID),
@@ -129,7 +147,7 @@ func Run(ctx context.Context, uiMode string) error {
 		go a.pollMembers(ctx)
 		go a.pollPhotos(ctx)
 	default:
-		return fmt.Errorf("unknown ui mode: %s", uiMode)
+		return fmt.Errorf("unknown ui mode: %s", opts.UI)
 	}
 
 	a.watcher.Tick(ctx)
@@ -141,23 +159,41 @@ func Run(ctx context.Context, uiMode string) error {
 	return a.ui.Run()
 }
 
-func newCollector() (*collector.Collector, *custom.Manager) {
+func newCollector(kind string) (*collector.Collector, *custom.Manager) {
 	sysCtx := detector.Detect()
 	custom.EnsureConfig()
 	privacy.EnsureConfig()
+	health.EnsureConfig()
 	cm := custom.Load()
 
 	providers := collector.Active(sysCtx)
 	providers = append(providers, cm.Providers()...)
 	providers = append(providers, cm.FieldsProvider())
+	if kind != "" && kind != presence.KindDesktop {
+		providers = append(providers, kindProvider(kind))
+	}
 	return collector.New(providers...), cm
+}
+
+func kindProvider(kind string) collector.Provider {
+	return collector.Provider{
+		Name: "kind",
+		Collect: func(_ context.Context, snap presence.Snapshot) error {
+			snap.Set(presence.KeyKind, kind)
+			return nil
+		},
+	}
 }
 
 // Published renders the snapshot this device would send right now, after the
 // privacy filter. It is the answer to "prove that you're not sending it".
 func Published(ctx context.Context) (string, error) {
-	coll, _ := newCollector()
-	snap := privacy.Shared().Apply(coll.Collect(ctx))
+	kind := ""
+	if cfg, err := auth.Load(); err == nil {
+		kind = cfg.Kind
+	}
+	coll, _ := newCollector(kind)
+	snap := privacy.Shared().Apply(health.Shared().Annotate(coll.Collect(ctx)))
 	data, err := json.MarshalIndent(snap, "", "  ")
 	if err != nil {
 		return "", err
