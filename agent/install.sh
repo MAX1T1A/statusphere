@@ -92,6 +92,9 @@ else
 fi
 systemctl daemon-reload
 systemctl enable --now statusphere-agent
+# --join/--set-name/--set-kind above only touch config.json; a running client
+# does not hot-reload it, so restart even when the unit was already there.
+systemctl restart statusphere-agent
 
 echo ""
 echo "done. custom.json in ${CONFIG_DIR} is a template - edit it for this box's checks."
