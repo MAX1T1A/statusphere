@@ -200,7 +200,8 @@ func (c *Config) Invite() (string, error) {
 	var resp struct {
 		Code string `json:"code"`
 	}
-	if err := do(http.MethodPost, c.endpoint("/rooms/invite"), c.Token, nil, &resp); err != nil {
+	body := map[string]string{"room": c.RoomID}
+	if err := do(http.MethodPost, c.endpoint("/rooms/invite"), c.Token, body, &resp); err != nil {
 		return "", err
 	}
 	return resp.Code, nil

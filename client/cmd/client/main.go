@@ -34,7 +34,7 @@ var (
 	accountFlag   = flag.String("account", "", "Account id for --recover")
 	secretFlag    = flag.String("secret", "", "Account secret for --recover")
 	newDeviceFlag = flag.Bool("new-device", false, "Print a link code to add another device to this account")
-	inviteFlag    = flag.Bool("invite", false, "Print an invite code for your room")
+	inviteFlag    = flag.Bool("invite", false, "Print an invite code for the room you're in")
 	joinFlag      = flag.String("join", "", "Join a room using an invite <code>")
 	devicesFlag   = flag.Bool("devices", false, "List devices on this account")
 	revokeFlag    = flag.String("revoke", "", "Revoke a device by <device_id>")

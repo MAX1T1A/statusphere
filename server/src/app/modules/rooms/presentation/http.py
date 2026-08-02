@@ -12,6 +12,10 @@ from app.shared_kernel.bus import UseCaseBus
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
 
+class InviteRequest(BaseModel):
+    room: str
+
+
 class JoinRequest(BaseModel):
     code: str
 
@@ -21,8 +25,10 @@ class KickRequest(BaseModel):
 
 
 @router.post("/invite")
-async def invite(actor: Actor = Depends(require_actor), bus: UseCaseBus = Depends(get_bus)) -> dict:
-    return {"code": await bus.dispatch(CreateInvite(actor=actor))}
+async def invite(
+    body: InviteRequest, actor: Actor = Depends(require_actor), bus: UseCaseBus = Depends(get_bus)
+) -> dict:
+    return {"code": await bus.dispatch(CreateInvite(actor=actor, room=body.room))}
 
 
 @router.post("/join")

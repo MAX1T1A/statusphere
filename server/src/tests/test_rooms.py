@@ -6,7 +6,7 @@ from app.modules.rooms.application.commands.create_invite import CreateInvite, C
 from app.modules.rooms.application.commands.join_room import JoinRoom, JoinRoomUseCase
 from app.modules.rooms.application.commands.kick_member import KickMember, KickMemberUseCase
 from app.modules.rooms.application.queries.list_members import ListMembers, ListMembersUseCase
-from app.modules.rooms.domain.exceptions import InvalidOrExpiredInvite, NoRoomToInvite, NotRoomMember
+from app.modules.rooms.domain.exceptions import InvalidOrExpiredInvite, NotRoomMember
 from app.modules.rooms.domain.policy import can_kick
 from app.modules.rooms.infrastructure.invite_codec import InviteCodec
 from app.shared_kernel.actor import Actor
@@ -80,14 +80,14 @@ class FakeUoW:
 
 
 async def test_create_invite_ok():
-    uc = CreateInviteUseCase(FakeReader(owned="r1"), FakeCodec())
-    assert await uc.execute(CreateInvite(actor=ACTOR)) == "code:r1"
+    uc = CreateInviteUseCase(FakeReader(member=True), FakeCodec())
+    assert await uc.execute(CreateInvite(actor=ACTOR, room="r1")) == "code:r1"
 
 
-async def test_create_invite_no_room():
-    uc = CreateInviteUseCase(FakeReader(owned=None), FakeCodec())
-    with pytest.raises(NoRoomToInvite):
-        await uc.execute(CreateInvite(actor=ACTOR))
+async def test_create_invite_not_member():
+    uc = CreateInviteUseCase(FakeReader(member=False), FakeCodec())
+    with pytest.raises(NotRoomMember):
+        await uc.execute(CreateInvite(actor=ACTOR, room="r1"))
 
 
 async def test_join_ok():

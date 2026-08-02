@@ -1,10 +1,10 @@
 from app.modules.rooms.application.interfaces import IInviteCodec, IMembershipReader
-from app.modules.rooms.domain.exceptions import NoRoomToInvite
+from app.modules.rooms.domain.exceptions import NotRoomMember
 from app.shared_kernel.operation import AuthenticatedOperation
 
 
 class CreateInvite(AuthenticatedOperation):
-    pass
+    room: str
 
 
 class CreateInviteUseCase:
@@ -13,7 +13,6 @@ class CreateInviteUseCase:
         self._codec = codec
 
     async def execute(self, op: CreateInvite) -> str:
-        room_id = await self._reader.owned_room(op.actor.account_id)
-        if room_id is None:
-            raise NoRoomToInvite()
-        return self._codec.sign(room_id)
+        if not op.room or not await self._reader.is_member(op.room, op.actor.account_id):
+            raise NotRoomMember()
+        return self._codec.sign(op.room)
