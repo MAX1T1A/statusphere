@@ -91,8 +91,18 @@ Config is `~/.config/statusphere/privacy.json`, one profile for normal and one f
 ```json
 {
   "profiles": {
-    "normal":    { "apps": "full", "music": "full", "system": "on", "custom": "on" },
-    "incognito": { "apps": "off",  "music": "full", "system": "on", "custom": "on" }
+    "normal": {
+      "apps": "full",
+      "music": "full",
+      "system": "on",
+      "custom": "on"
+    },
+    "incognito": {
+      "apps": "off",
+      "music": "full",
+      "system": "on",
+      "custom": "on"
+    }
   },
   "hide_apps": ["(?i)keepassxc", "(?i)1password", "(?i)bitwarden"]
 }
@@ -105,8 +115,6 @@ Config is `~/.config/statusphere/privacy.json`, one profile for normal and one f
 - `announce` - `true` by default, so friends see you went hidden rather than a frozen card. Set `false` for no explanation at all.
 
 ## Interface
-
-![statusphere TUI: your card, room members, group chat](tui.png)
 
 <table><tr>
 <td><img src="tui-music.png" alt="expanded music card: album art, progress, album name" /></td>
