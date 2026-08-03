@@ -219,4 +219,3 @@ __marimo__/
 
 # Local deploy helper (personal host, not shared)
 Taskfile.yml
-agent/README.md
