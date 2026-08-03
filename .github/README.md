@@ -108,6 +108,11 @@ Config is `~/.config/statusphere/privacy.json`, one profile for normal and one f
 
 ![statusphere TUI: your card, room members, group chat](tui.png)
 
+<table><tr>
+<td><img src="tui-music.png" alt="expanded music card: album art, progress, album name" /></td>
+<td><img src="tui.png" alt="" /></td>
+</tr></table>
+
 - `↑ ↓` pick someone, `Enter` opens their menu: music, screen time, sync track, direct message
 - `v` switch the side panel between chat and today's screen time board, `tab` jump into the chat to type
 - `s` settings: check for updates, incognito, rename this device, quit
