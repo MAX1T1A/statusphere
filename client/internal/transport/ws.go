@@ -19,7 +19,6 @@ import (
 const (
 	reconnectDelay = 3 * time.Second
 	pingInterval   = 20 * time.Second
-	readTimeout    = 45 * time.Second
 	writeTimeout   = 5 * time.Second
 )
 
@@ -162,9 +161,7 @@ func (t *WSTransport) Listen(ctx context.Context, onEvent func(data []byte)) err
 			continue
 		}
 
-		readCtx, readCancel := context.WithTimeout(ctx, readTimeout)
-		_, data, err := conn.Read(readCtx)
-		readCancel()
+		_, data, err := conn.Read(ctx)
 
 		if err != nil {
 			if ctx.Err() != nil {
