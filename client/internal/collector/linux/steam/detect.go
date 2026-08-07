@@ -192,6 +192,28 @@ func scanProc(name string, probe int, parse func([]byte) int, boot time.Time) (s
 	}
 }
 
+// steamRunning gates the walks: no client, no game. The pid file is left behind
+// when Steam exits, so the pid is checked rather than trusted, and anything this
+// cannot answer reads as "scan anyway" - a missing file is an install we do not
+// recognise, not proof that nothing is running.
+func steamRunning() bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return true
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".steam", "steam.pid"))
+	if err != nil {
+		return true
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		return true
+	}
+	buf := make([]byte, cmdlineProbe)
+	n, err := readInto(filepath.Join(procRoot, strconv.Itoa(pid), "cmdline"), buf)
+	return err == nil && bytes.Contains(buf[:n], []byte("/steam"))
+}
+
 // alive re-reads the one process already found instead of walking /proc again, and
 // rejects a recycled pid: it has to still name the same app by the same signal.
 func alive(s session) bool {

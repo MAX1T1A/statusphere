@@ -189,3 +189,45 @@ func TestScanProcFindsNothing(t *testing.T) {
 		t.Error("a browser was taken for a game")
 	}
 }
+
+func TestSteamRunning(t *testing.T) {
+	cases := []struct {
+		name    string
+		pidFile string // absent when empty
+		procs   map[int][2]string
+		want    bool
+	}{
+		{"the client is up", "77", map[int][2]string{
+			77: {string(nul("/home/x/.local/share/Steam/ubuntu12_32/steam", "-srt-logger-opened")), "1000"},
+		}, true},
+		{"the pid file outlived the client", "77", map[int][2]string{}, false},
+		{"the pid was recycled by something else", "77", map[int][2]string{
+			77: {string(nul("/usr/lib/firefox/firefox")), "1000"},
+		}, false},
+		{"no pid file, so no opinion", "", map[int][2]string{}, true},
+		{"garbage in the pid file", "not a pid", map[int][2]string{}, true},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			old := procRoot
+			t.Cleanup(func() { procRoot = old })
+			procRoot = fakeProc(t, c.procs)
+
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			if c.pidFile != "" {
+				if err := os.MkdirAll(filepath.Join(home, ".steam"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(home, ".steam", "steam.pid"), []byte(c.pidFile+"\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if got := steamRunning(); got != c.want {
+				t.Errorf("got %v, want %v", got, c.want)
+			}
+		})
+	}
+}

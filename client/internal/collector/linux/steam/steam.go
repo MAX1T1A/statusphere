@@ -112,12 +112,19 @@ func (s *state) steamRoot() string {
 	return s.root
 }
 
-// A full walk of /proc every two seconds is wasteful once the game is known, so the
-// known pid is re-read first and the walk only runs when that comes up empty. The
-// environ pass reads sixteen times as much per process, so it waits its turn.
+// A full walk of /proc every two seconds is wasteful, so it is avoided three ways:
+// a known game is re-read by pid, a stopped Steam skips the walk entirely, and the
+// environ pass - insurance for a launcher the argv scan does not recognise - only
+// gets its turn once the cheap one has come up empty.
 func (s *state) session() (session, bool) {
+	// Checked before the gate, so a game that outlives a crashed client is still
+	// followed until it exits.
 	if s.cur.pid != 0 && alive(s.cur) {
 		return s.cur, true
+	}
+	if !steamRunning() {
+		s.cur = session{}
+		return session{}, false
 	}
 	if found, ok := scanProc("cmdline", cmdlineProbe, parseSteamLaunchAppID, s.bootTime()); ok {
 		s.cur = found
