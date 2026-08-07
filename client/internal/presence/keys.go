@@ -41,6 +41,21 @@ const (
 	// KeyMusic is whatever mpris player is playing, browsers included.
 	KeyMusic = "music"
 
+	// A game is whatever Steam is running. The art urls are most of the point: a
+	// friend's client draws the hero banner with the logo over it, and it can only
+	// do that from a url it can fetch itself.
+	KeyGameSource         = "game_source"
+	KeyGameStatus         = "game_status"
+	KeyGameAppID          = "game_appid"
+	KeyGameName           = "game_name"
+	KeyGameDisplay        = "game_display"
+	KeyGameStartedAt      = "game_started_at"
+	KeyGameSessionSeconds = "game_session_seconds"
+	KeyGameHeaderURL      = "game_header_url"
+	KeyGameCoverURL       = "game_cover_url"
+	KeyGameHeroURL        = "game_hero_url"
+	KeyGameLogoURL        = "game_logo_url"
+
 	KeySpotifyStatus   = "spotify_status"
 	KeySpotifyTrack    = "spotify_track"
 	KeySpotifyArtist   = "spotify_artist"
@@ -57,6 +72,11 @@ const (
 const (
 	KindDesktop = "desktop"
 	KindServer  = "server"
+)
+
+const (
+	GameSourceSteam   = "steam"
+	GameStatusPlaying = "playing"
 )
 
 func (s Snapshot) Kind() string {

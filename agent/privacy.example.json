@@ -4,12 +4,14 @@
   "profiles": {
     "normal": {
       "apps": "off",
+      "games": "off",
       "music": "off",
       "system": "on",
       "custom": "on"
     },
     "incognito": {
       "apps": "off",
+      "games": "off",
       "music": "off",
       "system": "on",
       "custom": "on"

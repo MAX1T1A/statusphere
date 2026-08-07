@@ -10,16 +10,22 @@ import (
 
 func sample() presence.Snapshot {
 	return presence.Snapshot{
-		presence.KeyActiveApp:       "firefox",
-		presence.KeyActiveWindow:    "tax return 2025 — Mozilla Firefox",
-		presence.KeyActiveWorkspace: "3",
-		presence.KeySpotifyStatus:   "playing",
-		presence.KeySpotifyTrack:    "Teardrop",
-		presence.KeySpotifyArtist:   "Massive Attack",
-		presence.KeyMusic:           "How to file a tax return - YouTube",
-		presence.KeyCPUPercent:      12.5,
-		presence.KeyCustomFields:    []string{"weather"},
-		"weather":                   "18°C",
+		presence.KeyActiveApp:          "firefox",
+		presence.KeyActiveWindow:       "tax return 2025 — Mozilla Firefox",
+		presence.KeyActiveWorkspace:    "3",
+		presence.KeyGameStatus:         "playing",
+		presence.KeyGameSource:         "steam",
+		presence.KeyGameAppID:          1174180,
+		presence.KeyGameName:           "Red Dead Redemption 2",
+		presence.KeyGameHeroURL:        "https://example.invalid/hero.jpg",
+		presence.KeyGameSessionSeconds: 5040,
+		presence.KeySpotifyStatus:      "playing",
+		presence.KeySpotifyTrack:       "Teardrop",
+		presence.KeySpotifyArtist:      "Massive Attack",
+		presence.KeyMusic:              "How to file a tax return - YouTube",
+		presence.KeyCPUPercent:         12.5,
+		presence.KeyCustomFields:       []string{"weather"},
+		"weather":                      "18°C",
 	}
 }
 
@@ -74,6 +80,23 @@ func TestLevels(t *testing.T) {
 		{"apps busy replaces name", Profile{Apps: LevelBusy}, func(s presence.Snapshot) error {
 			if s.String(presence.KeyActiveApp) != BusyLabel || s.Has(presence.KeyActiveWorkspace) {
 				return fmt.Errorf("got app=%q workspace=%v", s.String(presence.KeyActiveApp), s.Has(presence.KeyActiveWorkspace))
+			}
+			return nil
+		}},
+		{"games playing keeps the fact not the title", Profile{Games: LevelPlaying}, func(s presence.Snapshot) error {
+			if s.String(presence.KeyGameStatus) != "playing" || !s.Has(presence.KeyGameSessionSeconds) {
+				return fmt.Errorf("the fact of playing was dropped: %v", s)
+			}
+			if s.Has(presence.KeyGameName) || s.Has(presence.KeyGameHeroURL) || s.Has(presence.KeyGameAppID) {
+				return fmt.Errorf("the title survived: %v", s)
+			}
+			return nil
+		}},
+		{"games off drops the lot", Profile{Games: LevelOff}, func(s presence.Snapshot) error {
+			for _, key := range gameKeys {
+				if s.Has(key) {
+					return fmt.Errorf("%s survived", key)
+				}
 			}
 			return nil
 		}},
@@ -199,5 +222,79 @@ func TestUnknownModeFallsBackToHiding(t *testing.T) {
 
 	if out := New(p).Apply(sample()); out.Has(presence.KeyActiveApp) {
 		t.Error("an unknown mode must fall back to the incognito profile, not to normal")
+	}
+}
+
+// Incognito hides the game the way it hides the windows, and leaves the music.
+func TestIncognitoDropsGames(t *testing.T) {
+	p := Default()
+	p.Mode = ModeIncognito
+
+	out := New(p).Apply(sample())
+	for _, key := range gameKeys {
+		if out.Has(key) {
+			t.Errorf("hidden snapshot still carries %s", key)
+		}
+	}
+	if out.String(presence.KeySpotifyTrack) != "Teardrop" {
+		t.Error("music should have stayed")
+	}
+	if New(Default()).Apply(sample()).String(presence.KeyGameName) != "Red Dead Redemption 2" {
+		t.Error("visible mode should publish the game as before")
+	}
+}
+
+// A profile written before games existed has no such key, and must resolve to the
+// built-in default rather than to an empty level that drops through every switch.
+func TestProfileWithoutGamesFallsBackToTheDefault(t *testing.T) {
+	p := Default()
+	p.Profiles = map[string]Profile{
+		ModeNormal:    {Apps: LevelFull, Music: LevelFull, System: LevelOn, Custom: LevelOn},
+		ModeIncognito: {Apps: LevelOff, Music: LevelFull, System: LevelOn, Custom: LevelOn},
+	}
+
+	if got := p.Active().Games; got != LevelFull {
+		t.Errorf("normal games = %q, want full", got)
+	}
+	p.Mode = ModeIncognito
+	if got := p.Active().Games; got != LevelOff {
+		t.Errorf("incognito games = %q, want off", got)
+	}
+}
+
+// Opting the game back in while hidden only works if its keys are classified: the
+// unknown-key purge runs after every group has had its say.
+func TestGamesFullSurvivesIncognito(t *testing.T) {
+	out := New(policy(Profile{Apps: LevelOff, Games: LevelFull})).Apply(sample())
+
+	if out.String(presence.KeyGameName) != "Red Dead Redemption 2" {
+		t.Error("games full was asked for and the purge took it anyway")
+	}
+	if out.Has(presence.KeyActiveWindow) {
+		t.Error("apps should still be off")
+	}
+}
+
+// hide_apps names things you never want published, and a game title is one of
+// them - but matching one group must not blank the other.
+func TestHideAppsMatchesGamesSeparately(t *testing.T) {
+	p := Default()
+	p.HideApps = []string{"(?i)red dead"}
+
+	out := New(p).Apply(sample())
+	if out.Has(presence.KeyGameName) {
+		t.Error("a hidden title was published")
+	}
+	if out.String(presence.KeyActiveApp) != "firefox" {
+		t.Error("hiding the game took the window with it")
+	}
+
+	p.HideApps = []string{"(?i)firefox"}
+	out = New(p).Apply(sample())
+	if out.Has(presence.KeyActiveApp) {
+		t.Error("a hidden app was published")
+	}
+	if out.String(presence.KeyGameName) != "Red Dead Redemption 2" {
+		t.Error("hiding the window took the game with it")
 	}
 }

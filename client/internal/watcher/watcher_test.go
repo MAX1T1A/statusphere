@@ -148,3 +148,32 @@ func TestInjectOnceTriggersImmediateSend(t *testing.T) {
 		t.Fatalf("injected nudge not present, got %q", got)
 	}
 }
+
+// The session counter climbs every tick on its own, so treating it as a change
+// would publish the whole snapshot twice a second for as long as the game runs.
+func TestTickIgnoresGameSessionSeconds(t *testing.T) {
+	cap := &capture{}
+	cur := presence.Snapshot{
+		presence.KeyGameStatus:         "playing",
+		presence.KeyGameName:           "Red Dead Redemption 2",
+		presence.KeyGameSessionSeconds: 10,
+	}
+	w := newWatcher(&cur, cap)
+	w.heartbeat = time.Hour
+	ctx := context.Background()
+
+	w.Tick(ctx)
+	for i := 12; i < 30; i += 2 {
+		cur[presence.KeyGameSessionSeconds] = i
+		w.Tick(ctx)
+	}
+	if cap.count() != 1 {
+		t.Fatalf("a ticking session counter published %d times, want 1", cap.count())
+	}
+
+	cur[presence.KeyGameName] = "Cyberpunk 2077"
+	w.Tick(ctx)
+	if cap.count() != 2 {
+		t.Fatalf("switching game should send, got %d", cap.count())
+	}
+}

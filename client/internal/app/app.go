@@ -36,6 +36,7 @@ import (
 	_ "statusphere-client/internal/collector/linux/arch"
 	_ "statusphere-client/internal/collector/linux/hyprland"
 	_ "statusphere-client/internal/collector/linux/spotify"
+	_ "statusphere-client/internal/collector/linux/steam"
 )
 
 const (

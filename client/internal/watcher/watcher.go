@@ -18,6 +18,11 @@ var volatileKeys = map[string]bool{
 	presence.KeyMemUsedMB:   true,
 	presence.KeyMemTotalMB:  true,
 	presence.KeyLoadAvg1m:   true,
+
+	// A counter that climbs on its own would make every collection a change and
+	// turn the poll into a publish. game_started_at next to it does not move, so a
+	// client can still run a live timer off it.
+	presence.KeyGameSessionSeconds: true,
 }
 
 type Watcher struct {
