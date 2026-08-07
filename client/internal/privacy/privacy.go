@@ -20,13 +20,15 @@ const (
 )
 
 // Level is how much of a group is published. Groups take different sets: apps
-// full/app/busy/off, music full/listening/off, the rest on/off.
+// full/app/busy/off, games full/playing/off, music full/listening/off, the rest
+// on/off.
 type Level string
 
 const (
 	LevelFull      Level = "full"
 	LevelApp       Level = "app"
 	LevelBusy      Level = "busy"
+	LevelPlaying   Level = "playing"
 	LevelListening Level = "listening"
 	LevelOn        Level = "on"
 	LevelOff       Level = "off"
@@ -38,6 +40,7 @@ const BusyLabel = "Active"
 
 type Profile struct {
 	Apps   Level `json:"apps"`
+	Games  Level `json:"games"`
 	Music  Level `json:"music"`
 	System Level `json:"system"`
 	Custom Level `json:"custom"`
@@ -53,14 +56,15 @@ type Policy struct {
 }
 
 // Default keeps music on while hidden: what you listen to is the sociable part,
-// what you have open is the intrusive one.
+// what you have open is the intrusive one. A game goes with the apps - it is the
+// most conspicuous thing on the screen, and hiding is usually about that.
 func Default() Policy {
 	return Policy{
 		Mode:     ModeNormal,
 		Announce: true,
 		Profiles: map[string]Profile{
-			ModeNormal:    {Apps: LevelFull, Music: LevelFull, System: LevelOn, Custom: LevelOn},
-			ModeIncognito: {Apps: LevelOff, Music: LevelFull, System: LevelOn, Custom: LevelOn},
+			ModeNormal:    {Apps: LevelFull, Games: LevelFull, Music: LevelFull, System: LevelOn, Custom: LevelOn},
+			ModeIncognito: {Apps: LevelOff, Games: LevelOff, Music: LevelFull, System: LevelOn, Custom: LevelOn},
 		},
 		HideApps: []string{"(?i)keepassxc", "(?i)1password", "(?i)bitwarden"},
 	}
@@ -68,6 +72,16 @@ func Default() Policy {
 
 var (
 	appKeys = []string{presence.KeyActiveApp, presence.KeyActiveWindow, presence.KeyActiveWorkspace}
+
+	gameDetailKeys = []string{
+		presence.KeyGameAppID, presence.KeyGameName, presence.KeyGameDisplay,
+		presence.KeyGameHeaderURL, presence.KeyGameCoverURL,
+		presence.KeyGameHeroURL, presence.KeyGameLogoURL,
+	}
+	gameKeys = append([]string{
+		presence.KeyGameSource, presence.KeyGameStatus,
+		presence.KeyGameStartedAt, presence.KeyGameSessionSeconds,
+	}, gameDetailKeys...)
 
 	musicDetailKeys = []string{
 		presence.KeyMusic,
@@ -97,7 +111,7 @@ var (
 
 func keySet(extra ...string) map[string]bool {
 	set := make(map[string]bool)
-	for _, group := range [][]string{appKeys, musicKeys, systemKeys, extra} {
+	for _, group := range [][]string{appKeys, gameKeys, musicKeys, systemKeys, extra} {
 		for _, k := range group {
 			set[k] = true
 		}
@@ -147,6 +161,9 @@ func fill(prof, def Profile) Profile {
 	if prof.Apps == "" {
 		prof.Apps = def.Apps
 	}
+	if prof.Games == "" {
+		prof.Games = def.Games
+	}
 	if prof.Music == "" {
 		prof.Music = def.Music
 	}
@@ -181,8 +198,12 @@ func (f *Filter) Apply(snap presence.Snapshot) presence.Snapshot {
 	prof := f.policy.Active()
 
 	apps := prof.Apps
-	if f.matchesHidden(out) {
+	if f.hiddenApp(out) {
 		apps = LevelOff
+	}
+	games := prof.Games
+	if f.hiddenGame(out) {
+		games = LevelOff
 	}
 
 	switch apps {
@@ -195,6 +216,13 @@ func (f *Filter) Apply(snap presence.Snapshot) presence.Snapshot {
 		}
 	case LevelOff:
 		drop(out, appKeys...)
+	}
+
+	switch games {
+	case LevelPlaying:
+		drop(out, gameDetailKeys...)
+	case LevelOff:
+		drop(out, gameKeys...)
 	}
 
 	switch prof.Music {
@@ -234,12 +262,26 @@ func (f *Filter) Apply(snap presence.Snapshot) presence.Snapshot {
 	return out
 }
 
-// matchesHidden covers apps you never want named, whatever the mode: password
-// managers, banking, whatever the user listed.
-func (f *Filter) matchesHidden(s presence.Snapshot) bool {
+// hide_apps covers what you never want named, whatever the mode: password
+// managers, banking, a title you keep to yourself. The two groups are matched
+// apart, so a browser window you would rather not show does not also blank the
+// game, and the other way round.
+func (f *Filter) hiddenApp(s presence.Snapshot) bool {
+	return f.anyMatch(s.String(presence.KeyActiveApp), s.String(presence.KeyActiveWindow))
+}
+
+func (f *Filter) hiddenGame(s presence.Snapshot) bool {
+	return f.anyMatch(s.String(presence.KeyGameName))
+}
+
+func (f *Filter) anyMatch(values ...string) bool {
 	for _, re := range f.hide {
-		if re.MatchString(s.String(presence.KeyActiveApp)) || re.MatchString(s.String(presence.KeyActiveWindow)) {
-			return true
+		for _, v := range values {
+			// A pattern broad enough to match "" must not blank a group that has
+			// nothing in it yet
+			if v != "" && re.MatchString(v) {
+				return true
+			}
 		}
 	}
 	return false

@@ -93,12 +93,14 @@ Config is `~/.config/statusphere/privacy.json`, one profile for normal and one f
   "profiles": {
     "normal": {
       "apps": "full",
+      "games": "full",
       "music": "full",
       "system": "on",
       "custom": "on"
     },
     "incognito": {
       "apps": "off",
+      "games": "off",
       "music": "full",
       "system": "on",
       "custom": "on"
@@ -109,9 +111,10 @@ Config is `~/.config/statusphere/privacy.json`, one profile for normal and one f
 ```
 
 - `apps` - `full` (app + window title), `app` (app only), `busy` (just "Active"), or `off`
+- `games` - `full` (title and Steam's art), `playing` (in a game, but not which), or `off`
 - `music` - `full`, `listening` (playing, but not what), or `off`
 - `system`, `custom` - `on` or `off`
-- `hide_apps` - regexes against app name and window title, active all the time, not just in incognito. Password managers and banking apps stay hidden even while you're visible.
+- `hide_apps` - regexes against app name, window title and game title, active all the time, not just in incognito. Password managers and banking apps stay hidden even while you're visible.
 - `announce` - `true` by default, so friends see you went hidden rather than a frozen card. Set `false` for no explanation at all.
 
 ## Interface
