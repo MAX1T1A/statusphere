@@ -146,6 +146,10 @@ func startedAt(pid int, boot time.Time) time.Time {
 	return boot.Add(time.Duration(ticks) * time.Second / clockTicksPerSecond)
 }
 
+// Two games at once is rare but real - one still loading while another is up - and
+// readdir order is not something to hang a card on, so the walk finishes and the
+// newest session wins. Costs nothing in practice: with a game running the known pid
+// is re-read instead, and with none the whole of /proc is walked either way.
 func scanProc(name string, probe int, parse func([]byte) int, boot time.Time) (session, bool) {
 	d, err := os.Open(procRoot)
 	if err != nil {
@@ -154,10 +158,13 @@ func scanProc(name string, probe int, parse func([]byte) int, boot time.Time) (s
 	defer d.Close()
 
 	buf := make([]byte, probe)
+	var best session
+	found := false
+
 	for {
 		names, err := d.Readdirnames(256)
 		if len(names) == 0 || err != nil {
-			return session{}, false
+			return best, found
 		}
 		for _, entry := range names {
 			pid, err := strconv.Atoi(entry)
@@ -172,12 +179,15 @@ func scanProc(name string, probe int, parse func([]byte) int, boot time.Time) (s
 			if appID == 0 {
 				continue
 			}
-			return session{
+			cur := session{
 				appID:      appID,
 				pid:        pid,
 				started:    startedAt(pid, boot),
 				viaEnviron: name == "environ",
-			}, true
+			}
+			if !found || cur.started.After(best.started) {
+				best, found = cur, true
+			}
 		}
 	}
 }

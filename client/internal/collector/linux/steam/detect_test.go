@@ -1,6 +1,14 @@
 package steam
 
-import "testing"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+)
 
 func nul(args ...string) []byte {
 	out := []byte{}
@@ -118,5 +126,66 @@ func TestIsNonGame(t *testing.T) {
 		if got := isNonGame(c.appID, c.name); got != c.want {
 			t.Errorf("isNonGame(%d, %q) = %v, want %v", c.appID, c.name, got, c.want)
 		}
+	}
+}
+
+// fakeProc lays out a /proc with one directory per pid: the cmdline the scan
+// parses, and a stat whose field 22 sets when that process started.
+func fakeProc(t *testing.T, procs map[int][2]string) string {
+	t.Helper()
+	root := t.TempDir()
+	for pid, p := range procs {
+		dir := filepath.Join(root, strconv.Itoa(pid))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		write := func(name, body string) {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		write("cmdline", p[0])
+		// pid, comm, then the state and eighteen fields before starttime
+		write("stat", fmt.Sprintf("%d (game) S%s %s", pid, strings.Repeat(" 0", 18), p[1]))
+	}
+	// Things that are not processes, and a process that is not a game
+	if err := os.WriteFile(filepath.Join(root, "uptime"), []byte("1 2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func TestScanProcPrefersTheNewestSession(t *testing.T) {
+	old := procRoot
+	t.Cleanup(func() { procRoot = old })
+
+	procRoot = fakeProc(t, map[int][2]string{
+		41: {string(nul("reaper", "SteamLaunch", "AppId=1174180", "--", "/games/a")), "1000"},
+		42: {string(nul("/usr/lib/firefox/firefox")), "2000"},
+		43: {string(nul("reaper", "SteamLaunch", "AppId=413150", "--", "/games/b")), "3000"},
+	})
+
+	boot := time.Unix(1785411463, 0)
+	got, ok := scanProc("cmdline", cmdlineProbe, parseSteamLaunchAppID, boot)
+	if !ok {
+		t.Fatal("found no game at all")
+	}
+	if got.appID != 413150 {
+		t.Errorf("appid = %d, want the one started last", got.appID)
+	}
+	if want := boot.Add(30 * time.Second); !got.started.Equal(want) {
+		t.Errorf("started = %v, want %v", got.started, want)
+	}
+}
+
+func TestScanProcFindsNothing(t *testing.T) {
+	old := procRoot
+	t.Cleanup(func() { procRoot = old })
+
+	procRoot = fakeProc(t, map[int][2]string{
+		42: {string(nul("/usr/lib/firefox/firefox")), "2000"},
+	})
+	if _, ok := scanProc("cmdline", cmdlineProbe, parseSteamLaunchAppID, time.Now()); ok {
+		t.Error("a browser was taken for a game")
 	}
 }
