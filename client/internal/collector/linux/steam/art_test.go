@@ -47,10 +47,10 @@ func TestStaleBackoff(t *testing.T) {
 	}{
 		{"never asked", art{}, true},
 		{"resolved yesterday stays resolved", art{Store: storeOK, ResolvedAt: now.Add(-24 * time.Hour)}, false},
-		{"first error waits an hour", art{Store: storeErrored, Attempts: 1, ResolvedAt: now.Add(-30 * time.Minute)}, false},
-		{"first error retries after two", art{Store: storeErrored, Attempts: 1, ResolvedAt: now.Add(-3 * time.Hour)}, true},
-		{"sixth error waits days", art{Store: storeErrored, Attempts: 6, ResolvedAt: now.Add(-40 * time.Hour)}, false},
-		{"backoff is capped", art{Store: storeErrored, Attempts: 40, ResolvedAt: now.Add(-100 * time.Hour)}, true},
+		{"an attempt just made is not repeated", art{Attempts: 1, ResolvedAt: now.Add(-30 * time.Second)}, false},
+		{"first error retries after two minutes", art{Store: storeErrored, Attempts: 1, ResolvedAt: now.Add(-3 * time.Minute)}, true},
+		{"sixth error waits an hour", art{Store: storeErrored, Attempts: 6, ResolvedAt: now.Add(-40 * time.Minute)}, false},
+		{"backoff is capped", art{Store: storeErrored, Attempts: 40, ResolvedAt: now.Add(-3 * time.Hour)}, true},
 		{"missing is rechecked monthly", art{Store: storeMissing, Attempts: 1, ResolvedAt: now.Add(-10 * 24 * time.Hour)}, false},
 		{"missing goes stale eventually", art{Store: storeMissing, Attempts: 1, ResolvedAt: now.Add(-40 * 24 * time.Hour)}, true},
 	}

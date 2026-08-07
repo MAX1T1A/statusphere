@@ -86,10 +86,17 @@ func (r *resolver) lookup(appID int) art {
 	start := !r.pending[appID] && r.stale(a)
 	if start {
 		r.pending[appID] = true
+		// Record the attempt before making it. --published is one shot and exits
+		// long before the answer arrives, so without this every invocation would
+		// fire another request at Valve and none of them would ever be written.
+		a.Attempts++
+		a.ResolvedAt = r.now()
+		r.known[appID] = a
 	}
 	r.mu.Unlock()
 
 	if start {
+		r.write(a)
 		go r.askStore(appID)
 	}
 	return a
@@ -113,9 +120,9 @@ func (r *resolver) fromSteamCache(appID int) art {
 }
 
 // A resolved title is never refetched: its art does not move, and a stable url is
-// what lets a friend's client cache the picture. Failures widen out to 64h so
-// neither a rate limit nor a title that is genuinely not on the store can turn
-// into a request per tick.
+// what lets a friend's client cache the picture. Anything else widens out from two
+// minutes to about an hour, so neither a rate limit nor a title that is genuinely
+// not on the store can turn into a request per tick.
 func (r *resolver) stale(a art) bool {
 	age := r.now().Sub(a.ResolvedAt)
 	switch a.Store {
@@ -124,7 +131,7 @@ func (r *resolver) stale(a art) bool {
 	case storeMissing:
 		return age > 30*24*time.Hour
 	default:
-		return age > time.Duration(1<<min(a.Attempts, 6))*time.Hour
+		return age > time.Duration(1<<min(a.Attempts, 6))*time.Minute
 	}
 }
 
