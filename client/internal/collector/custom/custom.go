@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"log"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -25,52 +28,114 @@ type Manager struct {
 	mu     sync.Mutex
 	order  []string
 	fields map[string]fieldConfig
+	caches map[string]*cachedResult
+
+	attempted bool
+	mod       time.Time
+	size      int64
+	lastErr   string
 }
 
 func Load() *Manager {
-	m := &Manager{fields: make(map[string]fieldConfig)}
-	m.reload()
+	m := &Manager{fields: make(map[string]fieldConfig), caches: make(map[string]*cachedResult)}
+	m.refresh()
 	return m
 }
 
-func (m *Manager) reload() {
-	fields, order := parse()
+func (m *Manager) refresh() {
+	path := config.File(fileName)
+	info, err := os.Stat(path)
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if err != nil {
+		if !m.attempted {
+			m.fields = make(map[string]fieldConfig)
+			m.order = nil
+			m.caches = make(map[string]*cachedResult)
+		}
+		return
+	}
+	if m.attempted && info.ModTime().Equal(m.mod) && info.Size() == m.size {
+		return
+	}
+	m.attempted = true
+	m.mod = info.ModTime()
+	m.size = info.Size()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		m.logReloadFailure(err)
+		return
+	}
+	fields, order, err := parseData(data)
+	if err != nil {
+		m.logReloadFailure(err)
+		return
+	}
+	m.lastErr = ""
 	m.fields = fields
 	m.order = order
-	m.mu.Unlock()
+	m.syncCachesLocked()
 }
 
-func parse() (map[string]fieldConfig, []string) {
-	data, err := config.Read(fileName)
-	if err != nil {
-		return make(map[string]fieldConfig), nil
+func (m *Manager) logReloadFailure(err error) {
+	reason := err.Error()
+	if reason == m.lastErr {
+		return
 	}
+	m.lastErr = reason
+	log.Printf("event=custom_fields_reload_failed reason=%q", reason)
+}
 
+func (m *Manager) syncCachesLocked() {
+	next := make(map[string]*cachedResult, len(m.fields))
+	for key, cfg := range m.fields {
+		if cfg.Cmd == "" {
+			continue
+		}
+		if c, ok := m.caches[key]; ok && c.cmd == cfg.Cmd {
+			next[key] = c
+			continue
+		}
+		next[key] = &cachedResult{cmd: cfg.Cmd, ttl: time.Duration(cfg.RepeatSeconds) * time.Second}
+	}
+	m.caches = next
+}
+
+func parseData(data []byte) (map[string]fieldConfig, []string, error) {
 	var order []string
 	fields := make(map[string]fieldConfig)
 
 	dec := json.NewDecoder(bytes.NewReader(data))
-	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
-		return fields, nil
+	t, err := dec.Token()
+	if err != nil {
+		return nil, nil, err
+	}
+	if t != json.Delim('{') {
+		return nil, nil, fmt.Errorf("not a JSON object")
 	}
 	for dec.More() {
 		t, err := dec.Token()
 		if err != nil {
-			break
+			return nil, nil, err
 		}
 		key, ok := t.(string)
 		if !ok {
-			break
+			return nil, nil, fmt.Errorf("unexpected key token %v", t)
 		}
 		var cfg fieldConfig
 		if err := dec.Decode(&cfg); err != nil {
-			break
+			return nil, nil, err
 		}
 		order = append(order, key)
 		fields[key] = cfg
 	}
-	return fields, order
+	if _, err := dec.Token(); err != nil {
+		return nil, nil, err
+	}
+	return fields, order, nil
 }
 
 func (m *Manager) FieldNames() []string {
@@ -79,37 +144,39 @@ func (m *Manager) FieldNames() []string {
 	return append([]string(nil), m.order...)
 }
 
-func (m *Manager) Providers() []collector.Provider {
+// snapshotCaches copies out the order and caches map reference so the caller
+// can run cmd exec per field without holding the manager lock for the duration.
+func (m *Manager) snapshotCaches() ([]string, map[string]*cachedResult) {
 	m.mu.Lock()
-	order := append([]string(nil), m.order...)
-	fields := m.fields
-	m.mu.Unlock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.order...), m.caches
+}
 
-	var providers []collector.Provider
-	for _, key := range order {
-		cfg := fields[key]
-		if cfg.Cmd == "" {
-			continue
-		}
-		cache := &cachedResult{ttl: time.Duration(cfg.RepeatSeconds) * time.Second}
-		k, cmd := key, cfg.Cmd
-		providers = append(providers, collector.Provider{
-			Name: "custom:" + k,
-			Collect: func(ctx context.Context, snap presence.Snapshot) error {
-				if val := cache.get(ctx, cmd); val != "" {
-					snap.Set(k, val)
+func (m *Manager) Providers() []collector.Provider {
+	return []collector.Provider{{
+		Name: "custom",
+		Collect: func(ctx context.Context, snap presence.Snapshot) error {
+			m.refresh()
+			order, caches := m.snapshotCaches()
+			for _, key := range order {
+				cache, ok := caches[key]
+				if !ok {
+					continue
 				}
-				return nil
-			},
-		})
-	}
-	return providers
+				if val := cache.get(ctx); val != "" {
+					snap.Set(key, val)
+				}
+			}
+			return nil
+		},
+	}}
 }
 
 func (m *Manager) FieldsProvider() collector.Provider {
 	return collector.Provider{
 		Name: "custom-fields",
 		Collect: func(_ context.Context, snap presence.Snapshot) error {
+			m.refresh()
 			if names := m.FieldNames(); len(names) > 0 {
 				snap.Set(presence.KeyCustomFields, names)
 			}
@@ -141,8 +208,23 @@ func (m *Manager) MergeKeys(keys []string) {
 	}
 	m.mu.Unlock()
 
-	if data, err := json.MarshalIndent(snapshot, "", "  "); err == nil {
-		_ = config.Write(fileName, data, 0o600)
+	data, err := json.MarshalIndent(snapshot, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := config.Write(fileName, data, 0o600); err != nil {
+		return
+	}
+
+	// Without this, refresh() would see its own write as an external change
+	// and re-parse the file, reordering fields into json.Marshal's
+	// alphabetical key order instead of insertion order.
+	if info, err := os.Stat(config.File(fileName)); err == nil {
+		m.mu.Lock()
+		m.attempted = true
+		m.mod = info.ModTime()
+		m.size = info.Size()
+		m.mu.Unlock()
 	}
 }
 
@@ -156,12 +238,13 @@ func EnsureConfig() {
 
 type cachedResult struct {
 	mu    sync.Mutex
+	cmd   string
 	value string
 	at    time.Time
 	ttl   time.Duration
 }
 
-func (c *cachedResult) get(ctx context.Context, cmd string) string {
+func (c *cachedResult) get(ctx context.Context) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -169,7 +252,7 @@ func (c *cachedResult) get(ctx context.Context, cmd string) string {
 		return c.value
 	}
 
-	out, err := exec.CommandContext(ctx, "sh", "-c", cmd).Output()
+	out, err := exec.CommandContext(ctx, "sh", "-c", c.cmd).Output()
 	if err != nil {
 		return c.value
 	}
