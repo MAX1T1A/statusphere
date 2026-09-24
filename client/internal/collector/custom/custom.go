@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"statusphere-client/internal/collector"
@@ -18,6 +19,12 @@ import (
 )
 
 const fileName = "custom.json"
+
+const defaultCommandTimeout = 5 * time.Second
+
+const commandKillGrace = 500 * time.Millisecond
+
+var commandTimeout = defaultCommandTimeout
 
 type fieldConfig struct {
 	Cmd           string `json:"cmd"`
@@ -99,7 +106,7 @@ func (m *Manager) syncCachesLocked() {
 			next[key] = c
 			continue
 		}
-		next[key] = &cachedResult{cmd: cfg.Cmd, ttl: time.Duration(cfg.RepeatSeconds) * time.Second}
+		next[key] = &cachedResult{field: key, cmd: cfg.Cmd, ttl: time.Duration(cfg.RepeatSeconds) * time.Second}
 	}
 	m.caches = next
 }
@@ -155,7 +162,7 @@ func (m *Manager) snapshotCaches() ([]string, map[string]*cachedResult) {
 func (m *Manager) Providers() []collector.Provider {
 	return []collector.Provider{{
 		Name: "custom",
-		Collect: func(ctx context.Context, snap presence.Snapshot) error {
+		Collect: func(_ context.Context, snap presence.Snapshot) error {
 			m.refresh()
 			order, caches := m.snapshotCaches()
 			for _, key := range order {
@@ -163,7 +170,7 @@ func (m *Manager) Providers() []collector.Provider {
 				if !ok {
 					continue
 				}
-				if val := cache.get(ctx); val != "" {
+				if val := cache.get(); val != "" {
 					snap.Set(key, val)
 				}
 			}
@@ -237,29 +244,80 @@ func EnsureConfig() {
 }
 
 type cachedResult struct {
-	mu    sync.Mutex
-	cmd   string
-	value string
-	at    time.Time
-	ttl   time.Duration
+	mu      sync.Mutex
+	field   string
+	cmd     string
+	value   string
+	at      time.Time
+	ttl     time.Duration
+	running bool
+	lastErr string
 }
 
-func (c *cachedResult) get(ctx context.Context) string {
+// get returns the last known value without running cmd itself: a stale or
+// missing value triggers a background refresh (at most one in flight per
+// field) so a slow or hanging command never blocks the collection tick.
+func (c *cachedResult) get() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.ttl > 0 && !c.at.IsZero() && time.Since(c.at) < c.ttl && c.value != "" {
 		return c.value
 	}
-
-	out, err := exec.CommandContext(ctx, "sh", "-c", c.cmd).Output()
-	if err != nil {
-		return c.value
+	if !c.running {
+		c.running = true
+		go c.refresh()
 	}
-	val := strings.TrimSpace(string(out))
+	return c.value
+}
+
+func (c *cachedResult) refresh() {
+	c.mu.Lock()
+	cmd := c.cmd
+	c.mu.Unlock()
+
+	val, err := runCommand(cmd)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.running = false
+	if err != nil {
+		c.logFailure(err)
+		return
+	}
+	c.lastErr = ""
 	if val != "" {
 		c.value = val
 		c.at = time.Now()
 	}
-	return c.value
+}
+
+func (c *cachedResult) logFailure(err error) {
+	reason := err.Error()
+	if reason == c.lastErr {
+		return
+	}
+	c.lastErr = reason
+	log.Printf("event=custom_field_cmd_failed field=%q reason=%q", c.field, reason)
+}
+
+// runCommand kills the whole process group on timeout, not just the
+// immediate "sh" child, so a still-running grandchild (e.g. curl spawned by
+// "sh -c") doesn't outlive the timeout as an orphan.
+func runCommand(cmd string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	defer cancel()
+
+	c := exec.CommandContext(ctx, "sh", "-c", cmd)
+	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	c.Cancel = func() error {
+		return syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
+	}
+	c.WaitDelay = commandKillGrace
+
+	out, err := c.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
