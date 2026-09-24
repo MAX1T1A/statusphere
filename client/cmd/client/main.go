@@ -13,9 +13,12 @@ import (
 	"statusphere-client/internal/auth"
 	"statusphere-client/internal/presence"
 	"statusphere-client/internal/privacy"
+	"statusphere-client/internal/version"
 )
 
 var (
+	versionFlag = flag.Bool("version", false, "Print the running client's version and exit")
+
 	uiMode      = flag.String("ui", "tui", "UI mode: tui, headless, json (roster as JSON lines on stdout, for external UIs)")
 	intervalArg = flag.Duration("interval", 2*time.Second, "How often to collect and publish (a headless box wants seconds, not milliseconds)")
 	setKindFlag = flag.String("set-kind", "", "What this machine is: desktop or server (server cards are read for metrics, not for open windows)")
@@ -59,6 +62,9 @@ func main() {
 
 func dispatch() error {
 	switch {
+	case *versionFlag:
+		fmt.Println(version.Current())
+		return nil
 	case *screenshotFlag:
 		return runScreenshot()
 	case *incognitoFlag != "":
