@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -26,52 +25,58 @@ const commandKillGrace = 500 * time.Millisecond
 
 var commandTimeout = defaultCommandTimeout
 
+// fieldConfig is a custom.json entry. Value, when set, wins over Cmd: a
+// plain text field has no business forking a shell every collect, so a
+// field carrying both never runs Cmd, it only logs the conflict once.
 type fieldConfig struct {
+	Value         string `json:"value"`
 	Cmd           string `json:"cmd"`
 	RepeatSeconds int    `json:"repeat_seconds"`
 }
 
 type Manager struct {
-	mu     sync.Mutex
-	order  []string
-	fields map[string]fieldConfig
-	caches map[string]*cachedResult
+	mu      sync.Mutex
+	order   []string
+	fields  map[string]fieldConfig
+	values  map[string]string
+	caches  map[string]*cachedResult
+	watched config.Watched
 
-	attempted bool
-	mod       time.Time
-	size      int64
-	lastErr   string
+	lastErr    string
+	warnedConf map[string]bool
 }
 
 func Load() *Manager {
-	m := &Manager{fields: make(map[string]fieldConfig), caches: make(map[string]*cachedResult)}
+	m := &Manager{
+		fields:     make(map[string]fieldConfig),
+		values:     make(map[string]string),
+		caches:     make(map[string]*cachedResult),
+		watched:    config.Watched{Path: config.File(fileName)},
+		warnedConf: make(map[string]bool),
+	}
 	m.refresh()
 	return m
 }
 
 func (m *Manager) refresh() {
-	path := config.File(fileName)
-	info, err := os.Stat(path)
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	changed, err := m.watched.Changed()
 	if err != nil {
-		if !m.attempted {
+		if !changed {
 			m.fields = make(map[string]fieldConfig)
 			m.order = nil
+			m.values = make(map[string]string)
 			m.caches = make(map[string]*cachedResult)
 		}
 		return
 	}
-	if m.attempted && info.ModTime().Equal(m.mod) && info.Size() == m.size {
+	if !changed {
 		return
 	}
-	m.attempted = true
-	m.mod = info.ModTime()
-	m.size = info.Size()
 
-	data, err := os.ReadFile(path)
+	data, err := m.watched.Read()
 	if err != nil {
 		m.logReloadFailure(err)
 		return
@@ -97,18 +102,35 @@ func (m *Manager) logReloadFailure(err error) {
 }
 
 func (m *Manager) syncCachesLocked() {
-	next := make(map[string]*cachedResult, len(m.fields))
+	caches := make(map[string]*cachedResult, len(m.fields))
+	values := make(map[string]string, len(m.fields))
 	for key, cfg := range m.fields {
+		if cfg.Value != "" {
+			values[key] = cfg.Value
+			if cfg.Cmd != "" {
+				m.logValueCmdConflict(key)
+			}
+			continue
+		}
 		if cfg.Cmd == "" {
 			continue
 		}
 		if c, ok := m.caches[key]; ok && c.cmd == cfg.Cmd {
-			next[key] = c
+			caches[key] = c
 			continue
 		}
-		next[key] = &cachedResult{field: key, cmd: cfg.Cmd, ttl: time.Duration(cfg.RepeatSeconds) * time.Second}
+		caches[key] = &cachedResult{field: key, cmd: cfg.Cmd, ttl: time.Duration(cfg.RepeatSeconds) * time.Second}
 	}
-	m.caches = next
+	m.caches = caches
+	m.values = values
+}
+
+func (m *Manager) logValueCmdConflict(field string) {
+	if m.warnedConf[field] {
+		return
+	}
+	m.warnedConf[field] = true
+	log.Printf("event=custom_field_value_and_cmd_conflict field=%q winner=%q", field, "value")
 }
 
 func parseData(data []byte) (map[string]fieldConfig, []string, error) {
@@ -151,12 +173,13 @@ func (m *Manager) FieldNames() []string {
 	return append([]string(nil), m.order...)
 }
 
-// snapshotCaches copies out the order and caches map reference so the caller
-// can run cmd exec per field without holding the manager lock for the duration.
-func (m *Manager) snapshotCaches() ([]string, map[string]*cachedResult) {
+// snapshotCaches copies out the order and value map and hands back the caches
+// map reference so the caller can run cmd exec per field without holding the
+// manager lock for the duration.
+func (m *Manager) snapshotCaches() ([]string, map[string]string, map[string]*cachedResult) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return append([]string(nil), m.order...), m.caches
+	return append([]string(nil), m.order...), m.values, m.caches
 }
 
 func (m *Manager) Providers() []collector.Provider {
@@ -164,14 +187,16 @@ func (m *Manager) Providers() []collector.Provider {
 		Name: "custom",
 		Collect: func(_ context.Context, snap presence.Snapshot) error {
 			m.refresh()
-			order, caches := m.snapshotCaches()
+			order, values, caches := m.snapshotCaches()
 			for _, key := range order {
-				cache, ok := caches[key]
-				if !ok {
+				if val, ok := values[key]; ok {
+					snap.Set(key, val)
 					continue
 				}
-				if val := cache.get(); val != "" {
-					snap.Set(key, val)
+				if cache, ok := caches[key]; ok {
+					if val := cache.get(); val != "" {
+						snap.Set(key, val)
+					}
 				}
 			}
 			return nil
@@ -226,13 +251,9 @@ func (m *Manager) MergeKeys(keys []string) {
 	// Without this, refresh() would see its own write as an external change
 	// and re-parse the file, reordering fields into json.Marshal's
 	// alphabetical key order instead of insertion order.
-	if info, err := os.Stat(config.File(fileName)); err == nil {
-		m.mu.Lock()
-		m.attempted = true
-		m.mod = info.ModTime()
-		m.size = info.Size()
-		m.mu.Unlock()
-	}
+	m.mu.Lock()
+	_ = m.watched.Sync()
+	m.mu.Unlock()
 }
 
 func EnsureConfig() {

@@ -63,7 +63,7 @@ func collectOnce(t *testing.T, m *Manager) presence.Snapshot {
 func waitForCaches(t *testing.T, m *Manager) {
 	t.Helper()
 	waitUntil(t, 2*time.Second, func() bool {
-		_, caches := m.snapshotCaches()
+		_, _, caches := m.snapshotCaches()
 		for _, c := range caches {
 			if _, running, _ := snapshotCache(c); running {
 				return false
@@ -150,6 +150,51 @@ func TestInvalidJSONKeepsPreviousFields(t *testing.T) {
 	}
 	if got := snap.Strings(presence.KeyCustomFields); len(got) != 1 || got[0] != "weather" {
 		t.Fatalf("custom_fields after invalid JSON = %v, want unchanged", got)
+	}
+}
+
+func TestValueFieldReturnsVerbatimWithoutRunningCmd(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "marker")
+	cmd := fmt.Sprintf("touch %q", marker)
+	write(t, fmt.Sprintf(`{"greeting":{"value":"hello","cmd":%q,"repeat_seconds":60}}`, cmd))
+	m := Load()
+
+	snap := collect(t, m)
+	if snap.String("greeting") != "hello" {
+		t.Fatalf("greeting = %q, want hello", snap.String("greeting"))
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("marker exists, want the cmd never run when value is set")
+	}
+}
+
+func TestValueFieldChangeIsPickedUpOnReload(t *testing.T) {
+	path := write(t, `{"greeting":{"value":"hello"}}`)
+	m := Load()
+
+	snap := collect(t, m)
+	if snap.String("greeting") != "hello" {
+		t.Fatalf("greeting = %q, want hello", snap.String("greeting"))
+	}
+
+	rewrite(t, path, `{"greeting":{"value":"goodbye"}}`)
+
+	snap = collect(t, m)
+	if snap.String("greeting") != "goodbye" {
+		t.Fatalf("greeting after reload = %q, want goodbye", snap.String("greeting"))
+	}
+}
+
+func TestValueAndCmdFieldsCoexist(t *testing.T) {
+	write(t, `{"greeting":{"value":"hi"},"weather":{"cmd":"echo sunny","repeat_seconds":60}}`)
+	m := Load()
+
+	snap := collect(t, m)
+	if snap.String("greeting") != "hi" {
+		t.Fatalf("greeting = %q, want hi", snap.String("greeting"))
+	}
+	if snap.String("weather") != "sunny" {
+		t.Fatalf("weather = %q, want sunny", snap.String("weather"))
 	}
 }
 
