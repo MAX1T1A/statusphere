@@ -19,6 +19,7 @@ import (
 	"statusphere-client/internal/detector"
 	"statusphere-client/internal/feed"
 	"statusphere-client/internal/health"
+	"statusphere-client/internal/layout"
 	"statusphere-client/internal/media"
 	"statusphere-client/internal/notifier"
 	"statusphere-client/internal/photo"
@@ -111,7 +112,7 @@ func Run(ctx context.Context, opts Options) error {
 	// Health is judged before the privacy filter runs, so hiding the numbers
 	// also hides the verdict drawn from them.
 	a.watcher.SetFilter(func(snap presence.Snapshot) presence.Snapshot {
-		return privacy.Shared().Apply(health.Shared().Annotate(snap))
+		return privacy.Shared().Apply(health.Shared().Annotate(layout.Shared().Annotate(snap)))
 	})
 
 	switch opts.UI {
@@ -194,7 +195,7 @@ func Published(ctx context.Context) (string, error) {
 		kind = cfg.Kind
 	}
 	coll, _ := newCollector(kind)
-	snap := privacy.Shared().Apply(health.Shared().Annotate(coll.Collect(ctx)))
+	snap := privacy.Shared().Apply(health.Shared().Annotate(layout.Shared().Annotate(coll.Collect(ctx))))
 	data, err := json.MarshalIndent(snap, "", "  ")
 	if err != nil {
 		return "", err

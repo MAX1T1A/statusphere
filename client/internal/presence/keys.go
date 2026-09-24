@@ -23,6 +23,10 @@ const (
 	KeyHealth     = "_health"
 	KeyHealthNote = "_health_note"
 
+	// KeyLayout is the parsed contents of ~/.config/statusphere/layout.json,
+	// passed through untouched: the client does not know what a tile is.
+	KeyLayout = "_layout"
+
 	KeyUptimeHours  = "uptime_hours"
 	KeyCPUPercent   = "cpu_percent"
 	KeyMemUsedMB    = "memory_used_mb"
