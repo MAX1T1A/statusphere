@@ -109,11 +109,7 @@ func Run(ctx context.Context, opts Options) error {
 		memberRefresh: make(chan struct{}, 1),
 	}
 	a.watcher = watcher.New(coll, a.send, interval)
-	// Health is judged before the privacy filter runs, so hiding the numbers
-	// also hides the verdict drawn from them.
-	a.watcher.SetFilter(func(snap presence.Snapshot) presence.Snapshot {
-		return privacy.Shared().Apply(health.Shared().Annotate(layout.Shared().Annotate(snap)))
-	})
+	a.watcher.SetFilter(annotate)
 
 	switch opts.UI {
 	case "tui":
@@ -177,6 +173,14 @@ func newCollector(kind string) (*collector.Collector, *custom.Manager) {
 	return collector.New(providers...), cm
 }
 
+// annotate is the filter chain applied to every snapshot before it leaves
+// the device: layout and health add to it, then privacy decides what of the
+// result actually ships. Health is judged before the privacy filter runs, so
+// hiding the numbers also hides the verdict drawn from them.
+func annotate(snap presence.Snapshot) presence.Snapshot {
+	return privacy.Shared().Apply(health.Shared().Annotate(layout.Shared().Annotate(snap)))
+}
+
 func kindProvider(kind string) collector.Provider {
 	return collector.Provider{
 		Name: "kind",
@@ -195,7 +199,7 @@ func Published(ctx context.Context) (string, error) {
 		kind = cfg.Kind
 	}
 	coll, _ := newCollector(kind)
-	snap := privacy.Shared().Apply(health.Shared().Annotate(layout.Shared().Annotate(coll.Collect(ctx))))
+	snap := annotate(coll.Collect(ctx))
 	data, err := json.MarshalIndent(snap, "", "  ")
 	if err != nil {
 		return "", err
