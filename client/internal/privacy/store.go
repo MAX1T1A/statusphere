@@ -1,7 +1,6 @@
 package privacy
 
 import (
-	"os"
 	"sync"
 	"time"
 
@@ -17,7 +16,7 @@ const recheck = time.Second
 type Store struct {
 	mu      sync.Mutex
 	filter  *Filter
-	mod     time.Time
+	watched config.Watched
 	checked time.Time
 }
 
@@ -29,23 +28,23 @@ func (s *Store) Filter() *Filter {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.watched.Path == "" {
+		s.watched.Path = config.File(FileName)
+	}
+
 	now := time.Now()
 	if s.filter != nil && now.Sub(s.checked) < recheck {
 		return s.filter
 	}
 	s.checked = now
 
-	mod := time.Time{}
-	if info, err := os.Stat(config.File(FileName)); err == nil {
-		mod = info.ModTime()
-	}
-	if s.filter != nil && mod.Equal(s.mod) {
+	changed, _ := s.watched.Changed()
+	if s.filter != nil && !changed {
 		return s.filter
 	}
 
 	p, _ := Load()
 	s.filter = New(p)
-	s.mod = mod
 	return s.filter
 }
 

@@ -1,14 +1,13 @@
-// Package layout carries the Quickshell widget editor's tile arrangement
-// through to the room unread: the client does not know what a tile is, only
-// that ~/.config/statusphere/layout.json holds a JSON object to pass along.
+// Package layout carries the Quickshell widget editor's tile arrangement to
+// the room: the client does not know what a tile is, only that
+// ~/.config/statusphere/layout.json holds a JSON object to pass along.
 package layout
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
-	"os"
 	"sync"
-	"time"
 
 	"statusphere-client/internal/config"
 	"statusphere-client/internal/presence"
@@ -19,11 +18,9 @@ const FileName = "layout.json"
 const maxSize = 16 * 1024
 
 type Store struct {
-	mu        sync.Mutex
-	attempted bool
-	mod       time.Time
-	size      int64
-	obj       map[string]any
+	mu      sync.Mutex
+	watched config.Watched
+	obj     map[string]any
 }
 
 var shared = &Store{}
@@ -43,40 +40,40 @@ func (s *Store) resolve() map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	path := config.File(FileName)
-	info, err := os.Stat(path)
+	if s.watched.Path == "" {
+		s.watched.Path = config.File(FileName)
+		s.watched.MaxSize = maxSize
+	}
+
+	changed, err := s.watched.Changed()
 	if err != nil {
-		s.attempted = false
 		s.obj = nil
 		return nil
 	}
-
-	if s.attempted && info.ModTime().Equal(s.mod) && info.Size() == s.size {
+	if !changed {
 		return s.obj
 	}
-	s.attempted = true
-	s.mod = info.ModTime()
-	s.size = info.Size()
-	s.obj = nil
 
-	if info.Size() > maxSize {
-		log.Printf("event=layout_too_large size=%d", info.Size())
-		return nil
-	}
-
-	data, err := os.ReadFile(path)
+	data, err := s.watched.Read()
 	if err != nil {
-		log.Printf("event=layout_read_failed reason=%q", err)
+		s.obj = nil
+		if errors.Is(err, config.ErrTooLarge) {
+			log.Printf("event=layout_too_large size=%d", s.watched.Size())
+		} else {
+			log.Printf("event=layout_read_failed reason=%q", err)
+		}
 		return nil
 	}
 
 	var obj map[string]any
 	if err := json.Unmarshal(data, &obj); err != nil {
-		log.Printf("event=layout_read_failed reason=%q", err)
+		log.Printf("event=layout_parse_failed reason=%q", err)
+		s.obj = nil
 		return nil
 	}
 	if obj == nil {
-		log.Printf("event=layout_read_failed reason=%q", "not a JSON object")
+		log.Printf("event=layout_parse_failed reason=%q", "not a JSON object")
+		s.obj = nil
 		return nil
 	}
 

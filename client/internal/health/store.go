@@ -1,7 +1,6 @@
 package health
 
 import (
-	"os"
 	"sync"
 	"time"
 
@@ -17,7 +16,7 @@ type Store struct {
 	mu         sync.Mutex
 	thresholds Thresholds
 	loaded     bool
-	mod        time.Time
+	watched    config.Watched
 	checked    time.Time
 }
 
@@ -29,23 +28,23 @@ func (s *Store) Thresholds() Thresholds {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.watched.Path == "" {
+		s.watched.Path = config.File(FileName)
+	}
+
 	now := time.Now()
 	if s.loaded && now.Sub(s.checked) < recheck {
 		return s.thresholds
 	}
 	s.checked = now
 
-	mod := time.Time{}
-	if info, err := os.Stat(config.File(FileName)); err == nil {
-		mod = info.ModTime()
-	}
-	if s.loaded && mod.Equal(s.mod) {
+	changed, _ := s.watched.Changed()
+	if s.loaded && !changed {
 		return s.thresholds
 	}
 
 	s.thresholds = Load()
 	s.loaded = true
-	s.mod = mod
 	return s.thresholds
 }
 
