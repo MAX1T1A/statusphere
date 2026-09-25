@@ -218,7 +218,7 @@ func (a *account) card() Card {
 	detail, _ := layout[detailKey].([]any)
 	tiles := a.expandWildcards(detail)
 	if len(tiles) == 0 {
-		tiles = standardDetailFor(fieldsFor(a.primary()))
+		tiles = standardDetailFor(detailFieldsFor(a.primary()))
 	}
 	c.Detail = a.place(tiles, detailRows)
 	return c
@@ -263,7 +263,7 @@ func (a *account) expandWildcards(raw []any) []spec {
 			out = append(out, t)
 			continue
 		}
-		for _, f := range fieldsFor(a.primary()) {
+		for _, f := range detailFieldsFor(a.primary()) {
 			if !named[f.key] {
 				t.field = f.key
 				out = append(out, t)

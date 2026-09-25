@@ -28,6 +28,18 @@
       }
     ]
   },
+  "battery_phone": {
+    "members": [
+      {
+        "device_id": "p3",
+        "account_id": "dana",
+        "account_name": "Dana",
+        "last_seen": 1790000000,
+        "battery_percent": 42,
+        "battery_charging": true
+      }
+    ]
+  },
   "desktop_standard": {
     "members": [
       {

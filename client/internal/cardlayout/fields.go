@@ -149,6 +149,19 @@ func labelForKey(key string) string {
 	return strings.Join(words, " ")
 }
 
+// detailFieldsFor drops active_app/active_window: the row's status line already
+// carries them, so the fallback detail grid does not repeat them as a lone tile.
+func detailFieldsFor(d presence.Snapshot) []field {
+	fields := fieldsFor(d)
+	out := fields[:0]
+	for _, f := range fields {
+		if f.key != "active_app" && f.key != "active_window" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 func fieldFor(d presence.Snapshot, key string) *field {
 	for _, f := range fieldsFor(d) {
 		if f.key == key {

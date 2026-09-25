@@ -10,6 +10,13 @@
     {
       "account_id": "bob",
       "row": null,
+      "detail": []
+    }
+  ],
+  "battery_phone": [
+    {
+      "account_id": "dana",
+      "row": null,
       "detail": [
         {
           "col": 0,
@@ -17,12 +24,13 @@
           "cols": 1,
           "rows": 1,
           "type": "scalar",
-          "form": "number",
-          "color": "secondaryContainer",
-          "field": "active_app",
-          "label": "App",
-          "value": "Telegram",
-          "icon": "apps"
+          "form": "ring",
+          "color": "primaryContainer",
+          "field": "battery",
+          "label": "Charging",
+          "value": "42%",
+          "icon": "battery_full",
+          "percent": 42
         }
       ]
     }
@@ -36,7 +44,20 @@
           "col": 0,
           "row": 0,
           "cols": 2,
-          "rows": 2,
+          "rows": 1,
+          "type": "scalar",
+          "form": "text",
+          "color": "secondaryContainer",
+          "field": "load",
+          "label": "Load",
+          "value": "1.23 / 16",
+          "icon": "speed"
+        },
+        {
+          "col": 2,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
           "type": "scalar",
           "form": "ring",
           "color": "primaryContainer",
@@ -47,21 +68,8 @@
           "percent": 12.6
         },
         {
-          "col": 2,
+          "col": 3,
           "row": 0,
-          "cols": 2,
-          "rows": 1,
-          "type": "scalar",
-          "form": "text",
-          "color": "secondaryContainer",
-          "field": "active_window",
-          "label": "Window",
-          "value": "nvim ~/Projects/statusphere/client/internal/cardlayout",
-          "icon": "web_asset"
-        },
-        {
-          "col": 2,
-          "row": 1,
           "cols": 1,
           "rows": 1,
           "type": "scalar",
@@ -74,7 +82,7 @@
           "percent": 66.81299939993052
         },
         {
-          "col": 3,
+          "col": 0,
           "row": 1,
           "cols": 1,
           "rows": 1,
@@ -89,8 +97,8 @@
           "percent": 71.4
         },
         {
-          "col": 0,
-          "row": 2,
+          "col": 1,
+          "row": 1,
           "cols": 1,
           "rows": 1,
           "type": "scalar",
@@ -102,8 +110,8 @@
           "icon": "schedule"
         },
         {
-          "col": 1,
-          "row": 2,
+          "col": 2,
+          "row": 1,
           "cols": 1,
           "rows": 1,
           "type": "scalar",
@@ -115,21 +123,8 @@
           "icon": "desktop_windows"
         },
         {
-          "col": 2,
-          "row": 2,
-          "cols": 1,
-          "rows": 1,
-          "type": "scalar",
-          "form": "number",
-          "color": "secondaryContainer",
-          "field": "active_app",
-          "label": "App",
-          "value": "kitty",
-          "icon": "apps"
-        },
-        {
           "col": 3,
-          "row": 2,
+          "row": 1,
           "cols": 1,
           "rows": 1,
           "type": "scalar",
@@ -139,19 +134,6 @@
           "label": "Packages",
           "value": "1432",
           "icon": "inventory_2"
-        },
-        {
-          "col": 0,
-          "row": 3,
-          "cols": 4,
-          "rows": 1,
-          "type": "scalar",
-          "form": "text",
-          "color": "secondaryContainer",
-          "field": "load",
-          "label": "Load",
-          "value": "1.23 / 16",
-          "icon": "speed"
         }
       ]
     }
@@ -484,8 +466,8 @@
         {
           "col": 0,
           "row": 0,
-          "cols": 2,
-          "rows": 2,
+          "cols": 1,
+          "rows": 1,
           "type": "scalar",
           "form": "ring",
           "color": "primaryContainer",
@@ -494,19 +476,6 @@
           "value": "90%",
           "icon": "planner_review",
           "percent": 90
-        },
-        {
-          "col": 2,
-          "row": 0,
-          "cols": 2,
-          "rows": 2,
-          "type": "scalar",
-          "form": "number",
-          "color": "secondaryContainer",
-          "field": "active_app",
-          "label": "App",
-          "value": "code",
-          "icon": "apps"
         }
       ]
     }
@@ -642,8 +611,8 @@
         {
           "col": 2,
           "row": 0,
-          "cols": 2,
-          "rows": 2,
+          "cols": 1,
+          "rows": 1,
           "type": "scalar",
           "form": "ring",
           "color": "tertiaryContainer",
@@ -654,8 +623,8 @@
           "percent": 25
         },
         {
-          "col": 0,
-          "row": 2,
+          "col": 3,
+          "row": 0,
           "cols": 1,
           "rows": 1,
           "type": "scalar",
@@ -668,8 +637,8 @@
           "percent": 50
         },
         {
-          "col": 1,
-          "row": 2,
+          "col": 2,
+          "row": 1,
           "cols": 1,
           "rows": 1,
           "type": "scalar",
@@ -681,8 +650,8 @@
           "icon": "speed"
         },
         {
-          "col": 2,
-          "row": 2,
+          "col": 3,
+          "row": 1,
           "cols": 1,
           "rows": 1,
           "type": "scalar",
@@ -694,7 +663,7 @@
           "icon": "schedule"
         },
         {
-          "col": 3,
+          "col": 0,
           "row": 2,
           "cols": 1,
           "rows": 1,
@@ -707,21 +676,8 @@
           "icon": "desktop_windows"
         },
         {
-          "col": 0,
-          "row": 3,
-          "cols": 1,
-          "rows": 1,
-          "type": "scalar",
-          "form": "number",
-          "color": "secondaryContainer",
-          "field": "active_app",
-          "label": "App",
-          "value": "steam",
-          "icon": "apps"
-        },
-        {
           "col": 1,
-          "row": 3,
+          "row": 2,
           "cols": 1,
           "rows": 1,
           "type": "scalar",
@@ -734,7 +690,7 @@
         },
         {
           "col": 2,
-          "row": 3,
+          "row": 2,
           "cols": 1,
           "rows": 1,
           "type": "scalar",
@@ -746,7 +702,7 @@
         },
         {
           "col": 3,
-          "row": 3,
+          "row": 2,
           "cols": 1,
           "rows": 1,
           "type": "scalar",
