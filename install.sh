@@ -18,19 +18,22 @@ esac
 ASSET="${BINARY}-linux-${ARCH}"
 URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
 
+TMP="$(mktemp)"
+trap 'rm -f "$TMP"' EXIT
+
 echo "downloading ${ASSET}..."
 if command -v curl &>/dev/null; then
-    curl -fsSL -o "/tmp/${BINARY}" "$URL"
+    curl -fsSL -o "$TMP" "$URL"
 elif command -v wget &>/dev/null; then
-    wget -qO "/tmp/${BINARY}" "$URL"
+    wget -qO "$TMP" "$URL"
 else
     echo "error: curl or wget required"
     exit 1
 fi
 
-chmod +x "/tmp/${BINARY}"
+chmod +x "$TMP"
 mkdir -p "$INSTALL_DIR"
-mv "/tmp/${BINARY}" "$INSTALL_DIR/$BINARY"
+mv "$TMP" "$INSTALL_DIR/$BINARY"
 
 SHELL_RC=""
 case "$(basename "$SHELL")" in
