@@ -1,10 +1,17 @@
 import asyncio
+import time
 from dataclasses import dataclass, field
 from typing import AsyncGenerator
 
 from app.modules.chats.public import IMessageDelivery
 from app.modules.photo.public import IPhotoBroadcast
 from app.modules.presence.application.interfaces import IPresenceBroadcast
+
+# A device that connects mid-room has missed every publish that came before it, so it
+# reads everyone else as offline until their next tick (up to their own --interval).
+# Replaying the last snapshot closes that gap; past this age it's not "just missed a
+# tick" anymore; it's a device that stopped publishing, so it stays out of the replay.
+REPLAY_MAX_AGE = 60.0
 
 
 @dataclass
@@ -18,6 +25,7 @@ class _Subscriber:
 class _Room:
     token: str
     subscribers: list[_Subscriber] = field(default_factory=list)
+    last_snapshot: dict[str, tuple[float, dict]] = field(default_factory=dict)
 
 
 class RealtimeHub(IMessageDelivery, IPresenceBroadcast, IPhotoBroadcast):
@@ -37,6 +45,13 @@ class RealtimeHub(IMessageDelivery, IPresenceBroadcast, IPhotoBroadcast):
     async def subscribe(self, token: str, device_id: str, account_id: str) -> AsyncGenerator[dict, None]:
         queue: asyncio.Queue = asyncio.Queue(maxsize=128)
         room = self._get_or_create(token)
+        now = time.monotonic()
+        for other_device, (seen_at, snapshot) in room.last_snapshot.items():
+            if other_device != device_id and now - seen_at <= REPLAY_MAX_AGE:
+                try:
+                    queue.put_nowait(snapshot)
+                except asyncio.QueueFull:
+                    pass
         room.subscribers.append(_Subscriber(device_id=device_id, account_id=account_id, queue=queue))
         try:
             while True:
@@ -50,6 +65,7 @@ class RealtimeHub(IMessageDelivery, IPresenceBroadcast, IPhotoBroadcast):
     ) -> None:
         room = self._get_or_create(room_token)
         stamped = {**data, "account_id": account_id, "account_name": account_name, "device_id": device_id}
+        room.last_snapshot[device_id] = (time.monotonic(), stamped)
         for subscriber in room.subscribers:
             if subscriber.device_id != device_id:
                 try:
