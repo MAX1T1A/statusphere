@@ -96,6 +96,26 @@ func TestRosterOfflineLabelKeepsLastSeenName(t *testing.T) {
 	}
 }
 
+func TestRosterOfflineKeepsLastSeen(t *testing.T) {
+	r := rosterOf(auth.MemberInfo{AccountID: "acc-ann", Name: "Ann"})
+	f := New()
+	f.Update(presence.Snapshot{presence.KeyDeviceID: "ann-1", presence.KeyAccountID: "acc-ann"})
+	online := r.Merge(f.Snapshot())
+	seen, _ := online[0].Int(presence.KeyLastSeen)
+
+	got := r.Merge(New().Snapshot())
+	if last, ok := got[0].Int(presence.KeyLastSeen); !got[0].Has(presence.KeyOffline) || !ok || last != seen {
+		t.Fatalf("offline placeholder should carry the last_seen of the dropped device (%d), got %+v", seen, got[0])
+	}
+}
+
+func TestRosterNeverSeenOfflineHasNoLastSeen(t *testing.T) {
+	got := rosterOf(auth.MemberInfo{AccountID: "acc-ann", Name: "Ann"}).Merge(New().Snapshot())
+	if got[0].Has(presence.KeyLastSeen) {
+		t.Fatalf("a member never seen online has no last_seen, got %+v", got[0])
+	}
+}
+
 func TestRosterSeenSignalsOnUnknown(t *testing.T) {
 	r := rosterOf(auth.MemberInfo{AccountID: "acc-bob"})
 

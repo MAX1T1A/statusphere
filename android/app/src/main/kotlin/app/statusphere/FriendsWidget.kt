@@ -96,7 +96,7 @@ suspend fun clearFriendsWidget(context: Context) {
 private fun friendOf(account: Account, resources: Resources): Friend {
     val presence = account.presence
     val dot = when (presence) {
-        Presence.Offline -> Dot.OFFLINE
+        is Presence.Offline -> Dot.OFFLINE
         is Presence.Incognito -> Dot.INCOGNITO
         is Presence.Online -> Dot.ONLINE
     }
