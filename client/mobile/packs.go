@@ -21,6 +21,10 @@ const (
 // and the detail grid to the one cardlayout builds from the phone's fields.
 const DefaultPack = ""
 
+// CustomPack is what ActivePack reports for a surface the owner assembled
+// tile by tile through SetCustom.
+const CustomPack = "custom"
+
 const avatarShapeKey = "avatarShape"
 
 type packTile struct {
@@ -75,6 +79,92 @@ var packsBySurface = map[string][]pack{
 	},
 }
 
+type tileKind struct {
+	id    string
+	forms []string
+	build func(form, size string) packTile
+}
+
+var tileKinds = []tileKind{
+	{"music", []string{"cover", "vinyl", "wave"}, musicTile},
+	{"video", []string{"player"}, func(_, size string) packTile { return videoTile(size) }},
+	{"app", []string{"text", "big"}, appTile},
+	{"battery", []string{"bar", "ring", "number"}, batteryTile},
+	{"alarm", []string{"clock"}, func(_, size string) packTile { return alarmTile(size) }},
+	{"meeting", []string{"banner"}, func(_, size string) packTile { return meetingTile(size) }},
+}
+
+var tileSizes = []string{"1x1", "2x1", "2x2", "4x1"}
+
+type customTile struct {
+	Kind string `json:"kind"`
+	Form string `json:"form"`
+	Size string `json:"size"`
+}
+
+func (k tileKind) matches(t packTile) bool {
+	return slices.Contains(k.forms, t.Form) && slices.Contains(tileSizes, t.Size) && k.build(t.Form, t.Size) == t
+}
+
+// TileKinds lists what SetCustom accepts, in display order, as a JSON array
+// of {"kind", "forms", "sizes"}.
+func TileKinds() (string, error) {
+	type entry struct {
+		Kind  string   `json:"kind"`
+		Forms []string `json:"forms"`
+		Sizes []string `json:"sizes"`
+	}
+	out := make([]entry, 0, len(tileKinds))
+	for _, k := range tileKinds {
+		out = append(out, entry{k.id, k.forms, tileSizes})
+	}
+	data, err := json.Marshal(out)
+	return string(data), err
+}
+
+// CustomTiles returns the saved tiles of a surface as SetCustom takes them,
+// skipping those no tile kind builds.
+func (s *Session) CustomTiles(surface string) (string, error) {
+	if _, ok := packsBySurface[surface]; !ok {
+		return "", fmt.Errorf("unknown surface %q", surface)
+	}
+	saved, _ := readLayout()[surface].([]any)
+	out := []customTile{}
+	for _, t := range tilesOf(saved) {
+		i := slices.IndexFunc(tileKinds, func(k tileKind) bool { return k.matches(t) })
+		if i >= 0 {
+			out = append(out, customTile{tileKinds[i].id, t.Form, t.Size})
+		}
+	}
+	data, err := json.Marshal(out)
+	return string(data), err
+}
+
+func customPack(surface, tilesJSON string) (*pack, error) {
+	if _, ok := packsBySurface[surface]; !ok {
+		return nil, fmt.Errorf("unknown surface %q", surface)
+	}
+	var chosen []customTile
+	if err := json.Unmarshal([]byte(tilesJSON), &chosen); err != nil {
+		return nil, err
+	}
+	p := &pack{id: CustomPack, tiles: make([]packTile, 0, len(chosen))}
+	for _, c := range chosen {
+		i := slices.IndexFunc(tileKinds, func(k tileKind) bool { return k.id == c.Kind })
+		if i < 0 {
+			return nil, fmt.Errorf("unknown tile kind %q", c.Kind)
+		}
+		if !slices.Contains(tileKinds[i].forms, c.Form) || !slices.Contains(tileSizes, c.Size) {
+			return nil, fmt.Errorf("tile %s cannot be %s at %s", c.Kind, c.Form, c.Size)
+		}
+		p.tiles = append(p.tiles, tileKinds[i].build(c.Form, c.Size))
+	}
+	if surface == DetailSurface && len(p.tiles) == 0 {
+		return nil, nil
+	}
+	return p, nil
+}
+
 func packFor(surface, id string) (*pack, error) {
 	packs, ok := packsBySurface[surface]
 	if !ok {
@@ -104,8 +194,8 @@ func Packs(surface string) (string, error) {
 	return string(data), err
 }
 
-// ActivePack names the pack the saved layout matches on a surface, or
-// DefaultPack when the surface is unset or no pack matches it.
+// ActivePack names the pack the saved layout matches on a surface:
+// DefaultPack when the surface is unset, CustomPack when no pack matches it.
 func (s *Session) ActivePack(surface string) string {
 	saved, set := readLayout()[surface].([]any)
 	if !set {
@@ -116,7 +206,7 @@ func (s *Session) ActivePack(surface string) string {
 			return p.id
 		}
 	}
-	return DefaultPack
+	return CustomPack
 }
 
 // SetPack saves the pack as the phone's layout.json and republishes at once,
@@ -126,6 +216,20 @@ func (s *Session) SetPack(surface, id string) error {
 	if err != nil {
 		return err
 	}
+	return s.save(surface, p)
+}
+
+// SetCustom saves tiles, a JSON array of {"kind", "form", "size"} from
+// TileKinds, as the surface's layout and republishes like SetPack.
+func (s *Session) SetCustom(surface, tilesJSON string) error {
+	p, err := customPack(surface, tilesJSON)
+	if err != nil {
+		return err
+	}
+	return s.save(surface, p)
+}
+
+func (s *Session) save(surface string, p *pack) error {
 	next := withPack(readLayout(), surface, p)
 	next["updated_at"] = time.Now().Unix()
 	data, err := json.Marshal(next)
@@ -150,6 +254,19 @@ func (s *Session) PreviewCard(surface, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return s.preview(surface, p)
+}
+
+// PreviewCustom is PreviewCard for tiles as SetCustom takes them.
+func (s *Session) PreviewCustom(surface, tilesJSON string) (string, error) {
+	p, err := customPack(surface, tilesJSON)
+	if err != nil {
+		return "", err
+	}
+	return s.preview(surface, p)
+}
+
+func (s *Session) preview(surface string, p *pack) (string, error) {
 	s.publishMu.Lock()
 	own := presence.New()
 	if s.current != nil {

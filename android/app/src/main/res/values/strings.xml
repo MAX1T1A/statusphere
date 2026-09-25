@@ -42,6 +42,23 @@
     <string name="pack_compact">Compact</string>
     <string name="pack_default_row">Music and game cards as they come</string>
     <string name="pack_header_only">Name and status only</string>
+    <string name="pack_custom">Custom</string>
+    <string name="pack_custom_note">Pick tiles one by one</string>
+    <string name="pack_custom_back">Back to packs</string>
+    <string name="pack_custom_empty_detail">Nothing picked: details stay as by default</string>
+    <string name="tile_kind_music">Music</string>
+    <string name="tile_kind_video">Video</string>
+    <string name="tile_kind_app">App</string>
+    <string name="tile_kind_battery">Battery</string>
+    <string name="tile_kind_meeting">Meeting</string>
+    <string name="form_cover">Cover</string>
+    <string name="form_vinyl">Vinyl</string>
+    <string name="form_wave">Wave</string>
+    <string name="form_text">Text</string>
+    <string name="form_big">Big</string>
+    <string name="form_bar">Bar</string>
+    <string name="form_ring">Ring</string>
+    <string name="form_number">Number</string>
     <string name="pack_nothing_yet">Nothing to show until the phone publishes something</string>
 
     <string name="permissions_title">Permissions</string>

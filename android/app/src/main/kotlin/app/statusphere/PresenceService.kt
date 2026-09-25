@@ -30,6 +30,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -327,6 +328,28 @@ class PresenceService : Service() {
 
         suspend fun setPack(surface: String, id: String): Result<Unit> = withContext(Dispatchers.IO) {
             runCatching { runningSession().setPack(surface, id) }
+        }
+
+        suspend fun customTiles(surface: String): Result<CustomTiles> = withContext(Dispatchers.IO) {
+            runCatching { CustomTiles(tileKindsOf(Mobile.tileKinds()), customTilesOf(runningSession().customTiles(surface))) }
+        }
+
+        suspend fun previewCustom(surface: String, tiles: List<CustomTile>): Result<Card> = withContext(Dispatchers.IO) {
+            runCatching { parseCard(runningSession().previewCustom(surface, tiles.toJSON())) }
+        }
+
+        private val editScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private var pendingCustom: Job? = null
+
+        // The server drops a presence frame sent within 0.5 s of the previous one, so
+        // a burst of edits must reach it as one save; editScope outlives the sheet.
+        fun saveCustomSoon(surface: String, tiles: List<CustomTile>) {
+            pendingCustom?.cancel()
+            pendingCustom = editScope.launch {
+                delay(PUBLISH_MIN_INTERVAL)
+                runCatching { runningSession().setCustom(surface, tiles.toJSON()) }
+                    .onFailure { Log.e(TAG, "custom_tiles_save_failed surface=$surface detail=${it.message}") }
+            }
         }
 
         private fun runningSession(): Session = checkNotNull(session.value) { "presence service is not running" }

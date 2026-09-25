@@ -133,3 +133,95 @@ func TestSetPackRejectsUnknownPack(t *testing.T) {
 		t.Fatal("expected an error for an unknown surface")
 	}
 }
+
+func TestCustomTilesReachTheRoomAndReadBack(t *testing.T) {
+	srv := newFakeServer(t)
+	dir := baseDir(t, srv.URL)
+	s, conn, _ := startSession(t, srv, dir)
+	if err := s.Publish(fullPhone); err != nil {
+		t.Fatal(err)
+	}
+	conn.next(t)
+
+	const chosen = `[{"kind":"alarm","form":"clock","size":"1x1"},{"kind":"battery","form":"ring","size":"2x2"}]`
+	raw, err := s.PreviewCustom(DetailSurface, chosen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var card cardlayout.Card
+	if err := json.Unmarshal([]byte(raw), &card); err != nil {
+		t.Fatal(err)
+	}
+	if len(card.Detail) != 2 || card.Detail[0].Type != cardlayout.Alarm {
+		t.Fatalf("the preview should place the alarm and the battery, got %s", raw)
+	}
+	conn.none(t, 300*time.Millisecond)
+
+	if err := s.SetCustom(DetailSurface, chosen); err != nil {
+		t.Fatal(err)
+	}
+	if detail, _ := layoutOf(t, conn.next(t))[DetailSurface].([]any); len(detail) != 2 {
+		t.Fatalf("the room should get both chosen tiles, got %v", detail)
+	}
+
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.ActivePack(DetailSurface); got != CustomPack {
+		t.Fatalf("active detail pack = %q, want custom", got)
+	}
+	back, err := reopened.CustomTiles(DetailSurface)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back != chosen {
+		t.Fatalf("custom tiles read back as %s, want %s", back, chosen)
+	}
+}
+
+func TestCustomTilesOfAPackAreThatPack(t *testing.T) {
+	srv := newFakeServer(t)
+	s, _, _ := startSession(t, srv, baseDir(t, srv.URL))
+	if err := s.SetPack(RowSurface, "cover"); err != nil {
+		t.Fatal(err)
+	}
+	tiles, err := s.CustomTiles(RowSurface)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetCustom(RowSurface, tiles); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.ActivePack(RowSurface); got != "cover" {
+		t.Fatalf("editing from a pack without changes keeps the pack, got %q from %s", got, tiles)
+	}
+}
+
+func TestSetCustomRejectsUnknownTiles(t *testing.T) {
+	srv := newFakeServer(t)
+	s, _, _ := startSession(t, srv, baseDir(t, srv.URL))
+	for _, bad := range []string{
+		`[{"kind":"weather","form":"text","size":"1x1"}]`,
+		`[{"kind":"alarm","form":"ring","size":"1x1"}]`,
+		`[{"kind":"music","form":"cover","size":"3x3"}]`,
+	} {
+		if err := s.SetCustom(DetailSurface, bad); err == nil {
+			t.Errorf("expected %s to be rejected", bad)
+		}
+	}
+}
+
+func TestEmptyCustomDetailIsTheDefault(t *testing.T) {
+	srv := newFakeServer(t)
+	s, _, _ := startSession(t, srv, baseDir(t, srv.URL))
+	if err := s.SetPack(DetailSurface, "music"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetCustom(DetailSurface, `[]`); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.ActivePack(DetailSurface); got != DefaultPack {
+		t.Fatalf("details with nothing picked fall back to the default grid, active pack is %q", got)
+	}
+}
