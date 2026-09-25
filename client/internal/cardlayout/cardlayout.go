@@ -461,6 +461,24 @@ func emptyCells(placed []placement) int {
 	return rowsUsed*columns - filled
 }
 
+// Placed reports, tile by tile, whether the surface grid has room for tiles
+// of these sizes when every one of them is shown.
+func Placed(surface string, sizes []string) []bool {
+	maxRows := rowRows
+	if surface == detailKey {
+		maxRows = detailRows
+	}
+	tiles := make([]spec, len(sizes))
+	for i, size := range sizes {
+		tiles[i] = spec{size: size}
+	}
+	out := make([]bool, len(sizes))
+	for _, p := range pack(tiles, maxRows) {
+		out[p.index] = true
+	}
+	return out
+}
+
 func (a *account) place(tiles []spec, maxRows int) []Tile {
 	var shown []spec
 	for _, t := range tiles {
@@ -545,10 +563,12 @@ func (a *account) tile(t spec, p placement) Tile {
 			d := devices[0]
 			out.Title = d.String(presence.KeyVideoTitle)
 			out.Subtitle = d.String(presence.KeyVideoChannel)
+			out.Icon = videoIcon(d.String(presence.KeyVideoStatus))
 			position, _ := d.Float(presence.KeyVideoPosition)
 			if length, _ := d.Float(presence.KeyVideoLength); length > 0 {
 				progress := position / length * 100
 				out.Percent = &progress
+				out.Value = jsNumber(length)
 			}
 		}
 	case Alarm:
@@ -594,6 +614,13 @@ func (a *account) videoDevices() []presence.Snapshot {
 		title := d.String(presence.KeyVideoTitle)
 		return title + "/" + d.String(presence.KeyVideoChannel), d.String(presence.KeyVideoStatus) != "" && title != ""
 	})
+}
+
+func videoIcon(status string) string {
+	if status == "paused" {
+		return "pause"
+	}
+	return "play_arrow"
 }
 
 func (a *account) alarmDevices() []presence.Snapshot {

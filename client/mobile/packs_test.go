@@ -2,6 +2,7 @@ package mobile
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
@@ -223,5 +224,27 @@ func TestEmptyCustomDetailIsTheDefault(t *testing.T) {
 	}
 	if got := s.ActivePack(DetailSurface); got != DefaultPack {
 		t.Fatalf("details with nothing picked fall back to the default grid, active pack is %q", got)
+	}
+}
+
+func TestCustomFitMarksTilesTheRowHasNoRoomFor(t *testing.T) {
+	raw, err := CustomFit(RowSurface, `[{"kind":"music","form":"cover","size":"2x2"},{"kind":"battery","form":"bar","size":"4x1"}]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Tiles []struct {
+			Placed bool     `json:"placed"`
+			Sizes  []string `json:"sizes"`
+		} `json:"tiles"`
+		Room []string `json:"room"`
+	}
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatal(err)
+	}
+	beside := []string{"1x1", "2x1", "2x2"}
+	if len(got.Tiles) != 2 || !got.Tiles[0].Placed || got.Tiles[1].Placed ||
+		!slices.Equal(got.Tiles[0].Sizes, tileSizes) || !slices.Equal(got.Tiles[1].Sizes, beside) || !slices.Equal(got.Room, beside) {
+		t.Fatalf("a full-width battery has no row left beside a 2x2 cover, got %s", raw)
 	}
 }

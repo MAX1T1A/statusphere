@@ -15,9 +15,10 @@ type Roster struct {
 	fetch   func() ([]auth.MemberInfo, error)
 	refresh chan struct{}
 
-	mu      sync.Mutex
-	members []auth.MemberInfo
-	labels  map[string]string
+	mu       sync.Mutex
+	members  []auth.MemberInfo
+	labels   map[string]string
+	lastSeen map[string]int64
 }
 
 func NewRoster(fetch func() ([]auth.MemberInfo, error)) *Roster {
@@ -95,6 +96,7 @@ func (r *Roster) Merge(live []presence.Snapshot) []presence.Snapshot {
 		if acc != "" {
 			byAccount[acc] = append(byAccount[acc], s)
 			r.rememberLabel(acc, s)
+			r.rememberLastSeen(acc, s)
 		}
 	}
 
@@ -117,12 +119,16 @@ func (r *Roster) Merge(live []presence.Snapshot) []presence.Snapshot {
 		if label == "" {
 			label = shortID(m.AccountID)
 		}
-		out = append(out, presence.Snapshot{
+		placeholder := presence.Snapshot{
 			presence.KeyAccountID:   m.AccountID,
 			presence.KeyAccountName: label,
 			presence.KeyRole:        m.Role,
 			presence.KeyOffline:     true,
-		})
+		}
+		if seen, ok := r.lastSeenOf(m.AccountID); ok {
+			placeholder.Set(presence.KeyLastSeen, seen)
+		}
+		out = append(out, placeholder)
 	}
 	return out
 }
@@ -149,6 +155,26 @@ func (r *Roster) lastLabel(accountID string) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.labels[accountID]
+}
+
+func (r *Roster) rememberLastSeen(accountID string, s presence.Snapshot) {
+	seen, ok := s.Int(presence.KeyLastSeen)
+	if !ok {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.lastSeen == nil {
+		r.lastSeen = map[string]int64{}
+	}
+	r.lastSeen[accountID] = max(r.lastSeen[accountID], seen)
+}
+
+func (r *Roster) lastSeenOf(accountID string) (int64, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	seen, ok := r.lastSeen[accountID]
+	return seen, ok
 }
 
 func shortID(id string) string {

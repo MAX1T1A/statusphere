@@ -119,7 +119,9 @@ function tileOut(root, account, p) {
         Object.assign(out, {
             "title": d?.video_title || undefined,
             "subtitle": d?.video_channel || undefined,
-            "percent": d?.video_length > 0 ? (d.video_position ?? 0) / d.video_length * 100 : undefined
+            "icon": d ? (d.video_status === "paused" ? "pause" : "play_arrow") : undefined,
+            "percent": d?.video_length > 0 ? (d.video_position ?? 0) / d.video_length * 100 : undefined,
+            "value": d?.video_length > 0 ? String(d.video_length) : undefined
         });
     } else if (type.reads === "alarm") {
         const d = root.alarmDevices(account)[0];

@@ -82,7 +82,7 @@ data class PhoneSnapshot(
 data class Game(val name: String, val artUrl: String)
 
 sealed interface Presence {
-    data object Offline : Presence
+    data class Offline(val lastSeen: Instant?) : Presence
     data class Incognito(val note: String) : Presence
     data class Online(val app: String, val music: Music?, val video: Video?, val game: Game?) : Presence
 }
@@ -189,7 +189,7 @@ fun parseRoom(roomJSON: String): List<Account> {
     }
     val cards = room.optJSONArray("cards").objects().associate { it.optString("account_id") to cardOf(it) }
     return byAccount.map { (id, snapshots) -> accountOf(id, snapshots).copy(card = cards[id] ?: Card.NONE) }
-        .sortedWith(compareBy<Account> { it.presence == Presence.Offline }.thenBy { it.name.lowercase() })
+        .sortedWith(compareBy<Account> { it.presence is Presence.Offline }.thenBy { it.name.lowercase() })
 }
 
 private fun accountOf(id: String, snapshots: List<JSONObject>): Account {
@@ -202,7 +202,7 @@ private fun accountOf(id: String, snapshots: List<JSONObject>): Account {
     val devices = live.sortedWith(
         compareBy({ deviceRank(it) }, { newest - it.optLong(LAST_SEEN) > STALE_GAP_SECONDS }, { it.optString(DEVICE_ID) }),
     )
-    val primary = devices.firstOrNull() ?: return Account(id, name, Presence.Offline)
+    val primary = devices.firstOrNull() ?: return Account(id, name, Presence.Offline(lastSeenOf(snapshots)))
     if (primary.optBoolean(INCOGNITO)) return Account(id, name, Presence.Incognito(primary.optString(INCOGNITO_NOTE)))
     val online = Presence.Online(
         app = primary.optString(ACTIVE_APP),
@@ -212,6 +212,9 @@ private fun accountOf(id: String, snapshots: List<JSONObject>): Account {
     )
     return Account(id, name, online)
 }
+
+private fun lastSeenOf(snapshots: List<JSONObject>): Instant? =
+    snapshots.filter { it.has(LAST_SEEN) }.maxOfOrNull { it.getLong(LAST_SEEN) }?.let(Instant::ofEpochSecond)
 
 private fun deviceRank(device: JSONObject): Int = when {
     device.optString(GAME_STATUS) == GAME_PLAYING -> 0

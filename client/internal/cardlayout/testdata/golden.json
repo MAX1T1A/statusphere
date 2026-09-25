@@ -799,7 +799,9 @@
           "color": "errorContainer",
           "title": "Rust in 100 Seconds",
           "subtitle": "Fireship",
-          "percent": 25
+          "icon": "play_arrow",
+          "percent": 25,
+          "value": "160"
         }
       ],
       "detail": [
@@ -812,7 +814,9 @@
           "form": "player",
           "title": "Rust in 100 Seconds",
           "subtitle": "Fireship",
-          "percent": 25
+          "icon": "play_arrow",
+          "percent": 25,
+          "value": "160"
         }
       ]
     }
@@ -829,7 +833,8 @@
           "rows": 1,
           "type": "video",
           "form": "player",
-          "title": "Lofi stream"
+          "title": "Lofi stream",
+          "icon": "pause"
         }
       ]
     },

@@ -129,7 +129,7 @@ private fun RoomHeader(accounts: List<Account>, onLeft: () -> Unit) {
 
     Box(Modifier.padding(horizontal = CardPadding)) {
         Text(
-            stringResource(R.string.room_online, accounts.count { it.presence != Presence.Offline }, accounts.size),
+            stringResource(R.string.room_online, accounts.count { it.presence !is Presence.Offline }, accounts.size),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.outline,
             modifier = Modifier.clickable { menuOpen = true },
@@ -196,7 +196,7 @@ private fun AccountCard(account: Account, pickable: Boolean, pinned: Boolean, on
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier
             .fillMaxWidth()
-            .alpha(if (presence == Presence.Offline) OFFLINE_ALPHA else 1f)
+            .alpha(if (presence is Presence.Offline) OFFLINE_ALPHA else 1f)
             .combinedClickable(
                 enabled = if (pickable) card.detail.isNotEmpty() else true,
                 onClick = { if (card.detail.isNotEmpty()) detailShown = !detailShown },
@@ -338,9 +338,9 @@ private fun RenameDialog(currentName: String, onDismiss: () -> Unit) {
 private fun Avatar(account: Account) {
     val colors = MaterialTheme.colorScheme
     val presence = account.presence
-    val offline = presence == Presence.Offline
+    val offline = presence is Presence.Offline
     val badge = when (presence) {
-        Presence.Offline -> colors.surfaceContainer
+        is Presence.Offline -> colors.surfaceContainer
         is Presence.Incognito -> colors.secondary
         is Presence.Online -> colors.primary
     }
@@ -377,7 +377,7 @@ private fun Avatar(account: Account) {
 }
 
 internal fun Presence.statusLine(resources: Resources): String = when (this) {
-    Presence.Offline -> resources.getString(R.string.status_offline)
+    is Presence.Offline -> resources.getString(R.string.status_offline)
     is Presence.Incognito -> note.ifEmpty { resources.getString(R.string.status_incognito) }
     is Presence.Online -> game?.let { resources.getString(R.string.status_playing_game, it.name) }
         ?: app.ifEmpty { resources.getString(R.string.status_online) }
@@ -465,7 +465,9 @@ private fun rememberPosition(music: Music): Int {
     return position.coerceAtMost(music.lengthSeconds)
 }
 
-private fun clock(seconds: Int): String = "%d:%02d".format(seconds / 60, seconds % 60)
+internal fun clock(seconds: Int): String =
+    if (seconds >= 3600) "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60)
+    else "%d:%02d".format(seconds / 60, seconds % 60)
 
 @Composable
 internal fun WavyProgress(
@@ -530,12 +532,18 @@ private val artRequests = ConcurrentHashMap<ArtKey, Deferred<Bitmap?>>()
 
 @Composable
 internal fun rememberArt(url: String, maxSize: Dp): Bitmap? {
-    val key = ArtKey(url, with(LocalDensity.current) { maxSize.roundToPx() })
-    val art by produceState(ArtCache.get(key), key) {
-        if (value != null || !url.startsWith("https://")) return@produceState
-        value = fetchArtDeduped(key).await()
+    val maxDimensionPx = with(LocalDensity.current) { maxSize.roundToPx() }
+    val art by produceState(ArtCache.get(ArtKey(url, maxDimensionPx)), url, maxDimensionPx) {
+        if (value == null) value = loadArt(url, maxDimensionPx)
     }
     return art
+}
+
+internal suspend fun loadArt(url: String, maxDimensionPx: Int): Bitmap? {
+    val key = ArtKey(url, maxDimensionPx)
+    ArtCache.get(key)?.let { return it }
+    if (!url.startsWith("https://")) return null
+    return fetchArtDeduped(key).await()
 }
 
 private fun fetchArtDeduped(key: ArtKey): Deferred<Bitmap?> =
