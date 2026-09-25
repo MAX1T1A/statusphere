@@ -23,10 +23,11 @@ class MembershipReader(IMembershipReader):
             )
             return found is True
 
-    async def owned_room(self, account_id: str) -> str | None:
+    async def managed_room(self, account_id: str) -> str | None:
         async with self._pool.acquire() as conn:
             return await conn.fetchval(
-                "SELECT room_id FROM room_members WHERE account_id = $1 AND role = 'owner' ORDER BY joined_at LIMIT 1",
+                "SELECT room_id FROM room_members WHERE account_id = $1 AND role IN ('owner', 'admin') "
+                "ORDER BY joined_at LIMIT 1",
                 account_id,
             )
 

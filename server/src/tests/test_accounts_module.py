@@ -67,7 +67,7 @@ class FakeDirectory:
     async def create_room_for_owner(self, aid):
         return self._room
 
-    async def owned_room(self, aid):
+    async def managed_room(self, aid):
         return self._owned
 
 

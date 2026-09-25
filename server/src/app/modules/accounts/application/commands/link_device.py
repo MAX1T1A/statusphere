@@ -44,7 +44,7 @@ class LinkDeviceUseCase:
         async with self._uow_factory() as uow:
             await uow.accounts.create_device(device_id, account_id, op.name)
 
-        room_id = room or await self._directory.owned_room(account_id)
+        room_id = room or await self._directory.managed_room(account_id)
         return AccountSessionDTO(
             account_id=account_id,
             device_id=device_id,

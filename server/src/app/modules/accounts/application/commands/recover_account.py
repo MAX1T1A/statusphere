@@ -33,7 +33,7 @@ class RecoverAccountUseCase:
         async with self._uow_factory() as uow:
             await uow.accounts.create_device(device_id, op.account_id, op.name)
 
-        room_id = await self._directory.owned_room(op.account_id)
+        room_id = await self._directory.managed_room(op.account_id)
         return AccountSessionDTO(
             account_id=op.account_id,
             device_id=device_id,
