@@ -10,6 +10,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -42,6 +44,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 
 const val TAG = "Statusphere"
 
@@ -70,11 +73,17 @@ class PresenceService : Service() {
     private lateinit var music: MusicTracker
     private lateinit var apps: ForegroundAppTracker
     private lateinit var battery: BatteryTracker
-    private val session = MutableStateFlow<Session?>(null)
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             screenOn.value = intent.action != Intent.ACTION_SCREEN_OFF
+        }
+    }
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            val s = session.value ?: return
+            scope.launch { withContext(sessionDispatcher) { runCatching { s.networkAvailable() } } }
         }
     }
 
@@ -87,6 +96,10 @@ class PresenceService : Service() {
         }
 
         override fun onError(event: String, detail: String) {
+            if (event.isEmpty()) {
+                mutableStatus.update { it.copy(lastError = null) }
+                return
+            }
             Log.e(TAG, "$event detail=$detail")
             mutableStatus.update { it.copy(lastError = "$event: $detail") }
         }
@@ -97,7 +110,7 @@ class PresenceService : Service() {
     override fun onCreate() {
         super.onCreate()
         startInForeground()
-        music = MusicTracker(this) { track -> snapshot.update { it.copy(music = track) } }
+        music = MusicTracker(this) { now -> snapshot.update { it.playing(now) } }
         apps = ForegroundAppTracker(this)
         battery = BatteryTracker(this) { level -> snapshot.update { it.copy(battery = level) } }
         screenOn.value = getSystemService(PowerManager::class.java).isInteractive
@@ -107,6 +120,7 @@ class PresenceService : Service() {
             addAction(Intent.ACTION_USER_PRESENT)
         }
         ContextCompat.registerReceiver(this, screenReceiver, screenEvents, ContextCompat.RECEIVER_NOT_EXPORTED)
+        getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(networkCallback)
         scope.launch { run() }
     }
 
@@ -125,6 +139,7 @@ class PresenceService : Service() {
     override fun onDestroy() {
         scope.cancel()
         unregisterReceiver(screenReceiver)
+        getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback)
         music.stop()
         battery.stop()
         session.value?.let { thread(name = "session_stop") { it.stop() } }
@@ -190,7 +205,7 @@ class PresenceService : Service() {
     private suspend fun pollAppAndMusicPosition() {
         while (true) {
             val app = withContext(Dispatchers.IO) { apps.current() }
-            snapshot.update { it.copy(app = app, music = music.current()) }
+            snapshot.update { it.copy(app = app).playing(music.current()) }
             delay(APP_POLL_INTERVAL)
         }
     }
@@ -245,6 +260,7 @@ class PresenceService : Service() {
     companion object {
         private val mutableStatus = MutableStateFlow(PresenceStatus())
         val status: StateFlow<PresenceStatus> = mutableStatus.asStateFlow()
+        private val session = MutableStateFlow<Session?>(null)
 
         fun baseDir(context: Context): String = context.filesDir.path
 
@@ -271,6 +287,20 @@ class PresenceService : Service() {
         suspend fun setName(context: Context, name: String): Result<Unit> = withContext(Dispatchers.IO) {
             runCatching { Mobile.open(baseDir(context)).setName(name) }
         }
+
+        suspend fun packChoices(surface: String): Result<PackChoices> = withContext(Dispatchers.IO) {
+            runCatching {
+                val s = runningSession()
+                val ids = listOf(Mobile.DefaultPack) + JSONArray(Mobile.packs(surface)).strings()
+                PackChoices(s.activePack(surface), ids.map { PackChoice(it, parseCard(s.previewCard(surface, it))) })
+            }
+        }
+
+        suspend fun setPack(surface: String, id: String): Result<Unit> = withContext(Dispatchers.IO) {
+            runCatching { runningSession().setPack(surface, id) }
+        }
+
+        private fun runningSession(): Session = checkNotNull(session.value) { "presence service is not running" }
 
         fun setIncognito(context: Context, on: Boolean, minutes: Long) {
             ContextCompat.startForegroundService(context, incognitoCommand(context, on, minutes))

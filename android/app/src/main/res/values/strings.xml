@@ -28,6 +28,22 @@
     <string name="rename_save">Save</string>
     <string name="rename_failed">Could not rename: %1$s</string>
 
+    <string name="self_rename">Change name</string>
+    <string name="self_appearance">Card appearance</string>
+    <string name="appearance_row">Card</string>
+    <string name="appearance_detail">Details</string>
+    <string name="appearance_failed">Could not change appearance: %1$s</string>
+    <string name="pack_default">Default</string>
+    <string name="pack_cover">Cover</string>
+    <string name="pack_vinyl">Vinyl</string>
+    <string name="pack_minimal">Minimal</string>
+    <string name="pack_music">Music</string>
+    <string name="pack_dashboard">Dashboard</string>
+    <string name="pack_compact">Compact</string>
+    <string name="pack_default_row">Music and game cards as they come</string>
+    <string name="pack_header_only">Name and status only</string>
+    <string name="pack_nothing_yet">Nothing to show until the phone publishes something</string>
+
     <string name="permissions_title">Permissions</string>
     <string name="permission_notification_access">Notification access (music)</string>
     <string name="permission_usage_access">Usage access (current app)</string>

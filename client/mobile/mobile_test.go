@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,16 +29,18 @@ type fakeConn struct {
 
 type fakeServer struct {
 	*httptest.Server
-	conns       chan *fakeConn
-	members     []auth.MemberInfo
-	nameFailure int
-	lastName    string
+	conns         chan *fakeConn
+	members       []auth.MemberInfo
+	memberFetches atomic.Int32
+	nameFailure   int
+	lastName      string
 }
 
 func newFakeServer(t *testing.T, members ...auth.MemberInfo) *fakeServer {
 	srv := &fakeServer{conns: make(chan *fakeConn, 4), members: members}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/rooms/members", func(w http.ResponseWriter, _ *http.Request) {
+		srv.memberFetches.Add(1)
 		_ = json.NewEncoder(w).Encode(map[string]any{"members": srv.members})
 	})
 	mux.HandleFunc("/accounts/name", func(w http.ResponseWriter, r *http.Request) {
@@ -206,6 +209,23 @@ func TestPublishCarriesBatteryLevelAndChargingState(t *testing.T) {
 	}
 }
 
+func TestPublishCarriesVideoApartFromMusic(t *testing.T) {
+	srv := newFakeServer(t)
+	s, conn, _ := startSession(t, srv, baseDir(t, srv.URL))
+
+	if err := s.Publish(`{"video":{"title":"Rust in 100 Seconds","channel":"Fireship","status":"Playing","position_seconds":40,"length_seconds":160}}`); err != nil {
+		t.Fatal(err)
+	}
+	got := conn.next(t)
+	if got[presence.KeyVideoTitle] != "Rust in 100 Seconds" || got[presence.KeyVideoChannel] != "Fireship" ||
+		got[presence.KeyVideoStatus] != "playing" || got[presence.KeyVideoPosition] != float64(40) || got[presence.KeyVideoLength] != float64(160) {
+		t.Fatalf("video fields should be carried, got %v", got)
+	}
+	if _, ok := got[presence.KeySpotifyStatus]; ok {
+		t.Fatalf("a video must not read as music, got %v", got)
+	}
+}
+
 func TestPublishRejectsMalformedSnapshot(t *testing.T) {
 	srv := newFakeServer(t)
 	s, conn, _ := startSession(t, srv, baseDir(t, srv.URL))
@@ -268,6 +288,28 @@ func TestListenStateAndSnapshotResentAfterReconnect(t *testing.T) {
 	}
 	if got := again.next(t); got[presence.KeySpotifyTrack] != "Roygbiv" {
 		t.Fatalf("the current snapshot should be resent after reconnect, got %v", got)
+	}
+}
+
+func TestNetworkAvailableReconnectsWSAndKicksRoster(t *testing.T) {
+	srv := newFakeServer(t, auth.MemberInfo{AccountID: "acc-bob", Name: "Bob", Role: "member"})
+	s, conn, _ := startSession(t, srv, baseDir(t, srv.URL))
+	before := srv.memberFetches.Load()
+
+	s.NetworkAvailable()
+
+	again := srv.nextConn(t, waitFrame+3*time.Second) // waits out reconnectDelay before dialing again
+	if again == conn {
+		t.Fatal("a network change should drop the old ws connection and open a new one")
+	}
+
+	deadline := time.After(waitFrame)
+	for srv.memberFetches.Load() == before {
+		select {
+		case <-deadline:
+			t.Fatal("a network change should trigger an immediate members refetch, not wait for the poll tick")
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }
 

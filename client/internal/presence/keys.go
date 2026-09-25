@@ -72,6 +72,14 @@ const (
 	KeySpotifyDisplay  = "spotify_display"
 	KeySpotifyPosition = "spotify_position"
 	KeySpotifyLength   = "spotify_length"
+
+	// A video is what a phone's YouTube app plays, kept apart from music so a
+	// friend's card can tell watching from listening.
+	KeyVideoStatus   = "video_status"
+	KeyVideoTitle    = "video_title"
+	KeyVideoChannel  = "video_channel"
+	KeyVideoPosition = "video_position"
+	KeyVideoLength   = "video_length"
 )
 
 // Device kinds. An empty kind reads as KindDesktop - that is what every client

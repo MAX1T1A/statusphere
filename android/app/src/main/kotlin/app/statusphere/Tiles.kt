@@ -71,6 +71,7 @@ private val MinRingStroke = 3.dp
 private val MinRingBoxForCaption = 56.dp
 private const val MISSING_VALUE = "-"
 private val TileIconSize = 14.dp
+private val VideoIconSize = 28.dp
 
 private const val DIAL_WAVE_AMPLITUDE_FRACTION = 0.012f
 private val MinDialWaveAmplitude = 1.5.dp
@@ -134,6 +135,7 @@ private fun TileSurface(tile: Tile, modifier: Modifier) {
         CompositionLocalProvider(LocalContentColor provides content) {
             when (tile.type) {
                 TileType.MUSIC -> CoverTile(tile, inset)
+                TileType.VIDEO -> VideoTile(tile, inset)
                 TileType.GAME, TileType.PHOTO, TileType.PICTURE -> PictureTile(tile, inset)
                 TileType.SCALAR, null -> when (tile.form) {
                     ScalarForm.RING -> RingTile(tile, inset)
@@ -407,6 +409,34 @@ private fun CoverTile(tile: Tile, modifier: Modifier) {
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VideoTile(tile: Tile, modifier: Modifier) {
+    Row(modifier.fillMaxSize(), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
+        Icon(painterResource(R.drawable.ic_tile_smart_display), contentDescription = null, modifier = Modifier.size(VideoIconSize))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                tile.title.ifEmpty { MISSING_VALUE },
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (tile.subtitle.isNotEmpty()) {
+                Text(
+                    tile.subtitle,
+                    color = mutedColor(),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (tile.percent != null) {
+                val content = LocalContentColor.current
+                WavyProgress(tile.fraction, wavy = false, Modifier.fillMaxWidth().padding(top = 4.dp), content, content.copy(alpha = TRACK_ALPHA))
             }
         }
     }

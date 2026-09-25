@@ -15,6 +15,7 @@ import (
 	"statusphere-client/internal/auth"
 	"statusphere-client/internal/config"
 	"statusphere-client/internal/feed"
+	"statusphere-client/internal/layout"
 	"statusphere-client/internal/presence"
 	"statusphere-client/internal/privacy"
 	"statusphere-client/internal/renderer/jsonline"
@@ -24,6 +25,7 @@ import (
 
 type RoomListener interface {
 	OnRoom(roomJSON string)
+	// OnError reports a failure; an empty event clears the previous one.
 	OnError(event string, detail string)
 }
 
@@ -52,6 +54,7 @@ type Session struct {
 	feed    *feed.Feed
 	roster  *feed.Roster
 	privacy *privacy.Store
+	layout  *layout.Store
 	rearm   chan struct{}
 	dirty   chan struct{}
 
@@ -86,6 +89,7 @@ func Open(baseDir string) (*Session, error) {
 		feed:      feed.New(),
 		roster:    feed.NewRoster(cfg.Members),
 		privacy:   &privacy.Store{},
+		layout:    &layout.Store{},
 		rearm:     make(chan struct{}, 1),
 		dirty:     make(chan struct{}, 1),
 		listening: true,
@@ -207,6 +211,15 @@ func (s *Session) SetPingSeconds(seconds int) error {
 
 func (s *Session) AccountID() string { return s.cfg.AccountID }
 
+// NetworkAvailable nudges an immediate roster refresh and drops the current
+// WS connection, for callers that observe the phone's connectivity changed
+// (e.g. wifi to mobile data) instead of waiting for a poll tick or a stale
+// read to notice.
+func (s *Session) NetworkAvailable() {
+	s.roster.Kick()
+	s.ws.Kick()
+}
+
 const IncognitoUntilTurnedOff = 0
 
 func (s *Session) SetIncognito(on bool, minutes int) error {
@@ -251,7 +264,7 @@ func (s *Session) offerLocked(heartbeat time.Duration) {
 	if s.current == nil {
 		return
 	}
-	out := withoutPackage(s.privacy.Apply(s.current))
+	out := s.layout.Annotate(withoutPackage(s.privacy.Apply(s.current)))
 	if !s.gate.Pass(out, heartbeat) {
 		return
 	}
@@ -326,6 +339,7 @@ func (s *Session) membersRefreshed(err error) {
 		s.fail("room_members_fetch_failed", err)
 		return
 	}
+	s.clearError()
 	s.emit()
 }
 
@@ -387,5 +401,14 @@ func (s *Session) fail(event string, err error) {
 	s.mu.Unlock()
 	if listener != nil {
 		listener.OnError(event, err.Error())
+	}
+}
+
+func (s *Session) clearError() {
+	s.mu.Lock()
+	listener := s.listener
+	s.mu.Unlock()
+	if listener != nil {
+		listener.OnError("", "")
 	}
 }

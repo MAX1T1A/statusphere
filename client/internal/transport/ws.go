@@ -21,6 +21,7 @@ const (
 	reconnectDelay      = 3 * time.Second
 	defaultPingInterval = 20 * time.Second
 	writeTimeout        = 5 * time.Second
+	dialTimeout         = 10 * time.Second
 )
 
 type WSTransport struct {
@@ -100,6 +101,13 @@ func (t *WSTransport) OnConnect(fn func()) {
 	t.mu.Lock()
 	t.onConnect = fn
 	t.mu.Unlock()
+}
+
+// Kick tears down the current connection so Listen's loop reconnects right
+// away, for a caller that observed the phone's network change under it
+// instead of waiting for a stale read or a failed ping to notice.
+func (t *WSTransport) Kick() {
+	t.drop()
 }
 
 func (t *WSTransport) drop() {
@@ -212,11 +220,14 @@ func (t *WSTransport) Listen(ctx context.Context, onEvent func(data []byte)) err
 }
 
 func (t *WSTransport) connect(ctx context.Context) error {
+	dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
+	defer cancel()
+
 	headers := http.Header{
 		"X-Room-Token": {t.token},
 	}
 
-	conn, _, err := websocket.Dial(ctx, t.url, &websocket.DialOptions{
+	conn, _, err := websocket.Dial(dialCtx, t.url, &websocket.DialOptions{
 		HTTPHeader: headers,
 	})
 	if err != nil {

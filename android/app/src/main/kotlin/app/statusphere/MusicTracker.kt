@@ -14,7 +14,7 @@ import android.util.Log
 
 class MediaNotificationListener : NotificationListenerService()
 
-class MusicTracker(context: Context, private val onChange: (Music?) -> Unit) {
+class MusicTracker(context: Context, private val onChange: (Playback?) -> Unit) {
     private val sessionManager = context.getSystemService(MediaSessionManager::class.java)
     private val listenerComponent = ComponentName(context, MediaNotificationListener::class.java)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -57,29 +57,34 @@ class MusicTracker(context: Context, private val onChange: (Music?) -> Unit) {
         publish()
     }
 
-    fun current(): Music? = chosen()?.toMusic()
+    fun current(): Playback? = chosen()?.toPlayback()
 
     // getActiveSessions returns controllers in priority order, most recently active first.
     private fun chosen(): MediaController? =
         controllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: controllers.firstOrNull()
 
     private fun publish() {
-        onChange(chosen()?.toMusic())
+        onChange(chosen()?.toPlayback())
     }
 
-    private fun MediaController.toMusic(): Music? {
+    private fun MediaController.toPlayback(): Playback? {
         val meta = metadata ?: return null
-        val track = meta.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty()
-        if (track.isEmpty()) return null
+        val title = meta.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty()
+        if (title.isEmpty()) return null
         val state = playbackState
+        val status = state.status()
+        val positionSeconds = state?.currentPositionMs()?.let { (it / 1000).toInt() } ?: 0
+        val lengthSeconds = (meta.getLong(MediaMetadata.METADATA_KEY_DURATION) / 1000).toInt().coerceAtLeast(0)
+        val artist = meta.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty()
+        if (packageName in VIDEO_PACKAGES) return Video(title, artist, status, positionSeconds, lengthSeconds)
         return Music(
-            track = track,
-            artist = meta.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty(),
+            track = title,
+            artist = artist,
             album = meta.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty(),
             artUrl = meta.publicArtUrl().orEmpty(),
-            status = state.status(),
-            positionSeconds = state?.currentPositionMs()?.let { (it / 1000).toInt() } ?: 0,
-            lengthSeconds = (meta.getLong(MediaMetadata.METADATA_KEY_DURATION) / 1000).toInt().coerceAtLeast(0),
+            status = status,
+            positionSeconds = positionSeconds,
+            lengthSeconds = lengthSeconds,
         )
     }
 
@@ -101,6 +106,12 @@ class MusicTracker(context: Context, private val onChange: (Music?) -> Unit) {
     }
 
     private companion object {
+        val VIDEO_PACKAGES = setOf(
+            "com.google.android.youtube",
+            "com.vanced.android.youtube",
+            "app.revanced.android.youtube",
+            "app.rvx.android.youtube",
+        )
         val ART_URI_KEYS = listOf(
             MediaMetadata.METADATA_KEY_ART_URI,
             MediaMetadata.METADATA_KEY_ALBUM_ART_URI,

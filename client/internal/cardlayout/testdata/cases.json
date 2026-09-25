@@ -306,5 +306,53 @@
       },
       {"device_id": "m1", "last_seen": 1790000000}
     ]
+  },
+  "video_phone_row": {
+    "members": [
+      {
+        "device_id": "v1",
+        "account_id": "vera",
+        "account_name": "Vera",
+        "device_name": "phone",
+        "last_seen": 1790000000,
+        "video_status": "playing",
+        "video_title": "Rust in 100 Seconds",
+        "video_channel": "Fireship",
+        "video_position": 40,
+        "video_length": 160,
+        "_layout": {
+          "updated_at": 1790000000,
+          "row": [
+            {"type": "video", "form": "player", "size": "4x1", "color": "errorContainer", "onMissing": "hide"},
+            {"type": "music", "form": "cover", "size": "4x1", "color": "primaryContainer", "onMissing": "hide"}
+          ],
+          "detail": [
+            {"type": "video", "size": "2x1", "onMissing": "dim"},
+            {"type": "video", "form": "reel", "size": "2x1"}
+          ]
+        }
+      }
+    ]
+  },
+  "video_paused_without_length": {
+    "members": [
+      {
+        "device_id": "v2",
+        "account_id": "vera",
+        "account_name": "Vera",
+        "last_seen": 1790000000,
+        "video_status": "paused",
+        "video_title": "Lofi stream",
+        "_layout": {"updated_at": 1790000000, "detail": [{"type": "video", "form": "player", "size": "4x1", "onMissing": "dim"}]}
+      },
+      {
+        "device_id": "w1",
+        "account_id": "walt",
+        "account_name": "Walt",
+        "last_seen": 1790000000,
+        "active_app": "Telegram",
+        "_layout": {"updated_at": 1790000000, "detail": [{"type": "video", "form": "player", "size": "4x1", "onMissing": "dim"}]}
+      }
+    ]
   }
 }
