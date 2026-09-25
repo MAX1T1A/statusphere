@@ -7,10 +7,22 @@
     <string name="join_invite">Invite code</string>
     <string name="join_invite_hint" tools:ignore="TypographyDashes">Run sstatus --invite on a friend\'s computer</string>
     <string name="join_paste">Paste invite code</string>
+    <string name="join_scan">Scan QR</string>
     <string name="join_name">Your name</string>
     <string name="join_name_hint">How friends see you. Optional</string>
     <string name="join_button">Join room</string>
     <string name="join_failed">Could not join: %1$s</string>
+
+    <string name="join_switch_title">Join a different room?</string>
+    <string name="join_switch_message">You\'re already in a room. Joining this one leaves it first.</string>
+    <string name="join_switch_confirm">Leave &amp; join</string>
+    <string name="action_cancel">Cancel</string>
+
+    <string name="leave_room">Leave room</string>
+    <string name="leave_room_title">Leave room?</string>
+    <string name="leave_room_message">You\'ll need a new invite to rejoin.</string>
+    <string name="leave_room_confirm">Leave</string>
+    <string name="leave_failed">Could not leave: %1$s</string>
 
     <string name="permissions_title">Permissions</string>
     <string name="permission_notification_access">Notification access (music)</string>

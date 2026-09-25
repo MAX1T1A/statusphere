@@ -2,6 +2,7 @@ package app.statusphere
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +27,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,21 +47,32 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.statusphere.mobile.Mobile
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun JoinScreen(onJoined: () -> Unit) {
+fun JoinScreen(onJoined: () -> Unit, prefillInvite: String? = null) {
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
-    var invite by rememberSaveable { mutableStateOf("") }
+    var invite by rememberSaveable { mutableStateOf(prefillInvite.orEmpty()) }
     var name by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
     val canJoin = !busy && invite.isNotBlank()
+
+    // A deep link can arrive after the first composition.
+    LaunchedEffect(prefillInvite) {
+        if (!prefillInvite.isNullOrEmpty()) {
+            invite = prefillInvite
+            error = null
+        }
+    }
 
     fun join() {
         if (!canJoin) return
@@ -87,6 +100,18 @@ fun JoinScreen(onJoined: () -> Unit) {
             invite = clip.getItemAt(0).coerceToText(context).toString().trim()
             error = null
         }
+    }
+
+    fun scanQr() {
+        val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
+        GmsBarcodeScanning.getClient(context, options).startScan()
+            .addOnSuccessListener { barcode ->
+                barcode.rawValue?.trim()?.let {
+                    invite = it
+                    error = null
+                }
+            }
+            .addOnFailureListener { error = it.message ?: it.javaClass.simpleName }
     }
 
     Scaffold { padding ->
@@ -117,9 +142,14 @@ fun JoinScreen(onJoined: () -> Unit) {
                         },
                         isError = error != null,
                         trailingIcon = {
-                            if (invite.isEmpty()) {
-                                IconButton(onClick = ::pasteInvite, enabled = !busy) {
-                                    Icon(painterResource(R.drawable.ic_paste), stringResource(R.string.join_paste))
+                            Row {
+                                if (invite.isEmpty()) {
+                                    IconButton(onClick = ::pasteInvite, enabled = !busy) {
+                                        Icon(painterResource(R.drawable.ic_paste), stringResource(R.string.join_paste))
+                                    }
+                                }
+                                IconButton(onClick = ::scanQr, enabled = !busy) {
+                                    Icon(painterResource(R.drawable.ic_qr_scan), stringResource(R.string.join_scan))
                                 }
                             }
                         },

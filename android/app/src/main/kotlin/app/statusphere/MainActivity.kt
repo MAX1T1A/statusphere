@@ -20,11 +20,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -33,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,16 +45,19 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import app.statusphere.mobile.Mobile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private var joined by mutableStateOf<Boolean?>(null)
+    private var pendingInvite by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        pendingInvite = inviteFrom(intent)
         lifecycleScope.launch {
             val isJoined = withContext(Dispatchers.IO) { PresenceService.isJoined(this@MainActivity) }
             if (isJoined) PresenceService.start(this@MainActivity)
@@ -59,26 +65,97 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             StatusphereTheme {
-                if (joined == false) JoinScreen(onJoined = { joined = true }) else Scaffold { padding ->
-                    Column(
-                        Modifier
-                            .fillMaxSize()
-                            .padding(padding)
-                            .padding(16.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(CardSpacing),
-                    ) {
-                        if (joined == true) MainScreen()
+                when {
+                    joined == false -> JoinScreen(
+                        prefillInvite = pendingInvite,
+                        onJoined = {
+                            pendingInvite = null
+                            joined = true
+                        },
+                    )
+                    joined == true -> Scaffold { padding ->
+                        Column(
+                            Modifier
+                                .fillMaxSize()
+                                .padding(padding)
+                                .padding(16.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(CardSpacing),
+                        ) {
+                            MainScreen(onLeft = { joined = false })
+                        }
+                        pendingInvite?.let { invite ->
+                            SwitchRoomDialog(
+                                invite = invite,
+                                onDismiss = { pendingInvite = null },
+                                onSwitched = { pendingInvite = null },
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        inviteFrom(intent)?.let { pendingInvite = it }
+    }
+
     override fun onResume() {
         super.onResume()
         if (joined == true) PresenceService.start(this)
     }
+
+    private fun inviteFrom(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "statusphere" || data.host != "join") return null
+        return data.toString()
+    }
+}
+
+@Composable
+private fun SwitchRoomDialog(invite: String, onDismiss: () -> Unit, onSwitched: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(R.string.join_switch_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.join_switch_message))
+                error?.let { Text(stringResource(R.string.join_failed, it), color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = {
+                    busy = true
+                    error = null
+                    scope.launch {
+                        val result = PresenceService.leaveRoom(context).mapCatching {
+                            withContext(Dispatchers.IO) { Mobile.join(PresenceService.baseDir(context), invite, "") }
+                        }
+                        busy = false
+                        result
+                            .onSuccess {
+                                PresenceService.start(context)
+                                onSwitched()
+                            }
+                            .onFailure { error = it.message ?: it.javaClass.simpleName }
+                    }
+                },
+            ) { Text(stringResource(R.string.join_switch_confirm)) }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }
 
 @Composable
@@ -95,11 +172,11 @@ private fun StatusphereTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun MainScreen() {
+private fun MainScreen(onLeft: () -> Unit) {
     val context = LocalContext.current
     val status by PresenceService.status.collectAsStateWithLifecycle()
     status.room?.let { room ->
-        RoomCards(room, status.me?.accountId) { PresenceService.setIncognito(context, it.on, it.minutes) }
+        RoomCards(room, status.me?.accountId, onLeft) { PresenceService.setIncognito(context, it.on, it.minutes) }
     } ?: Text(
         stringResource(R.string.room_connecting),
         style = MaterialTheme.typography.bodyMedium,

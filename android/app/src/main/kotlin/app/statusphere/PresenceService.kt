@@ -250,6 +250,20 @@ class PresenceService : Service() {
             ContextCompat.startForegroundService(context, Intent(context, PresenceService::class.java))
         }
 
+        fun stop(context: Context) {
+            context.stopService(Intent(context, PresenceService::class.java))
+        }
+
+        suspend fun leaveRoom(context: Context): Result<Unit> = withContext(Dispatchers.IO) {
+            runCatching {
+                val left = Mobile.open(baseDir(context)).leave()
+                check(left) { "you're the owner, or not a member of this room" }
+            }.onSuccess {
+                stop(context)
+                clearFriendsWidget(context)
+            }
+        }
+
         fun setIncognito(context: Context, on: Boolean, minutes: Long) {
             ContextCompat.startForegroundService(context, incognitoCommand(context, on, minutes))
         }

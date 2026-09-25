@@ -88,6 +88,11 @@ suspend fun mirrorRoomToWidget(context: Context, status: Flow<PresenceStatus>) {
         }
 }
 
+suspend fun clearFriendsWidget(context: Context) {
+    RoomMirror.clear(context)
+    FriendsWidget().updateAll(context)
+}
+
 private fun friendOf(account: Account, resources: Resources): Friend {
     val presence = account.presence
     val dot = when (presence) {
@@ -122,6 +127,14 @@ private object RoomMirror {
         withContext(Dispatchers.IO) {
             runCatching { file(context).writeText(room.toJson()) }
                 .onFailure { Log.e(TAG, "widget_room_save_failed detail=${it.message}") }
+        }
+    }
+
+    suspend fun clear(context: Context) {
+        latest.value = null
+        withContext(Dispatchers.IO) {
+            runCatching { file(context).delete() }
+                .onFailure { Log.e(TAG, "widget_room_clear_failed detail=${it.message}") }
         }
     }
 

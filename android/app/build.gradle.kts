@@ -10,12 +10,33 @@ android {
     compileSdk = 36
     ndkVersion = "30.0.16248370"
 
+    val releaseVersionName = findProperty("releaseVersionName") as String?
+    fun versionCodeFor(version: String): Int {
+        val parts = version.substringBefore("-").split(".")
+        val major = parts.getOrNull(0)?.toIntOrNull() ?: 0
+        val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        val patch = parts.getOrNull(2)?.toIntOrNull() ?: 0
+        return major * 10000 + minor * 100 + patch
+    }
+
+    signingConfigs {
+        create("release") {
+            val keystoreFile = System.getenv("STATUSPHERE_KEYSTORE_FILE")
+            if (keystoreFile != null) {
+                storeFile = file(keystoreFile)
+                storePassword = System.getenv("STATUSPHERE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("STATUSPHERE_KEY_ALIAS")
+                keyPassword = System.getenv("STATUSPHERE_KEY_PASSWORD")
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "app.statusphere"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersionName?.let { versionCodeFor(it) } ?: 1
+        versionName = releaseVersionName ?: "0.1.0"
     }
 
     compileOptions {
@@ -25,6 +46,12 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("release")
+        }
     }
 }
 
@@ -66,4 +93,5 @@ dependencies {
     implementation(libs.androidx.core)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.glance.appwidget)
+    implementation(libs.play.services.code.scanner)
 }

@@ -16,6 +16,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,15 +28,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,6 +57,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -64,6 +72,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 internal val CardShape = RoundedCornerShape(17.dp)
@@ -87,14 +96,70 @@ private const val ART_CACHE_BYTES = 24 * 1024 * 1024
 private val ART_TIMEOUT = 10.seconds
 
 @Composable
-fun RoomCards(accounts: List<Account>, selfId: String?, onIncognito: (IncognitoChoice) -> Unit) {
-    Text(
-        stringResource(R.string.room_online, accounts.count { it.presence != Presence.Offline }, accounts.size),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.outline,
-        modifier = Modifier.padding(horizontal = CardPadding),
-    )
+fun RoomCards(accounts: List<Account>, selfId: String?, onLeft: () -> Unit, onIncognito: (IncognitoChoice) -> Unit) {
+    RoomHeader(accounts, onLeft)
     accounts.forEach { key(it.id) { AccountCard(it, pickable = it.id == selfId, onIncognito) } }
+}
+
+@Composable
+private fun RoomHeader(accounts: List<Account>, onLeft: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var menuOpen by remember { mutableStateOf(false) }
+    var confirming by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    Box(Modifier.padding(horizontal = CardPadding)) {
+        Text(
+            stringResource(R.string.room_online, accounts.count { it.presence != Presence.Offline }, accounts.size),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.clickable { menuOpen = true },
+        )
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.leave_room)) },
+                onClick = {
+                    menuOpen = false
+                    confirming = true
+                },
+            )
+        }
+    }
+    error?.let {
+        Text(
+            stringResource(R.string.leave_failed, it),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(horizontal = CardPadding),
+        )
+    }
+
+    if (!confirming) return
+    AlertDialog(
+        onDismissRequest = { if (!busy) confirming = false },
+        title = { Text(stringResource(R.string.leave_room_title)) },
+        text = { Text(stringResource(R.string.leave_room_message)) },
+        confirmButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = {
+                    busy = true
+                    error = null
+                    scope.launch {
+                        val result = PresenceService.leaveRoom(context)
+                        busy = false
+                        confirming = false
+                        result.onSuccess { onLeft() }.onFailure { error = it.message ?: it.javaClass.simpleName }
+                    }
+                },
+            ) { Text(stringResource(R.string.leave_room_confirm)) }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = { confirming = false }) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }
 
 @Composable
