@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass, field
 
 import pytest
@@ -5,8 +6,11 @@ from fastapi import FastAPI
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from app.modules.accounts.application.commands.set_account_name import SetAccountName, SetAccountNameUseCase
+from app.modules.presence.application.commands.ingest_snapshot import IngestPresenceSnapshot
 from app.modules.realtime.presentation.ws import router as ws_router
 from app.platform.security.tokens import generate_account_token
+from app.shared_kernel.actor import Actor
 
 ACCOUNT_ID = "acct-1"
 DEVICE_ID = "device-1"
@@ -14,14 +18,29 @@ ROOM_ID = "room-1"
 
 
 class FakeAccounts:
-    def __init__(self, active=True):
+    def __init__(self, active=True, name="Someone"):
         self._active = active
+        self._name = name
 
     async def is_device_active(self, account_id, device_id):
         return self._active
 
     async def name_of(self, account_id):
-        return "Someone"
+        return self._name
+
+    async def set_name(self, account_id, name):
+        self._name = name
+
+
+class FakeAccountsUoW:
+    def __init__(self, repo):
+        self.accounts = repo
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return None
 
 
 class FakeMembership:
@@ -123,3 +142,20 @@ def test_listen_frame_toggles_the_hub_and_is_not_ingested_as_presence():
         (ROOM_ID, DEVICE_ID, True),
     ]
     assert container.bus.dispatched == []
+
+
+def test_rename_takes_effect_for_an_open_connection_without_reconnect():
+    accounts = FakeAccounts(name="phone")
+    client = make_client(accounts=accounts)
+    container = client.app.state.container
+
+    rename = SetAccountNameUseCase(lambda: FakeAccountsUoW(accounts))
+
+    actor = Actor(account_id=ACCOUNT_ID, device_id=DEVICE_ID)
+    with client.websocket_connect(f"/ws?room={ROOM_ID}", headers={"x-room-token": token()}) as ws:
+        asyncio.run(rename.execute(SetAccountName(actor=actor, name="Android")))
+        ws.send_text('{"app": "code"}')
+        ws.close()
+
+    published = [c for c in container.bus.dispatched if isinstance(c, IngestPresenceSnapshot)]
+    assert published and published[-1].account_name == "Android"

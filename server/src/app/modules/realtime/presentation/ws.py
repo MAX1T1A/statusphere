@@ -53,7 +53,6 @@ async def ws_endpoint(websocket: WebSocket, room: str = "") -> None:
         await websocket.close(code=1008, reason="not a room member")
         return
 
-    account_name = await accounts.name_of(account_id)
     actor = Actor(account_id=account_id, device_id=device_id)
 
     await websocket.accept()
@@ -107,7 +106,7 @@ async def ws_endpoint(websocket: WebSocket, room: str = "") -> None:
                         room_token=room,
                         to_account=to_account,
                         text=text,
-                        from_name=account_name,
+                        from_name=await accounts.name_of(account_id),
                     )
                 )
                 continue
@@ -122,7 +121,9 @@ async def ws_endpoint(websocket: WebSocket, room: str = "") -> None:
             last_presence_at = now
 
             await bus.dispatch(
-                IngestPresenceSnapshot(actor=actor, room=room, account_name=account_name, snapshot=snapshot)
+                IngestPresenceSnapshot(
+                    actor=actor, room=room, account_name=await accounts.name_of(account_id), snapshot=snapshot
+                )
             )
 
     except WebSocketDisconnect:
