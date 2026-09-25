@@ -35,6 +35,24 @@ async def test_subscribe_replays_the_last_snapshot_to_a_new_joiner():
     assert replayed == {"x": 1, "account_id": "acc-1", "account_name": "Max", "device_id": "device-1"}
 
 
+async def test_a_second_connection_of_the_same_device_leaving_keeps_the_first_subscribed():
+    hub = RealtimeHub()
+    widget = hub.subscribe("room1", "device-1", "acc-1")
+    tui = hub.subscribe("room1", "device-1", "acc-1")
+    widget_next = asyncio.ensure_future(widget.__anext__())
+    tui_next = asyncio.ensure_future(tui.__anext__())
+    await asyncio.sleep(0)
+
+    tui_next.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await tui_next
+    await tui.aclose()
+    await hub.publish("room1", "acc-2", "Max", "device-2", {"x": 1})
+
+    assert (await asyncio.wait_for(widget_next, 1))["x"] == 1
+    await widget.aclose()
+
+
 async def _still_waiting(agen):
     # A real timeout would need the wall clock, which the stale-snapshot test freezes,
     # so "nothing replayed" is observed as "the generator is still parked on queue.get()"

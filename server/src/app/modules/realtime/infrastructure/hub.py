@@ -37,10 +37,10 @@ class RealtimeHub(IMessageDelivery, IPresenceBroadcast, IPhotoBroadcast):
             self._rooms[token] = _Room(token=token)
         return self._rooms[token]
 
-    def _remove_subscriber(self, token: str, device_id: str) -> None:
+    def _remove_subscriber(self, token: str, subscriber: _Subscriber) -> None:
         room = self._rooms.get(token)
         if room:
-            room.subscribers = [s for s in room.subscribers if s.device_id != device_id]
+            room.subscribers = [s for s in room.subscribers if s is not subscriber]
 
     async def subscribe(self, token: str, device_id: str, account_id: str) -> AsyncGenerator[dict, None]:
         queue: asyncio.Queue = asyncio.Queue(maxsize=128)
@@ -52,13 +52,14 @@ class RealtimeHub(IMessageDelivery, IPresenceBroadcast, IPhotoBroadcast):
                     queue.put_nowait(snapshot)
                 except asyncio.QueueFull:
                     pass
-        room.subscribers.append(_Subscriber(device_id=device_id, account_id=account_id, queue=queue))
+        subscriber = _Subscriber(device_id=device_id, account_id=account_id, queue=queue)
+        room.subscribers.append(subscriber)
         try:
             while True:
                 data = await queue.get()
                 yield data
         finally:
-            self._remove_subscriber(token, device_id)
+            self._remove_subscriber(token, subscriber)
 
     async def publish(
         self, room_token: str, account_id: str, account_name: str, device_id: str, data: dict
