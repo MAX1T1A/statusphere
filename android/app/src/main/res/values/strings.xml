@@ -76,6 +76,11 @@
     <string name="tile_meeting_until">Busy until %1$s</string>
     <string name="tile_alarm">Alarm</string>
 
+    <string name="update_available">Update available: %1$s</string>
+    <string name="update_install">Update</string>
+    <string name="update_installing">Installing</string>
+    <string name="update_failed">Could not update: %1$s</string>
+
     <string name="room_connecting">Connecting</string>
     <string name="room_online" tools:ignore="PluralsCandidate">%1$d of %2$d online</string>
     <string name="room_last_error">last error: %1$s</string>
