@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -45,6 +46,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -68,9 +70,9 @@ import kotlin.math.sqrt
 
 private const val GRID_COLUMNS = 4
 private val TileGap = 8.dp
+private val SelectedTileBorder = 3.dp
 private val MinInset = 4.dp
 private const val INSET_FRACTION = 0.1f
-private val SelectedTileBorder = 3.dp
 private const val DIMMED_ALPHA = 0.45f
 private const val MUTED_ALPHA = 0.65f
 private const val TRACK_ALPHA = 0.25f
@@ -80,7 +82,16 @@ private val MinRingStroke = 3.dp
 private val MinRingBoxForCaption = 56.dp
 private const val MISSING_VALUE = "-"
 private val TileIconSize = 14.dp
-private val VideoIconSize = 28.dp
+private val MaxVideoArtHeight = 64.dp
+private val MinVideoArtHeightForLength = 40.dp
+private const val VIDEO_ART_ASPECT = 16f / 9
+private const val VIDEO_ART_MAX_WIDTH_FRACTION = 0.3f
+private const val VIDEO_ART_TINT_SHARE = 0.6f
+private const val VIDEO_ICON_FRACTION = 0.38f
+private val VideoLengthTextSize = 10.sp
+private const val VIDEO_LENGTH_BADGE_ALPHA = 0.4f
+private val VideoArtShape = RoundedCornerShape(12.dp)
+private val VideoLengthBadgeShape = RoundedCornerShape(4.dp)
 
 private const val DIAL_WAVE_AMPLITUDE_FRACTION = 0.012f
 private val MinDialWaveAmplitude = 1.5.dp
@@ -139,17 +150,19 @@ private fun span(cells: Int, cell: Dp): Dp = if (cells > 0) cell * cells + TileG
 @Composable
 private fun TileSurface(tile: Tile, modifier: Modifier) {
     val (tint, content) = tile.color.colors()
+    val neutral = MaterialTheme.colorScheme.surfaceContainerHigh
+    val tintsArtOnly = tile.type == TileType.VIDEO
     BoxWithConstraints(
         modifier
             .alpha(if (tile.dimmed) DIMMED_ALPHA else 1f)
             .clip(CardShape)
-            .background(tint),
+            .background(if (tintsArtOnly) neutral else tint),
     ) {
         val inset = Modifier.padding(max(MinInset, min(maxWidth, maxHeight) * INSET_FRACTION))
-        CompositionLocalProvider(LocalContentColor provides content) {
+        CompositionLocalProvider(LocalContentColor provides if (tintsArtOnly) MaterialTheme.colorScheme.onSurface else content) {
             when (tile.type) {
                 TileType.MUSIC -> CoverTile(tile, inset)
-                TileType.VIDEO -> VideoTile(tile, inset)
+                TileType.VIDEO -> VideoTile(tile, inset, lerp(neutral, tint, VIDEO_ART_TINT_SHARE), content)
                 TileType.ALARM -> AlarmTile(tile, inset)
                 TileType.MEETING -> MeetingTile(tile, inset)
                 TileType.GAME, TileType.PHOTO, TileType.PICTURE -> PictureTile(tile, inset, max(maxWidth, maxHeight))
@@ -432,29 +445,63 @@ private fun CoverTile(tile: Tile, modifier: Modifier) {
 }
 
 @Composable
-private fun VideoTile(tile: Tile, modifier: Modifier) {
-    Row(modifier.fillMaxSize(), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
-        Icon(painterResource(R.drawable.ic_tile_smart_display), contentDescription = null, modifier = Modifier.size(VideoIconSize))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+private fun VideoTile(tile: Tile, modifier: Modifier, artTint: Color, artContent: Color) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val artHeight = min(maxHeight, MaxVideoArtHeight)
+        val artWidth = min(artHeight * VIDEO_ART_ASPECT, maxWidth * VIDEO_ART_MAX_WIDTH_FRACTION)
+        Row(Modifier.fillMaxSize(), Arrangement.spacedBy(12.dp), Alignment.CenterVertically) {
+            VideoArt(tile, artTint, artContent, Modifier.size(artWidth, artHeight))
+            VideoText(tile, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun VideoArt(tile: Tile, tint: Color, content: Color, modifier: Modifier) {
+    BoxWithConstraints(modifier.clip(VideoArtShape).background(tint), contentAlignment = Alignment.Center) {
+        Icon(
+            painterResource(if (tile.icon == "pause") R.drawable.ic_tile_pause else R.drawable.ic_tile_play_arrow),
+            contentDescription = null,
+            tint = content,
+            modifier = Modifier.size(maxHeight * VIDEO_ICON_FRACTION),
+        )
+        val length = tile.value.toIntOrNull()
+        if (length != null && maxHeight >= MinVideoArtHeightForLength) {
             Text(
-                tile.title.ifEmpty { MISSING_VALUE },
-                style = MaterialTheme.typography.bodyMedium,
+                clock(length),
+                color = content,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = VideoLengthTextSize, lineHeight = VideoLengthTextSize),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(4.dp)
+                    .background(Color.Black.copy(alpha = VIDEO_LENGTH_BADGE_ALPHA), VideoLengthBadgeShape)
+                    .padding(horizontal = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun VideoText(tile: Tile, modifier: Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            tile.title.ifEmpty { MISSING_VALUE },
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (tile.subtitle.isNotEmpty()) {
+            Text(
+                tile.subtitle,
+                color = mutedColor(),
+                style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (tile.subtitle.isNotEmpty()) {
-                Text(
-                    tile.subtitle,
-                    color = mutedColor(),
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (tile.percent != null) {
-                val content = LocalContentColor.current
-                WavyProgress(tile.fraction, wavy = false, Modifier.fillMaxWidth().padding(top = 4.dp), content, content.copy(alpha = TRACK_ALPHA))
-            }
+        }
+        if (tile.percent != null) {
+            val primary = MaterialTheme.colorScheme.primary
+            WavyProgress(tile.fraction, wavy = false, Modifier.fillMaxWidth().padding(top = 4.dp), primary, primary.copy(alpha = TRACK_ALPHA))
         }
     }
 }

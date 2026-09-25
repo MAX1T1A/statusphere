@@ -465,7 +465,9 @@ private fun rememberPosition(music: Music): Int {
     return position.coerceAtMost(music.lengthSeconds)
 }
 
-private fun clock(seconds: Int): String = "%d:%02d".format(seconds / 60, seconds % 60)
+internal fun clock(seconds: Int): String =
+    if (seconds >= 3600) "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60)
+    else "%d:%02d".format(seconds / 60, seconds % 60)
 
 @Composable
 internal fun WavyProgress(

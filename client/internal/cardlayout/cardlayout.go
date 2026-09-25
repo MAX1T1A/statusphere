@@ -563,10 +563,12 @@ func (a *account) tile(t spec, p placement) Tile {
 			d := devices[0]
 			out.Title = d.String(presence.KeyVideoTitle)
 			out.Subtitle = d.String(presence.KeyVideoChannel)
+			out.Icon = videoIcon(d.String(presence.KeyVideoStatus))
 			position, _ := d.Float(presence.KeyVideoPosition)
 			if length, _ := d.Float(presence.KeyVideoLength); length > 0 {
 				progress := position / length * 100
 				out.Percent = &progress
+				out.Value = jsNumber(length)
 			}
 		}
 	case Alarm:
@@ -612,6 +614,13 @@ func (a *account) videoDevices() []presence.Snapshot {
 		title := d.String(presence.KeyVideoTitle)
 		return title + "/" + d.String(presence.KeyVideoChannel), d.String(presence.KeyVideoStatus) != "" && title != ""
 	})
+}
+
+func videoIcon(status string) string {
+	if status == "paused" {
+		return "pause"
+	}
+	return "play_arrow"
 }
 
 func (a *account) alarmDevices() []presence.Snapshot {
