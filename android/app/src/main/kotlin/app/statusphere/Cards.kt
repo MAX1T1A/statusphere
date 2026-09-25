@@ -33,6 +33,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -167,6 +168,7 @@ private fun AccountCard(account: Account, pickable: Boolean, onIncognito: (Incog
     val presence = account.presence
     val card = account.card
     var detailShown by rememberSaveable { mutableStateOf(false) }
+    var renaming by rememberSaveable { mutableStateOf(false) }
     Surface(
         onClick = { detailShown = !detailShown },
         enabled = card.detail.isNotEmpty(),
@@ -179,7 +181,13 @@ private fun AccountCard(account: Account, pickable: Boolean, onIncognito: (Incog
         Column(Modifier.animateContentSize().padding(CardPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             IncognitoHeader(pickable, AvatarSize, onIncognito, avatar = { Avatar(account) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(account.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        account.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = if (pickable) Modifier.clickable { renaming = true } else Modifier,
+                    )
                     Text(
                         presence.statusLine(LocalResources.current),
                         style = MaterialTheme.typography.bodySmall,
@@ -200,6 +208,56 @@ private fun AccountCard(account: Account, pickable: Boolean, onIncognito: (Incog
             if (detailShown && card.detail.isNotEmpty()) TileGrid(card.detail, Modifier.padding(top = 8.dp))
         }
     }
+    if (renaming) RenameDialog(account.name) { renaming = false }
+}
+
+@Composable
+private fun RenameDialog(currentName: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var name by rememberSaveable { mutableStateOf(currentName) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(R.string.rename_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    enabled = !busy,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                error?.let {
+                    Text(
+                        stringResource(R.string.rename_failed, it),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && name.isNotBlank(),
+                onClick = {
+                    busy = true
+                    error = null
+                    scope.launch {
+                        val result = PresenceService.setName(context, name.trim())
+                        busy = false
+                        result.onSuccess { onDismiss() }.onFailure { error = it.message ?: it.javaClass.simpleName }
+                    }
+                },
+            ) { Text(stringResource(R.string.rename_save)) }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }
 
 @Composable

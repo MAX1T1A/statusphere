@@ -271,6 +271,10 @@ class PresenceService : Service() {
             }
         }
 
+        suspend fun setName(context: Context, name: String): Result<Unit> = withContext(Dispatchers.IO) {
+            runCatching { Mobile.open(baseDir(context)).setName(name) }
+        }
+
         fun setIncognito(context: Context, on: Boolean, minutes: Long) {
             ContextCompat.startForegroundService(context, incognitoCommand(context, on, minutes))
         }

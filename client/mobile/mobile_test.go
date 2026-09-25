@@ -28,8 +28,10 @@ type fakeConn struct {
 
 type fakeServer struct {
 	*httptest.Server
-	conns   chan *fakeConn
-	members []auth.MemberInfo
+	conns       chan *fakeConn
+	members     []auth.MemberInfo
+	nameFailure int
+	lastName    string
 }
 
 func newFakeServer(t *testing.T, members ...auth.MemberInfo) *fakeServer {
@@ -37,6 +39,16 @@ func newFakeServer(t *testing.T, members ...auth.MemberInfo) *fakeServer {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/rooms/members", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"members": srv.members})
+	})
+	mux.HandleFunc("/accounts/name", func(w http.ResponseWriter, r *http.Request) {
+		if srv.nameFailure != 0 {
+			w.WriteHeader(srv.nameFailure)
+			return
+		}
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		srv.lastName = body["name"]
+		_ = json.NewEncoder(w).Encode(map[string]string{})
 	})
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		ws, err := websocket.Accept(w, r, nil)
@@ -476,5 +488,22 @@ func TestSetIncognitoRepublishesAtOnceAndPersists(t *testing.T) {
 	got = conn.next(t)
 	if _, ok := got[presence.KeyIncognito]; ok || got[presence.KeyActiveApp] != "Telegram" {
 		t.Fatalf("going visible should publish the app again without the incognito mark, got %v", got)
+	}
+}
+
+func TestSetName(t *testing.T) {
+	srv := newFakeServer(t)
+	s, _, _ := startSession(t, srv, baseDir(t, srv.URL))
+
+	if err := s.SetName("Ann"); err != nil {
+		t.Fatal(err)
+	}
+	if srv.lastName != "Ann" {
+		t.Fatalf("server got name %q, want %q", srv.lastName, "Ann")
+	}
+
+	srv.nameFailure = http.StatusInternalServerError
+	if err := s.SetName("Bob"); err == nil {
+		t.Fatal("expected an error when the server rejects the rename")
 	}
 }

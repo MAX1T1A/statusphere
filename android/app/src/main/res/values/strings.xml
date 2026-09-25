@@ -24,6 +24,10 @@
     <string name="leave_room_confirm">Leave</string>
     <string name="leave_failed">Could not leave: %1$s</string>
 
+    <string name="rename_title">Change your name</string>
+    <string name="rename_save">Save</string>
+    <string name="rename_failed">Could not rename: %1$s</string>
+
     <string name="permissions_title">Permissions</string>
     <string name="permission_notification_access">Notification access (music)</string>
     <string name="permission_usage_access">Usage access (current app)</string>

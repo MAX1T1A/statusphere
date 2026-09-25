@@ -143,6 +143,10 @@ func (s *Session) Leave() (bool, error) {
 	return ok, nil
 }
 
+func (s *Session) SetName(name string) error {
+	return s.cfg.SetAccountName(name)
+}
+
 func (s *Session) Publish(snapshotJSON string) error {
 	snap, err := parsePhoneSnapshot(snapshotJSON)
 	if err != nil {
