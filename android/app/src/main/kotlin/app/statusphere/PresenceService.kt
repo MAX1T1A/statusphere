@@ -169,7 +169,7 @@ class PresenceService : Service() {
         screenOn.collectLatest { on ->
             if (on) {
                 applyMode(s, ScreenMode.ON)
-                pollForegroundApp()
+                pollAppAndMusicPosition()
             } else {
                 snapshot.update { it.copy(app = null) }
                 applyMode(s, ScreenMode.OFF)
@@ -187,10 +187,7 @@ class PresenceService : Service() {
         }
     }
 
-    // Also re-reads the music position here: MusicTracker only pushes on playback events, so
-    // without this poll a playing track's position would freeze at its last event and the
-    // heartbeat would keep re-sending that stale value.
-    private suspend fun pollForegroundApp() {
+    private suspend fun pollAppAndMusicPosition() {
         while (true) {
             val app = withContext(Dispatchers.IO) { apps.current() }
             snapshot.update { it.copy(app = app, music = music.current()) }
