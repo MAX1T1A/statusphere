@@ -93,6 +93,13 @@ func systemFieldsFor(d presence.Snapshot) []field {
 		}
 		fields = append(fields, field{key: "disk", icon: "storage", label: "Disk", note: note, value: jsInt(disk) + "%", percent: &disk})
 	}
+	if battery, ok := d.Float(presence.KeyBatteryPercent); ok {
+		label := "Battery"
+		if charging, _ := d[presence.KeyBatteryCharging].(bool); charging {
+			label = "Charging"
+		}
+		fields = append(fields, field{key: "battery", icon: "battery_full", label: label, value: jsInt(battery) + "%", percent: &battery})
+	}
 	if load, ok := d.Float(presence.KeyLoadAvg1m); ok {
 		value := toFixed(load, 2)
 		if cpus, _ := d.Float(presence.KeyCPUCount); cpus > 0 {

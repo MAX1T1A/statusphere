@@ -72,6 +72,24 @@ func TestCardsMatchWidget(t *testing.T) {
 	}
 }
 
+func TestBatteryFieldTracksLevelAndChargingState(t *testing.T) {
+	member := presence.Snapshot{
+		presence.KeyDeviceID:       "d",
+		presence.KeyBatteryPercent: float64(42),
+	}
+
+	detail := Cards([]presence.Snapshot{member}, nil)[0].Detail
+	if len(detail) != 1 || detail[0].Field != "battery" || detail[0].Form != "ring" || detail[0].Label != "Battery" || detail[0].Value != "42%" {
+		t.Fatalf("detail = %+v, want a 42%% battery ring labelled Battery", detail)
+	}
+
+	member[presence.KeyBatteryCharging] = true
+	detail = Cards([]presence.Snapshot{member}, nil)[0].Detail
+	if detail[0].Label != "Charging" {
+		t.Fatalf("label = %q, want Charging while plugged in", detail[0].Label)
+	}
+}
+
 func TestZeroCustomValueStaysOnCard(t *testing.T) {
 	member := presence.Snapshot{
 		presence.KeyDeviceID:     "d",

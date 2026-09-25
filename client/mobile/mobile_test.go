@@ -181,6 +181,19 @@ func TestPublishSendsOnlyOnChange(t *testing.T) {
 	}
 }
 
+func TestPublishCarriesBatteryLevelAndChargingState(t *testing.T) {
+	srv := newFakeServer(t)
+	s, conn, _ := startSession(t, srv, baseDir(t, srv.URL))
+
+	if err := s.Publish(`{"battery":{"percent":42,"charging":true}}`); err != nil {
+		t.Fatal(err)
+	}
+	got := conn.next(t)
+	if got[presence.KeyBatteryPercent] != float64(42) || got[presence.KeyBatteryCharging] != true {
+		t.Fatalf("battery fields should be carried, got %v", got)
+	}
+}
+
 func TestPublishRejectsMalformedSnapshot(t *testing.T) {
 	srv := newFakeServer(t)
 	s, conn, _ := startSession(t, srv, baseDir(t, srv.URL))

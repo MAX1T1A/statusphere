@@ -38,6 +38,9 @@ const (
 	KeyDiskUsedPercent = "disk_used_percent"
 	KeyDiskFreeGB      = "disk_free_gb"
 
+	KeyBatteryPercent  = "battery_percent"
+	KeyBatteryCharging = "battery_charging"
+
 	KeyActiveApp       = "active_app"
 	KeyActiveWindow    = "active_window"
 	KeyActiveWorkspace = "active_workspace"

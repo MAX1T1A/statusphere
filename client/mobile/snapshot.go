@@ -9,8 +9,9 @@ import (
 )
 
 type phoneSnapshot struct {
-	Music *phoneMusic `json:"music"`
-	App   *phoneApp   `json:"app"`
+	Music   *phoneMusic   `json:"music"`
+	App     *phoneApp     `json:"app"`
+	Battery *phoneBattery `json:"battery"`
 }
 
 type phoneMusic struct {
@@ -26,6 +27,11 @@ type phoneMusic struct {
 type phoneApp struct {
 	Label   string `json:"label"`
 	Package string `json:"package"`
+}
+
+type phoneBattery struct {
+	Percent  int  `json:"percent"`
+	Charging bool `json:"charging"`
 }
 
 // packageKey carries the app package through the privacy filter only, so
@@ -60,6 +66,10 @@ func parsePhoneSnapshot(raw string) (presence.Snapshot, error) {
 		if a.Package != "" {
 			snap.Set(packageKey, a.Package)
 		}
+	}
+	if b := in.Battery; b != nil {
+		snap.Set(presence.KeyBatteryPercent, b.Percent)
+		snap.Set(presence.KeyBatteryCharging, b.Charging)
 	}
 	return snap, nil
 }
