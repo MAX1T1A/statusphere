@@ -187,10 +187,13 @@ class PresenceService : Service() {
         }
     }
 
+    // Also re-reads the music position here: MusicTracker only pushes on playback events, so
+    // without this poll a playing track's position would freeze at its last event and the
+    // heartbeat would keep re-sending that stale value.
     private suspend fun pollForegroundApp() {
         while (true) {
             val app = withContext(Dispatchers.IO) { apps.current() }
-            snapshot.update { it.copy(app = app) }
+            snapshot.update { it.copy(app = app, music = music.current()) }
             delay(APP_POLL_INTERVAL)
         }
     }
