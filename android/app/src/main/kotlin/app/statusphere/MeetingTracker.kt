@@ -8,21 +8,19 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.CalendarContract
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import java.time.Duration
 import java.time.Instant
 
 private val MEETING_LOOKAHEAD: Duration = Duration.ofHours(24)
-private const val PREFS_NAME = "presence_settings"
 private const val PREF_MEETING_ENABLED = "meeting_enabled"
 
-// The toggle is off by default: reading the calendar needs an explicit opt-in,
-// on top of the runtime permission it requests once switched on.
 object MeetingSettings {
     fun isEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(PREF_MEETING_ENABLED, false)
+        PresenceService.settings(context).getBoolean(PREF_MEETING_ENABLED, false)
 
     fun setEnabled(context: Context, enabled: Boolean) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean(PREF_MEETING_ENABLED, enabled).apply()
+        PresenceService.settings(context).edit { putBoolean(PREF_MEETING_ENABLED, enabled) }
     }
 }
 

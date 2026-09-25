@@ -291,7 +291,7 @@ class PresenceService : Service() {
             mutablePinned.value = next
         }
 
-        private fun settings(context: Context) = context.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
+        fun settings(context: Context) = context.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
 
         fun isJoined(context: Context): Boolean = runCatching { Mobile.open(baseDir(context)) }.isSuccess
 
