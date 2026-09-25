@@ -57,6 +57,7 @@
     <string name="meeting_toggle_title">Show when you\'re in a meeting</string>
     <string name="meeting_toggle_note">Reads your calendar to publish only the time you\'re free again, never the event title</string>
     <string name="tile_meeting_until">Busy until %1$s</string>
+    <string name="tile_alarm">Alarm</string>
 
     <string name="room_connecting">Connecting</string>
     <string name="room_online" tools:ignore="PluralsCandidate">%1$d of %2$d online</string>

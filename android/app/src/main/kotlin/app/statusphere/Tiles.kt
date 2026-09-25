@@ -458,8 +458,14 @@ private fun localClockTime(context: Context, at: Instant): String = DateFormat.g
 private fun AlarmTile(tile: Tile, modifier: Modifier) {
     val context = LocalContext.current
     val due = tile.value.toLongOrNull()?.let(Instant::ofEpochSecond)?.takeIf { it.isAfter(Instant.now()) }
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(due?.let { localClockTime(context, it) } ?: MISSING_VALUE, autoSize = ValueSize, maxLines = 1, textAlign = TextAlign.Center)
+    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.ic_tile_alarm), contentDescription = null, tint = mutedColor(), modifier = Modifier.size(TileIconSize))
+            TileLabel(stringResource(R.string.tile_alarm), Modifier.weight(1f))
+        }
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text(due?.let { localClockTime(context, it) } ?: MISSING_VALUE, autoSize = ValueSize, maxLines = 1, textAlign = TextAlign.Center)
+        }
     }
 }
 
