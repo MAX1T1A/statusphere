@@ -19,6 +19,7 @@ import android.text.format.DateFormat
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import app.statusphere.mobile.Mobile
 import app.statusphere.mobile.RoomListener
 import app.statusphere.mobile.Session
@@ -64,6 +65,8 @@ private const val NOTIFICATION_ID = 1
 private const val ACTION_GO_INCOGNITO = "app.statusphere.action.GO_INCOGNITO"
 private const val ACTION_GO_VISIBLE = "app.statusphere.action.GO_VISIBLE"
 private const val EXTRA_MINUTES = "minutes"
+private const val SETTINGS_PREFS = "settings"
+private const val KEY_PINNED_ACCOUNT = "pinned_account_id"
 
 class PresenceService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -110,6 +113,8 @@ class PresenceService : Service() {
     override fun onCreate() {
         super.onCreate()
         startInForeground()
+        createLiveChannel(this)
+        mutablePinned.value = pinnedAccountId(this)
         music = MusicTracker(this) { now -> snapshot.update { it.playing(now) } }
         apps = ForegroundAppTracker(this)
         battery = BatteryTracker(this) { level -> snapshot.update { it.copy(battery = level) } }
@@ -145,6 +150,7 @@ class PresenceService : Service() {
         session.value?.let { thread(name = "session_stop") { it.stop() } }
         session.value = null
         mutableStatus.update { it.copy(room = null, me = null) }
+        clearLiveNotification(this)
         super.onDestroy()
     }
 
@@ -178,6 +184,7 @@ class PresenceService : Service() {
         }
         scope.launch { publishThrottled(s) }
         scope.launch { mirrorRoomToWidget(this@PresenceService, status) }
+        scope.launch { mirrorPinnedToNotification(this@PresenceService, status) }
         val me = status.map { it.me }.distinctUntilChanged()
         scope.launch { me.collect(::showNotification) }
         scope.launch { me.collectLatest { it?.incognitoUntil?.let { until -> expireIncognito(s, until) } } }
@@ -261,8 +268,20 @@ class PresenceService : Service() {
         private val mutableStatus = MutableStateFlow(PresenceStatus())
         val status: StateFlow<PresenceStatus> = mutableStatus.asStateFlow()
         private val session = MutableStateFlow<Session?>(null)
+        private val mutablePinned = MutableStateFlow<String?>(null)
+        val pinned: StateFlow<String?> = mutablePinned.asStateFlow()
 
         fun baseDir(context: Context): String = context.filesDir.path
+
+        fun pinnedAccountId(context: Context): String? = settings(context).getString(KEY_PINNED_ACCOUNT, null)
+
+        fun togglePinned(context: Context, accountId: String) {
+            val next = if (mutablePinned.value == accountId) null else accountId
+            settings(context).edit { putString(KEY_PINNED_ACCOUNT, next) }
+            mutablePinned.value = next
+        }
+
+        private fun settings(context: Context) = context.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
 
         fun isJoined(context: Context): Boolean = runCatching { Mobile.open(baseDir(context)) }.isSuccess
 

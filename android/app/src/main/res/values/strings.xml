@@ -72,6 +72,9 @@
     <string name="service_channel">Presence sharing</string>
     <string name="service_notification_title">Sharing your presence</string>
 
+    <string name="pinned_friend">Pinned</string>
+    <string name="live_channel">Pinned friend</string>
+
     <string name="incognito_hidden">Hidden from your room</string>
     <string name="incognito_until">Hidden until %1$s</string>
     <string name="incognito_pick_hint">Slide, then let go</string>
