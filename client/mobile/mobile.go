@@ -15,6 +15,7 @@ import (
 	"statusphere-client/internal/auth"
 	"statusphere-client/internal/config"
 	"statusphere-client/internal/feed"
+	"statusphere-client/internal/layout"
 	"statusphere-client/internal/presence"
 	"statusphere-client/internal/privacy"
 	"statusphere-client/internal/renderer/jsonline"
@@ -53,6 +54,7 @@ type Session struct {
 	feed    *feed.Feed
 	roster  *feed.Roster
 	privacy *privacy.Store
+	layout  *layout.Store
 	rearm   chan struct{}
 	dirty   chan struct{}
 
@@ -87,6 +89,7 @@ func Open(baseDir string) (*Session, error) {
 		feed:      feed.New(),
 		roster:    feed.NewRoster(cfg.Members),
 		privacy:   &privacy.Store{},
+		layout:    &layout.Store{},
 		rearm:     make(chan struct{}, 1),
 		dirty:     make(chan struct{}, 1),
 		listening: true,
@@ -261,7 +264,7 @@ func (s *Session) offerLocked(heartbeat time.Duration) {
 	if s.current == nil {
 		return
 	}
-	out := withoutPackage(s.privacy.Apply(s.current))
+	out := s.layout.Annotate(withoutPackage(s.privacy.Apply(s.current)))
 	if !s.gate.Pass(out, heartbeat) {
 		return
 	}

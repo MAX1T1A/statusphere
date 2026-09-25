@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 
 const val TAG = "Statusphere"
 
@@ -72,7 +73,6 @@ class PresenceService : Service() {
     private lateinit var music: MusicTracker
     private lateinit var apps: ForegroundAppTracker
     private lateinit var battery: BatteryTracker
-    private val session = MutableStateFlow<Session?>(null)
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -260,6 +260,7 @@ class PresenceService : Service() {
     companion object {
         private val mutableStatus = MutableStateFlow(PresenceStatus())
         val status: StateFlow<PresenceStatus> = mutableStatus.asStateFlow()
+        private val session = MutableStateFlow<Session?>(null)
 
         fun baseDir(context: Context): String = context.filesDir.path
 
@@ -286,6 +287,20 @@ class PresenceService : Service() {
         suspend fun setName(context: Context, name: String): Result<Unit> = withContext(Dispatchers.IO) {
             runCatching { Mobile.open(baseDir(context)).setName(name) }
         }
+
+        suspend fun packChoices(surface: String): Result<PackChoices> = withContext(Dispatchers.IO) {
+            runCatching {
+                val s = runningSession()
+                val ids = listOf(Mobile.DefaultPack) + JSONArray(Mobile.packs(surface)).strings()
+                PackChoices(s.activePack(surface), ids.map { PackChoice(it, parseCard(s.previewCard(surface, it))) })
+            }
+        }
+
+        suspend fun setPack(surface: String, id: String): Result<Unit> = withContext(Dispatchers.IO) {
+            runCatching { runningSession().setPack(surface, id) }
+        }
+
+        private fun runningSession(): Session = checkNotNull(session.value) { "presence service is not running" }
 
         fun setIncognito(context: Context, on: Boolean, minutes: Long) {
             ContextCompat.startForegroundService(context, incognitoCommand(context, on, minutes))

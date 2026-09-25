@@ -204,6 +204,8 @@ private fun gameOf(device: JSONObject): Game? {
     return Game(name, device.text(GAME_HEADER_URL) ?: device.optString(GAME_HERO_URL))
 }
 
+fun parseCard(cardJSON: String): Card = cardOf(JSONObject(cardJSON))
+
 private fun cardOf(card: JSONObject): Card = Card(
     row = card.optJSONArray("row")?.objects()?.map(::tileOf),
     detail = card.optJSONArray("detail").objects().map(::tileOf),
@@ -229,5 +231,7 @@ private fun tileOf(tile: JSONObject): Tile = Tile(
 )
 
 private fun JSONArray?.objects(): List<JSONObject> = if (this == null) emptyList() else List(length()) { getJSONObject(it) }
+
+fun JSONArray.strings(): List<String> = List(length()) { getString(it) }
 
 private fun JSONObject.text(key: String): String? = optString(key).ifEmpty { null }

@@ -168,7 +168,9 @@ private fun AccountCard(account: Account, pickable: Boolean, onIncognito: (Incog
     val presence = account.presence
     val card = account.card
     var detailShown by rememberSaveable { mutableStateOf(false) }
+    var selfMenuOpen by remember { mutableStateOf(false) }
     var renaming by rememberSaveable { mutableStateOf(false) }
+    var styling by rememberSaveable { mutableStateOf(false) }
     Surface(
         onClick = { detailShown = !detailShown },
         enabled = card.detail.isNotEmpty(),
@@ -181,13 +183,31 @@ private fun AccountCard(account: Account, pickable: Boolean, onIncognito: (Incog
         Column(Modifier.animateContentSize().padding(CardPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             IncognitoHeader(pickable, AvatarSize, onIncognito, avatar = { Avatar(account) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        account.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = if (pickable) Modifier.clickable { renaming = true } else Modifier,
-                    )
+                    Box {
+                        Text(
+                            account.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = if (pickable) Modifier.clickable { selfMenuOpen = true } else Modifier,
+                        )
+                        DropdownMenu(expanded = selfMenuOpen, onDismissRequest = { selfMenuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.self_rename)) },
+                                onClick = {
+                                    selfMenuOpen = false
+                                    renaming = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.self_appearance)) },
+                                onClick = {
+                                    selfMenuOpen = false
+                                    styling = true
+                                },
+                            )
+                        }
+                    }
                     Text(
                         presence.statusLine(LocalResources.current),
                         style = MaterialTheme.typography.bodySmall,
@@ -209,6 +229,7 @@ private fun AccountCard(account: Account, pickable: Boolean, onIncognito: (Incog
         }
     }
     if (renaming) RenameDialog(account.name) { renaming = false }
+    if (styling) AppearanceSheet { styling = false }
 }
 
 @Composable
