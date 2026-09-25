@@ -89,6 +89,12 @@ func do(method, url, token string, body, out any) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var errBody struct {
+			Detail string `json:"detail"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&errBody) == nil && errBody.Detail != "" {
+			return fmt.Errorf("%s %s: status %d: %s", method, url, resp.StatusCode, errBody.Detail)
+		}
 		return fmt.Errorf("%s %s: status %d", method, url, resp.StatusCode)
 	}
 	if out != nil {
@@ -99,6 +105,13 @@ func do(method, url, token string, body, out any) error {
 
 func (c *Config) endpoint(path string) string {
 	return strings.TrimRight(c.ServerURL, "/") + path
+}
+
+func (c *Config) requireRoom() error {
+	if c.RoomID == "" {
+		return ErrNoRoom
+	}
+	return nil
 }
 
 type accountResponse struct {
@@ -195,6 +208,9 @@ func Recover(serverURL, accountID, secret string) (*Config, error) {
 }
 
 func (c *Config) Invite() (string, error) {
+	if err := c.requireRoom(); err != nil {
+		return "", err
+	}
 	var resp struct {
 		Code string `json:"code"`
 	}
@@ -288,6 +304,9 @@ type MemberInfo struct {
 }
 
 func (c *Config) Members() ([]MemberInfo, error) {
+	if err := c.requireRoom(); err != nil {
+		return nil, err
+	}
 	var resp struct {
 		Members []MemberInfo `json:"members"`
 	}
@@ -303,6 +322,9 @@ func (c *Config) SetAccountName(name string) error {
 }
 
 func (c *Config) Kick(accountID string) (bool, error) {
+	if err := c.requireRoom(); err != nil {
+		return false, err
+	}
 	var resp struct {
 		OK bool `json:"ok"`
 	}
@@ -314,8 +336,8 @@ func (c *Config) Kick(accountID string) (bool, error) {
 
 // Leave keeps the account and device so a later JoinInvite reuses them.
 func (c *Config) Leave() (bool, error) {
-	if c.RoomID == "" {
-		return false, ErrNoRoom
+	if err := c.requireRoom(); err != nil {
+		return false, err
 	}
 	var resp struct {
 		OK bool `json:"ok"`
@@ -339,6 +361,9 @@ func (c *Config) Demote(accountID string) (bool, error) {
 }
 
 func (c *Config) setRole(accountID, role string) (bool, error) {
+	if err := c.requireRoom(); err != nil {
+		return false, err
+	}
 	var resp struct {
 		OK bool `json:"ok"`
 	}

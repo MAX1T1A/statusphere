@@ -410,7 +410,13 @@ func withConfig(fn func(*auth.Config) error) error {
 	if err != nil {
 		return fmt.Errorf("no account found; register first: statusphere --register <server_url>")
 	}
-	return fn(cfg)
+	if err := fn(cfg); err != nil {
+		if errors.Is(err, auth.ErrNoRoom) {
+			return fmt.Errorf("not in a room; join one first:\n  statusphere --join <invite>")
+		}
+		return err
+	}
+	return nil
 }
 
 func register(serverURL string) error {
