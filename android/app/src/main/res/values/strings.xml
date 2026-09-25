@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="app_name">Statusphere</string>
+
+    <string name="app_tagline">See what friends are playing and doing, live</string>
+
+    <string name="join_invite">Invite code</string>
+    <string name="join_invite_hint" tools:ignore="TypographyDashes">Run sstatus --invite on a friend\'s computer</string>
+    <string name="join_paste">Paste invite code</string>
+    <string name="join_name">Your name</string>
+    <string name="join_name_hint">How friends see you. Optional</string>
+    <string name="join_button">Join room</string>
+    <string name="join_failed">Could not join: %1$s</string>
+
+    <string name="permissions_title">Permissions</string>
+    <string name="permission_notification_access">Notification access (music)</string>
+    <string name="permission_usage_access">Usage access (current app)</string>
+    <string name="permission_post_notifications">Show notifications</string>
+    <string name="permission_battery">Unrestricted battery use</string>
+    <string name="permission_not_granted">Not granted</string>
+    <string name="permission_open">Open</string>
+
+    <string name="room_connecting">Connecting</string>
+    <string name="room_online" tools:ignore="PluralsCandidate">%1$d of %2$d online</string>
+    <string name="room_last_error">last error: %1$s</string>
+
+    <string name="status_online">Online</string>
+    <string name="status_offline">Offline</string>
+    <string name="status_incognito">Incognito</string>
+    <string name="status_playing_game">Playing %1$s</string>
+    <string name="music_paused">Paused</string>
+
+    <string name="service_channel">Presence sharing</string>
+    <string name="service_notification_title">Sharing your presence</string>
+</resources>
