@@ -1,8 +1,10 @@
 package app.statusphere
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,8 +40,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -47,6 +51,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 private val GroupSpacing = 16.dp
@@ -56,12 +63,27 @@ private val GroupInnerCorner = 6.dp
 private val ProfileAvatarSize = 56.dp
 private val ItemIconBox = 40.dp
 private val ItemIconSize = 22.dp
+private const val VERSION_TAPS_TO_TOGGLE = 7
+
+object SettingsEasterEgg {
+    private val mutableGearSwapped = MutableStateFlow(false)
+    val gearSwapped: StateFlow<Boolean> = mutableGearSwapped.asStateFlow()
+    private var tapCount = 0
+
+    fun onVersionTap(): Boolean {
+        if (++tapCount < VERSION_TAPS_TO_TOGGLE) return false
+        tapCount = 0
+        mutableGearSwapped.value = !mutableGearSwapped.value
+        return true
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onLeft: () -> Unit) {
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
+    val haptics = LocalHapticFeedback.current
     val status by PresenceService.status.collectAsStateWithLifecycle()
     val self = status.room?.find { it.id == status.me?.accountId }
     val (meetingShown, setMeetingShown) = rememberMeetingSwitch()
@@ -131,6 +153,12 @@ fun SettingsScreen(onBack: () -> Unit, onLeft: () -> Unit) {
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clickable {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        if (SettingsEasterEgg.onVersionTap()) {
+                            Toast.makeText(context, R.string.settings_easter_egg, Toast.LENGTH_SHORT).show()
+                        }
+                    }
                     .padding(vertical = 16.dp),
             )
         }

@@ -125,6 +125,7 @@ fun RoomCards(accounts: List<Account>, selfId: String?, onOpenSettings: () -> Un
 
 @Composable
 private fun RoomHeader(accounts: List<Account>, onOpenSettings: () -> Unit) {
+    val gearSwapped by SettingsEasterEgg.gearSwapped.collectAsStateWithLifecycle()
     Row(Modifier.padding(start = CardPadding), verticalAlignment = Alignment.CenterVertically) {
         Text(
             stringResource(R.string.room_online, accounts.count { it.presence !is Presence.Offline }, accounts.size),
@@ -134,7 +135,7 @@ private fun RoomHeader(accounts: List<Account>, onOpenSettings: () -> Unit) {
         )
         IconButton(onClick = onOpenSettings, modifier = Modifier.size(SettingsButtonSize)) {
             Icon(
-                painterResource(R.drawable.ic_settings),
+                painterResource(if (gearSwapped) R.drawable.ic_tile_terminal else R.drawable.ic_settings),
                 contentDescription = stringResource(R.string.settings),
                 tint = MaterialTheme.colorScheme.outline.copy(alpha = SETTINGS_ICON_ALPHA),
                 modifier = Modifier.size(SettingsIconSize),

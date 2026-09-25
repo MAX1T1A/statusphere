@@ -32,6 +32,7 @@
     <string name="settings_back">Back</string>
     <string name="settings_name_hint">Tap to change your name</string>
     <string name="settings_version">Statusphere %1$s</string>
+    <string name="settings_easter_egg">You are now a developer. Of course you are.</string>
     <string name="self_appearance">Card appearance</string>
     <string name="self_appearance_note">Choose the tiles your card shows</string>
     <string name="appearance_row">Card</string>
