@@ -96,8 +96,11 @@ private fun StatusphereTheme(content: @Composable () -> Unit) {
 
 @Composable
 private fun MainScreen() {
+    val context = LocalContext.current
     val status by PresenceService.status.collectAsStateWithLifecycle()
-    status.room?.let { RoomCards(it) } ?: Text(
+    status.room?.let { room ->
+        RoomCards(room, status.me?.accountId) { PresenceService.setIncognito(context, it.on, it.minutes) }
+    } ?: Text(
         stringResource(R.string.room_connecting),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.outline,

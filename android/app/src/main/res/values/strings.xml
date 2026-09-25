@@ -24,6 +24,11 @@
     <string name="room_online" tools:ignore="PluralsCandidate">%1$d of %2$d online</string>
     <string name="room_last_error">last error: %1$s</string>
 
+    <string name="widget_label">Friends</string>
+    <string name="widget_description">Who is online and what they are playing</string>
+    <string name="widget_join">Open Statusphere to join</string>
+    <string name="widget_saved_at">as of %1$s</string>
+
     <string name="status_online">Online</string>
     <string name="status_offline">Offline</string>
     <string name="status_incognito">Incognito</string>
@@ -32,4 +37,16 @@
 
     <string name="service_channel">Presence sharing</string>
     <string name="service_notification_title">Sharing your presence</string>
+
+    <string name="incognito_hidden">Hidden from your room</string>
+    <string name="incognito_until">Hidden until %1$s</string>
+    <string name="incognito_pick_hint">Slide, then let go</string>
+    <string name="incognito_visible">Visible</string>
+    <string name="incognito_15m_chip">15m</string>
+    <string name="incognito_15m">15 minutes</string>
+    <string name="incognito_1h_chip">1h</string>
+    <string name="incognito_1h">1 hour</string>
+    <string name="incognito_until_turned_off">Until I say</string>
+    <string name="incognito_go">Go incognito</string>
+    <string name="incognito_go_visible">Go visible</string>
 </resources>

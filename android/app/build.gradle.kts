@@ -65,4 +65,5 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.core)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.glance.appwidget)
 }

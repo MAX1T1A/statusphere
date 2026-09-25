@@ -1,5 +1,6 @@
 package app.statusphere
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -12,12 +13,15 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.text.format.DateFormat
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import app.statusphere.mobile.Mobile
 import app.statusphere.mobile.RoomListener
 import app.statusphere.mobile.Session
+import java.time.Instant
+import java.util.Date
 import kotlin.concurrent.thread
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -31,13 +35,19 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 const val TAG = "Statusphere"
 
-data class PresenceStatus(val room: List<Account>? = null, val lastError: String? = null)
+data class Me(val accountId: String, val incognito: Boolean, val incognitoUntil: Instant?)
+
+data class PresenceStatus(val room: List<Account>? = null, val lastError: String? = null, val me: Me? = null)
 
 private enum class ScreenMode(val listening: Boolean, val heartbeat: Duration, val ping: Duration) {
     ON(listening = true, heartbeat = 30.seconds, ping = 20.seconds),
@@ -48,6 +58,9 @@ private val APP_POLL_INTERVAL = 3.seconds
 private val PUBLISH_MIN_INTERVAL = 700.milliseconds
 private const val CHANNEL_ID = "presence"
 private const val NOTIFICATION_ID = 1
+private const val ACTION_GO_INCOGNITO = "app.statusphere.action.GO_INCOGNITO"
+private const val ACTION_GO_VISIBLE = "app.statusphere.action.GO_VISIBLE"
+private const val EXTRA_MINUTES = "minutes"
 
 class PresenceService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -56,7 +69,7 @@ class PresenceService : Service() {
     private val screenOn = MutableStateFlow(false)
     private lateinit var music: MusicTracker
     private lateinit var apps: ForegroundAppTracker
-    private var session: Session? = null
+    private val session = MutableStateFlow<Session?>(null)
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -97,6 +110,12 @@ class PresenceService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         music.start()
+        val action = intent?.action
+        if (action == ACTION_GO_INCOGNITO || action == ACTION_GO_VISIBLE) {
+            val on = action == ACTION_GO_INCOGNITO
+            val minutes = intent.getLongExtra(EXTRA_MINUTES, Mobile.IncognitoUntilTurnedOff)
+            scope.launch { setIncognito(session.filterNotNull().first(), on, minutes) }
+        }
         return START_STICKY
     }
 
@@ -104,10 +123,26 @@ class PresenceService : Service() {
         scope.cancel()
         unregisterReceiver(screenReceiver)
         music.stop()
-        session?.let { thread(name = "session_stop") { it.stop() } }
-        session = null
-        mutableStatus.update { it.copy(room = null) }
+        session.value?.let { thread(name = "session_stop") { it.stop() } }
+        session.value = null
+        mutableStatus.update { it.copy(room = null, me = null) }
         super.onDestroy()
+    }
+
+    private suspend fun setIncognito(s: Session, on: Boolean, minutes: Long) = withContext(sessionDispatcher) {
+        runCatching { s.setIncognito(on, minutes) }
+            .onFailure { Log.e(TAG, "incognito_set_failed on=$on minutes=$minutes detail=${it.message}") }
+        publishMe(s)
+    }
+
+    private fun publishMe(s: Session) {
+        val until = s.incognitoUntilUnix().takeIf { it > 0 }?.let(Instant::ofEpochSecond)
+        mutableStatus.update { it.copy(me = Me(s.accountID(), s.incognito(), until)) }
+    }
+
+    private suspend fun expireIncognito(s: Session, until: Instant) {
+        delay(until.toEpochMilli() - System.currentTimeMillis())
+        setIncognito(s, on = false, minutes = Mobile.IncognitoUntilTurnedOff)
     }
 
     private suspend fun run() {
@@ -117,11 +152,16 @@ class PresenceService : Service() {
             stopSelf()
             return
         }
-        session = s
+        session.value = s
         withContext(sessionDispatcher) {
+            publishMe(s)
             runCatching { s.start(roomListener) }.onFailure { Log.e(TAG, "session_start_failed detail=${it.message}") }
         }
         scope.launch { publishThrottled(s) }
+        scope.launch { mirrorRoomToWidget(this@PresenceService, status) }
+        val me = status.map { it.me }.distinctUntilChanged()
+        scope.launch { me.collect(::showNotification) }
+        scope.launch { me.collectLatest { it?.incognitoUntil?.let { until -> expireIncognito(s, until) } } }
         screenOn.collectLatest { on ->
             if (on) {
                 applyMode(s, ScreenMode.ON)
@@ -163,21 +203,40 @@ class PresenceService : Service() {
     private fun startInForeground() {
         val channel = NotificationChannel(CHANNEL_ID, getString(R.string.service_channel), NotificationManager.IMPORTANCE_LOW)
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-        val openApp = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
-        )
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_presence)
-            .setContentTitle(getString(R.string.service_notification_title))
-            .setContentIntent(openApp)
-            .setOngoing(true)
-            .build()
+        val notification = notification(me = null)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
     }
+
+    private fun showNotification(me: Me?) {
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(me))
+    }
+
+    private fun notification(me: Me?): Notification {
+        val openApp = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
+        )
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_presence)
+            .setContentTitle(getString(R.string.service_notification_title))
+            .setContentIntent(openApp)
+            .setOngoing(true)
+        when {
+            me == null -> Unit
+            me.incognito -> builder
+                .setContentTitle(getString(R.string.status_incognito))
+                .setContentText(me.incognitoUntil?.let { getString(R.string.incognito_until, clockTime(it)) } ?: getString(R.string.incognito_hidden))
+                .addAction(R.drawable.ic_visibility, getString(R.string.incognito_go_visible), incognitoIntent(this, on = false))
+            else -> builder
+                .addAction(R.drawable.ic_visibility_off, getString(R.string.incognito_go), incognitoIntent(this, on = true))
+        }
+        return builder.build()
+    }
+
+    private fun clockTime(at: Instant): String = DateFormat.getTimeFormat(this).format(Date.from(at))
 
     companion object {
         private val mutableStatus = MutableStateFlow(PresenceStatus())
@@ -190,6 +249,19 @@ class PresenceService : Service() {
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, PresenceService::class.java))
         }
+
+        fun setIncognito(context: Context, on: Boolean, minutes: Long) {
+            ContextCompat.startForegroundService(context, incognitoCommand(context, on, minutes))
+        }
+
+        private fun incognitoCommand(context: Context, on: Boolean, minutes: Long) =
+            Intent(context, PresenceService::class.java)
+                .setAction(if (on) ACTION_GO_INCOGNITO else ACTION_GO_VISIBLE)
+                .putExtra(EXTRA_MINUTES, minutes)
+
+        private fun incognitoIntent(context: Context, on: Boolean): PendingIntent = PendingIntent.getForegroundService(
+            context, 0, incognitoCommand(context, on, Mobile.IncognitoUntilTurnedOff), PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 }
 

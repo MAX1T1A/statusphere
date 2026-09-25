@@ -1,10 +1,12 @@
 package app.statusphere
 
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.SystemClock
 import android.util.Log
 import android.util.LruCache
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -31,18 +33,24 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,7 +69,7 @@ import kotlinx.coroutines.withContext
 internal val CardShape = RoundedCornerShape(17.dp)
 internal val CardPadding = 12.dp
 internal val CardSpacing = 12.dp
-private val ArtShape = RoundedCornerShape(12.dp)
+internal val ArtShape = RoundedCornerShape(12.dp)
 private val AvatarSize = 40.dp
 private val BadgeSize = 13.dp
 private val BadgeBorder = 2.dp
@@ -74,38 +82,41 @@ private val WaveLength = 28.dp
 private const val OFFLINE_ALPHA = 0.6f
 private const val PAUSED_ART_ALPHA = 0.5f
 private const val MIN_BANNER_ASPECT = 2f
-private const val WAVE_PERIOD_MS = 3600
+private const val WAVE_PERIOD_MS = 7000
 private const val ART_CACHE_BYTES = 24 * 1024 * 1024
 private val ART_TIMEOUT = 10.seconds
 
 @Composable
-fun RoomCards(accounts: List<Account>) {
+fun RoomCards(accounts: List<Account>, selfId: String?, onIncognito: (IncognitoChoice) -> Unit) {
     Text(
         stringResource(R.string.room_online, accounts.count { it.presence != Presence.Offline }, accounts.size),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.outline,
         modifier = Modifier.padding(horizontal = CardPadding),
     )
-    accounts.forEach { AccountCard(it) }
+    accounts.forEach { key(it.id) { AccountCard(it, pickable = it.id == selfId, onIncognito) } }
 }
 
 @Composable
-private fun AccountCard(account: Account) {
+private fun AccountCard(account: Account, pickable: Boolean, onIncognito: (IncognitoChoice) -> Unit) {
     val presence = account.presence
+    val card = account.card
+    var detailShown by rememberSaveable { mutableStateOf(false) }
     Surface(
+        onClick = { detailShown = !detailShown },
+        enabled = card.detail.isNotEmpty(),
         shape = CardShape,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier
             .fillMaxWidth()
             .alpha(if (presence == Presence.Offline) OFFLINE_ALPHA else 1f),
     ) {
-        Column(Modifier.padding(CardPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Avatar(account)
+        Column(Modifier.animateContentSize().padding(CardPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            IncognitoHeader(pickable, AvatarSize, onIncognito, avatar = { Avatar(account) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(account.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        presence.statusLine(),
+                        presence.statusLine(LocalResources.current),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline,
                         maxLines = 1,
@@ -113,12 +124,15 @@ private fun AccountCard(account: Account) {
                     )
                 }
             }
-            if (presence is Presence.Online && (presence.game != null || presence.music != null)) {
+            if (card.row != null) {
+                if (card.row.isNotEmpty()) TileGrid(card.row, Modifier.padding(top = 8.dp))
+            } else if (presence is Presence.Online && (presence.game != null || presence.music != null)) {
                 Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     presence.game?.let { GameBanner(it) }
                     presence.music?.let { MusicCard(it) }
                 }
             }
+            if (detailShown && card.detail.isNotEmpty()) TileGrid(card.detail, Modifier.padding(top = 8.dp))
         }
     }
 }
@@ -165,12 +179,11 @@ private fun Avatar(account: Account) {
     }
 }
 
-@Composable
-private fun Presence.statusLine(): String = when (this) {
-    Presence.Offline -> stringResource(R.string.status_offline)
-    is Presence.Incognito -> note.ifEmpty { stringResource(R.string.status_incognito) }
-    is Presence.Online -> game?.let { stringResource(R.string.status_playing_game, it.name) }
-        ?: app.ifEmpty { stringResource(R.string.status_online) }
+internal fun Presence.statusLine(resources: Resources): String = when (this) {
+    Presence.Offline -> resources.getString(R.string.status_offline)
+    is Presence.Incognito -> note.ifEmpty { resources.getString(R.string.status_incognito) }
+    is Presence.Online -> game?.let { resources.getString(R.string.status_playing_game, it.name) }
+        ?: app.ifEmpty { resources.getString(R.string.status_online) }
 }
 
 @Composable
@@ -256,9 +269,13 @@ private fun rememberPosition(music: Music): Int {
 private fun clock(seconds: Int): String = "%d:%02d".format(seconds / 60, seconds % 60)
 
 @Composable
-private fun WavyProgress(fraction: Float, wavy: Boolean, modifier: Modifier) {
-    val active = MaterialTheme.colorScheme.primary
-    val track = MaterialTheme.colorScheme.secondaryContainer
+internal fun WavyProgress(
+    fraction: Float,
+    wavy: Boolean,
+    modifier: Modifier,
+    active: Color = MaterialTheme.colorScheme.primary,
+    track: Color = MaterialTheme.colorScheme.secondaryContainer,
+) {
     val phase = if (wavy) wavePhase() else null
     Canvas(modifier.height(WaveAmplitude * 2 + ProgressStroke)) {
         val stroke = ProgressStroke.toPx()
@@ -307,7 +324,7 @@ private object ArtCache : LruCache<String, Bitmap>(ART_CACHE_BYTES) {
 }
 
 @Composable
-private fun rememberArt(url: String): Bitmap? {
+internal fun rememberArt(url: String): Bitmap? {
     val art by produceState(ArtCache.get(url), url) {
         if (value != null || !url.startsWith("https://")) return@produceState
         value = withContext(Dispatchers.IO) {

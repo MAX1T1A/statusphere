@@ -1,5 +1,6 @@
 package app.statusphere
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 enum class PlaybackStatus(val wire: String) { PLAYING("playing"), PAUSED("paused"), STOPPED("stopped") }
@@ -47,7 +48,46 @@ sealed interface Presence {
     data class Online(val app: String, val music: Music?, val game: Game?) : Presence
 }
 
-data class Account(val id: String, val name: String, val presence: Presence)
+// Wire names must match client/internal/cardlayout/cardlayout.go.
+enum class TileType(val wire: String) { SCALAR("scalar"), MUSIC("music"), GAME("game"), PHOTO("photo"), PICTURE("picture") }
+
+enum class ScalarForm(val wire: String) { RING("ring"), BAR("bar"), NUMBER("number"), TEXT("text") }
+
+enum class TileColor(val wire: String) {
+    PRIMARY("primary"),
+    SECONDARY("secondary"),
+    TERTIARY("tertiary"),
+    ERROR("error"),
+    PRIMARY_CONTAINER("primaryContainer"),
+    SECONDARY_CONTAINER("secondaryContainer"),
+    TERTIARY_CONTAINER("tertiaryContainer"),
+    ERROR_CONTAINER("errorContainer"),
+}
+
+data class Tile(
+    val col: Int,
+    val row: Int,
+    val cols: Int,
+    val rows: Int,
+    val type: TileType?,
+    val form: ScalarForm,
+    val color: TileColor?,
+    val dimmed: Boolean,
+    val label: String,
+    val value: String,
+    val percent: Float?,
+    val title: String,
+    val subtitle: String,
+    val imageUrl: String,
+)
+
+data class Card(val row: List<Tile>?, val detail: List<Tile>) {
+    companion object {
+        val NONE = Card(row = null, detail = emptyList())
+    }
+}
+
+data class Account(val id: String, val name: String, val presence: Presence, val card: Card = Card.NONE)
 
 // Keys must match client/internal/presence/keys.go.
 private const val DEVICE_ID = "device_id"
@@ -78,14 +118,16 @@ private const val SHORT_ID_LENGTH = 8
 private const val STALE_GAP_SECONDS = 45L
 
 fun parseRoom(roomJSON: String): List<Account> {
-    val members = JSONObject(roomJSON).getJSONArray("members")
+    val room = JSONObject(roomJSON)
+    val members = room.getJSONArray("members")
     val byAccount = linkedMapOf<String, MutableList<JSONObject>>()
     for (i in 0 until members.length()) {
         val member = members.getJSONObject(i)
         val id = member.text(ACCOUNT_ID) ?: member.text(DEVICE_ID) ?: continue
         byAccount.getOrPut(id) { mutableListOf() }.add(member)
     }
-    return byAccount.map { (id, snapshots) -> accountOf(id, snapshots) }
+    val cards = room.optJSONArray("cards").objects().associate { it.optString("account_id") to cardOf(it) }
+    return byAccount.map { (id, snapshots) -> accountOf(id, snapshots).copy(card = cards[id] ?: Card.NONE) }
         .sortedWith(compareBy<Account> { it.presence == Presence.Offline }.thenBy { it.name.lowercase() })
 }
 
@@ -139,5 +181,29 @@ private fun gameOf(device: JSONObject): Game? {
     val name = device.text(GAME_DISPLAY) ?: device.text(GAME_NAME) ?: return null
     return Game(name, device.text(GAME_HEADER_URL) ?: device.optString(GAME_HERO_URL))
 }
+
+private fun cardOf(card: JSONObject): Card = Card(
+    row = card.optJSONArray("row")?.objects()?.map(::tileOf),
+    detail = card.optJSONArray("detail").objects().map(::tileOf),
+)
+
+private fun tileOf(tile: JSONObject): Tile = Tile(
+    col = tile.optInt("col"),
+    row = tile.optInt("row"),
+    cols = tile.optInt("cols", 1),
+    rows = tile.optInt("rows", 1),
+    type = TileType.entries.find { it.wire == tile.optString("type") },
+    form = ScalarForm.entries.find { it.wire == tile.optString("form") } ?: ScalarForm.TEXT,
+    color = TileColor.entries.find { it.wire == tile.optString("color") },
+    dimmed = tile.optBoolean("dimmed"),
+    label = tile.optString("label"),
+    value = tile.optString("value"),
+    percent = if (tile.has("percent")) tile.optDouble("percent").toFloat() else null,
+    title = tile.optString("title"),
+    subtitle = tile.optString("subtitle"),
+    imageUrl = tile.optString("image_url"),
+)
+
+private fun JSONArray?.objects(): List<JSONObject> = if (this == null) emptyList() else List(length()) { getJSONObject(it) }
 
 private fun JSONObject.text(key: String): String? = optString(key).ifEmpty { null }
