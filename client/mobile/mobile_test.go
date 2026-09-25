@@ -415,3 +415,53 @@ func TestJoinRegistersAndPublishesUnderThePhoneDeviceName(t *testing.T) {
 		t.Fatalf("published device name %q, want %q", got, phoneDeviceName)
 	}
 }
+
+func TestSetIncognitoRepublishesAtOnceAndPersists(t *testing.T) {
+	srv := newFakeServer(t)
+	dir := baseDir(t, srv.URL)
+	p := privacy.Default()
+	p.Note = "off the radar"
+	writePrivacy(t, dir, p)
+	s, conn, _ := startSession(t, srv, dir)
+
+	err := s.Publish(`{"music":{"track":"Roygbiv","artist":"Boards of Canada","status":"playing"},"app":{"label":"Telegram","package":"org.telegram.messenger"}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := conn.next(t); got[presence.KeyActiveApp] != "Telegram" {
+		t.Fatalf("visible phone should publish its app, got %v", got)
+	}
+
+	if err := s.SetIncognito(true, 60); err != nil {
+		t.Fatal(err)
+	}
+	got := conn.next(t)
+	if got[presence.KeyIncognito] != true || got[presence.KeyIncognitoNote] != "off the radar" {
+		t.Fatalf("incognito should reach the room with its note without waiting for a heartbeat, got %v", got)
+	}
+	if _, ok := got[presence.KeyActiveApp]; ok {
+		t.Fatalf("incognito hides the app, got %v", got)
+	}
+	if got[presence.KeySpotifyTrack] != "Roygbiv" {
+		t.Fatalf("default incognito keeps music, as on desktop, got %v", got)
+	}
+
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reopened.Incognito() {
+		t.Fatal("incognito should survive a restart")
+	}
+	if left := time.Until(time.Unix(reopened.IncognitoUntilUnix(), 0)); left < 59*time.Minute || left > time.Hour {
+		t.Fatalf("an hour of incognito should expire in an hour, %s left", left)
+	}
+
+	if err := s.SetIncognito(false, IncognitoUntilTurnedOff); err != nil {
+		t.Fatal(err)
+	}
+	got = conn.next(t)
+	if _, ok := got[presence.KeyIncognito]; ok || got[presence.KeyActiveApp] != "Telegram" {
+		t.Fatalf("going visible should publish the app again without the incognito mark, got %v", got)
+	}
+}

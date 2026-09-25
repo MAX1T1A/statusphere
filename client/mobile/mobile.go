@@ -187,6 +187,42 @@ func (s *Session) SetPingSeconds(seconds int) error {
 	return nil
 }
 
+func (s *Session) AccountID() string { return s.cfg.AccountID }
+
+const IncognitoUntilTurnedOff = 0
+
+func (s *Session) SetIncognito(on bool, minutes int) error {
+	mode := privacy.ModeNormal
+	if on {
+		mode = privacy.ModeIncognito
+	}
+	if _, err := privacy.Set(mode, time.Duration(minutes)*time.Minute); err != nil {
+		return err
+	}
+
+	s.publishMu.Lock()
+	defer s.publishMu.Unlock()
+	s.privacy = &privacy.Store{}
+	s.offerLocked(s.currentHeartbeat())
+	return nil
+}
+
+func (s *Session) Incognito() bool { return s.policy().Hidden() }
+
+func (s *Session) IncognitoUntilUnix() int64 {
+	until, ok := s.policy().Expires()
+	if !ok {
+		return 0
+	}
+	return until.Unix()
+}
+
+func (s *Session) policy() privacy.Policy {
+	s.publishMu.Lock()
+	defer s.publishMu.Unlock()
+	return s.privacy.Policy()
+}
+
 func (s *Session) currentHeartbeat() time.Duration {
 	s.mu.Lock()
 	defer s.mu.Unlock()
