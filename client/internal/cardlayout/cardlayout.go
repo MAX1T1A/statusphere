@@ -49,6 +49,7 @@ const (
 	Scalar  TileType = "scalar"
 	Music   TileType = "music"
 	Game    TileType = "game"
+	Video   TileType = "video"
 	Photo   TileType = "photo"
 	Picture TileType = "picture"
 )
@@ -62,6 +63,7 @@ var formsByType = map[TileType]formSet{
 	Scalar:  {"text", []string{"ring", "dial", "bar", "number", "text", "big", "clock", "weather", "weatherLive", "moon", "sun"}},
 	Music:   {"cover", []string{"cover", "vinyl", "wave"}},
 	Game:    {"banner", []string{"banner", "timer"}},
+	Video:   {"player", []string{"player"}},
 	Photo:   {},
 	Picture: {},
 }
@@ -490,6 +492,8 @@ func (a *account) hasData(t spec) bool {
 		return len(a.musicDevices()) > 0
 	case Game:
 		return len(a.gameDevices()) > 0
+	case Video:
+		return len(a.videoDevices()) > 0
 	case Photo:
 		return a.photoURL != ""
 	case Picture:
@@ -528,6 +532,17 @@ func (a *account) tile(t spec, p placement) Tile {
 			out.Title = cmp.Or(d.String(presence.KeyGameDisplay), d.String(presence.KeyGameName))
 			out.ImageURL = cmp.Or(d.String(presence.KeyGameHeroURL), d.String(presence.KeyGameHeaderURL))
 		}
+	case Video:
+		if devices := a.videoDevices(); len(devices) > 0 {
+			d := devices[0]
+			out.Title = d.String(presence.KeyVideoTitle)
+			out.Subtitle = d.String(presence.KeyVideoChannel)
+			position, _ := d.Float(presence.KeyVideoPosition)
+			if length, _ := d.Float(presence.KeyVideoLength); length > 0 {
+				progress := position / length * 100
+				out.Percent = &progress
+			}
+		}
 	case Photo:
 		out.ImageURL = a.photoURL
 	case Picture:
@@ -551,6 +566,13 @@ func (a *account) gameDevices() []presence.Snapshot {
 			return jsString(appID), playing
 		}
 		return d.String(presence.KeyGameName), playing
+	})
+}
+
+func (a *account) videoDevices() []presence.Snapshot {
+	return distinct(a.devices, func(d presence.Snapshot) (string, bool) {
+		title := d.String(presence.KeyVideoTitle)
+		return title + "/" + d.String(presence.KeyVideoChannel), d.String(presence.KeyVideoStatus) != "" && title != ""
 	})
 }
 

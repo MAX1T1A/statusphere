@@ -10,6 +10,7 @@ import (
 
 type phoneSnapshot struct {
 	Music   *phoneMusic   `json:"music"`
+	Video   *phoneVideo   `json:"video"`
 	App     *phoneApp     `json:"app"`
 	Battery *phoneBattery `json:"battery"`
 }
@@ -19,6 +20,14 @@ type phoneMusic struct {
 	Artist          string `json:"artist"`
 	Album           string `json:"album"`
 	ArtURL          string `json:"art_url"`
+	Status          string `json:"status"`
+	PositionSeconds int    `json:"position_seconds"`
+	LengthSeconds   int    `json:"length_seconds"`
+}
+
+type phoneVideo struct {
+	Title           string `json:"title"`
+	Channel         string `json:"channel"`
 	Status          string `json:"status"`
 	PositionSeconds int    `json:"position_seconds"`
 	LengthSeconds   int    `json:"length_seconds"`
@@ -59,6 +68,17 @@ func parsePhoneSnapshot(raw string) (presence.Snapshot, error) {
 		}
 		if m.PositionSeconds > 0 {
 			snap.Set(presence.KeySpotifyPosition, m.PositionSeconds)
+		}
+	}
+	if v := in.Video; v != nil && v.Title != "" {
+		snap.Set(presence.KeyVideoStatus, strings.ToLower(v.Status))
+		snap.Set(presence.KeyVideoTitle, v.Title)
+		snap.Set(presence.KeyVideoChannel, v.Channel)
+		if v.LengthSeconds > 0 {
+			snap.Set(presence.KeyVideoLength, v.LengthSeconds)
+		}
+		if v.PositionSeconds > 0 {
+			snap.Set(presence.KeyVideoPosition, v.PositionSeconds)
 		}
 	}
 	if a := in.App; a != nil && a.Label != "" {

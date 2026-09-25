@@ -9,7 +9,7 @@ import (
 	"statusphere-client/internal/presence"
 )
 
-const fullPhone = `{"music":{"track":"Roygbiv","artist":"Boards of Canada","status":"Playing"},"app":{"label":"Telegram","package":"org.telegram.messenger"},"battery":{"percent":80,"charging":false}}`
+const fullPhone = `{"music":{"track":"Roygbiv","artist":"Boards of Canada","status":"Playing"},"video":{"title":"Rust in 100 Seconds","channel":"Fireship","status":"Playing"},"app":{"label":"Telegram","package":"org.telegram.messenger"},"battery":{"percent":80,"charging":false}}`
 
 func layoutOf(t *testing.T, frame map[string]any) map[string]any {
 	t.Helper()
@@ -35,8 +35,8 @@ func TestSetPackReachesTheRoomAndSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	l := layoutOf(t, conn.next(t))
-	if row, _ := l[RowSurface].([]any); len(row) != 3 || l[avatarShapeKey] != "SineCookie" {
-		t.Fatalf("the vinyl row should arrive with its three tiles and avatar shape, got %v", l)
+	if row, _ := l[RowSurface].([]any); len(row) != 4 || l[avatarShapeKey] != "SineCookie" {
+		t.Fatalf("the vinyl row should arrive with its four tiles and avatar shape, got %v", l)
 	}
 	if _, ok := l["updated_at"].(float64); !ok {
 		t.Fatalf("a layout needs updated_at to win over older devices, got %v", l)
@@ -118,8 +118,8 @@ func TestPreviewShowsEveryTileDimmedBeforeThePhoneHasData(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &card); err != nil {
 		t.Fatal(err)
 	}
-	if len(card.Row) != 1 || !card.Row[0].Dimmed {
-		t.Fatalf("the cover pack should preview as one dimmed music tile, got %s", raw)
+	if len(card.Row) != 2 || !card.Row[0].Dimmed || !card.Row[1].Dimmed {
+		t.Fatalf("the cover pack should preview as dimmed music and video tiles, got %s", raw)
 	}
 }
 

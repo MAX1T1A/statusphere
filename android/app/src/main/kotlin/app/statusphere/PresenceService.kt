@@ -110,7 +110,7 @@ class PresenceService : Service() {
     override fun onCreate() {
         super.onCreate()
         startInForeground()
-        music = MusicTracker(this) { track -> snapshot.update { it.copy(music = track) } }
+        music = MusicTracker(this) { now -> snapshot.update { it.playing(now) } }
         apps = ForegroundAppTracker(this)
         battery = BatteryTracker(this) { level -> snapshot.update { it.copy(battery = level) } }
         screenOn.value = getSystemService(PowerManager::class.java).isInteractive
@@ -205,7 +205,7 @@ class PresenceService : Service() {
     private suspend fun pollAppAndMusicPosition() {
         while (true) {
             val app = withContext(Dispatchers.IO) { apps.current() }
-            snapshot.update { it.copy(app = app, music = music.current()) }
+            snapshot.update { it.copy(app = app).playing(music.current()) }
             delay(APP_POLL_INTERVAL)
         }
     }

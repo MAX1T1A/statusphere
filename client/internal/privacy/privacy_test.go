@@ -147,6 +147,34 @@ func TestGenericMusicFollowsTheApps(t *testing.T) {
 	}
 }
 
+func TestVideoFollowsTheApps(t *testing.T) {
+	watching := func() presence.Snapshot {
+		s := sample()
+		s.Set(presence.KeyActiveApp, "YouTube Vanced")
+		s.Set(presence.KeyVideoStatus, "playing")
+		s.Set(presence.KeyVideoTitle, "How to file a tax return")
+		s.Set(presence.KeyVideoChannel, "Tax Tips")
+		return s
+	}
+	if New(Default()).Apply(watching()).String(presence.KeyVideoTitle) == "" {
+		t.Error("visible mode should publish the video")
+	}
+
+	p := Default()
+	p.Mode = ModeIncognito
+	for _, key := range videoKeys {
+		if New(p).Apply(watching()).Has(key) {
+			t.Errorf("incognito still carries %s", key)
+		}
+	}
+
+	p = Default()
+	p.HideApps = []string{"(?i)vanced"}
+	if New(p).Apply(watching()).Has(presence.KeyVideoTitle) {
+		t.Error("hiding the video app must hide what it plays")
+	}
+}
+
 // A field no collector version knows about must not walk out while hidden.
 func TestUnknownKeysDroppedWhileHidden(t *testing.T) {
 	p := Default()

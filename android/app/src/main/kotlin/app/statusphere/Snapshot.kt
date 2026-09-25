@@ -5,6 +5,8 @@ import org.json.JSONObject
 
 enum class PlaybackStatus(val wire: String) { PLAYING("playing"), PAUSED("paused"), STOPPED("stopped") }
 
+sealed interface Playback
+
 data class Music(
     val track: String,
     val artist: String,
@@ -13,14 +15,29 @@ data class Music(
     val status: PlaybackStatus,
     val positionSeconds: Int,
     val lengthSeconds: Int,
-)
+) : Playback
+
+data class Video(
+    val title: String,
+    val channel: String,
+    val status: PlaybackStatus,
+    val positionSeconds: Int,
+    val lengthSeconds: Int,
+) : Playback
 
 data class ForegroundApp(val label: String, val packageName: String)
 
 data class Battery(val percent: Int, val charging: Boolean)
 
 // Field names must match phoneSnapshot in client/mobile/snapshot.go.
-data class PhoneSnapshot(val music: Music? = null, val app: ForegroundApp? = null, val battery: Battery? = null) {
+data class PhoneSnapshot(
+    val music: Music? = null,
+    val video: Video? = null,
+    val app: ForegroundApp? = null,
+    val battery: Battery? = null,
+) {
+    fun playing(now: Playback?): PhoneSnapshot = copy(music = now as? Music, video = now as? Video)
+
     fun toJson(): String = JSONObject().apply {
         music?.let {
             put("music", JSONObject().apply {
@@ -28,6 +45,15 @@ data class PhoneSnapshot(val music: Music? = null, val app: ForegroundApp? = nul
                 put("artist", it.artist)
                 put("album", it.album)
                 put("art_url", it.artUrl)
+                put("status", it.status.wire)
+                put("position_seconds", it.positionSeconds)
+                put("length_seconds", it.lengthSeconds)
+            })
+        }
+        video?.let {
+            put("video", JSONObject().apply {
+                put("title", it.title)
+                put("channel", it.channel)
                 put("status", it.status.wire)
                 put("position_seconds", it.positionSeconds)
                 put("length_seconds", it.lengthSeconds)
@@ -57,7 +83,7 @@ sealed interface Presence {
 }
 
 // Wire names must match client/internal/cardlayout/cardlayout.go.
-enum class TileType(val wire: String) { SCALAR("scalar"), MUSIC("music"), GAME("game"), PHOTO("photo"), PICTURE("picture") }
+enum class TileType(val wire: String) { SCALAR("scalar"), MUSIC("music"), GAME("game"), VIDEO("video"), PHOTO("photo"), PICTURE("picture") }
 
 enum class ScalarForm(val wire: String) {
     RING("ring"),

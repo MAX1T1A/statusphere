@@ -50,7 +50,7 @@ function qmlBinding(name) {
     return new Function("root", "CardLayouts", "Translation", `return (function () ${block(at)})();`);
 }
 
-const functions = ["deviceRank", "stalled", "compareDevices", "labelDevice", "trackKey", "musicDevices", "gameDevices", "currentPhotoFor", "percentForField", "iconForField", "formatUptime", "systemFieldsFor", "fieldsFor", "labelForKey", "detailFieldsFor", "fieldFor", "layoutFor", "ownsSurface", "sanitizeTile", "expandWildcardTiles", "surfaceTiles", "deviceForTile", "tileHasData", "hiddenFor"];
+const functions = ["deviceRank", "stalled", "compareDevices", "labelDevice", "trackKey", "musicDevices", "gameDevices", "videoDevices", "currentPhotoFor", "percentForField", "iconForField", "formatUptime", "systemFieldsFor", "fieldsFor", "labelForKey", "detailFieldsFor", "fieldFor", "layoutFor", "ownsSurface", "sanitizeTile", "expandWildcardTiles", "surfaceTiles", "deviceForTile", "tileHasData", "hiddenFor"];
 
 function roomFor(input) {
     const root = {
@@ -113,6 +113,13 @@ function tileOut(root, account, p) {
         Object.assign(out, {
             "title": d?.game_display || d?.game_name || undefined,
             "image_url": d?.game_hero_url || d?.game_header_url || undefined
+        });
+    } else if (type.reads === "video") {
+        const d = root.videoDevices(account)[0];
+        Object.assign(out, {
+            "title": d?.video_title || undefined,
+            "subtitle": d?.video_channel || undefined,
+            "percent": d?.video_length > 0 ? (d.video_position ?? 0) / d.video_length * 100 : undefined
         });
     } else if (type.art === "photo") {
         out.image_url = root.currentPhotoFor(account)?.path || undefined;

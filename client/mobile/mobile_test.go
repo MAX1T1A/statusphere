@@ -209,6 +209,23 @@ func TestPublishCarriesBatteryLevelAndChargingState(t *testing.T) {
 	}
 }
 
+func TestPublishCarriesVideoApartFromMusic(t *testing.T) {
+	srv := newFakeServer(t)
+	s, conn, _ := startSession(t, srv, baseDir(t, srv.URL))
+
+	if err := s.Publish(`{"video":{"title":"Rust in 100 Seconds","channel":"Fireship","status":"Playing","position_seconds":40,"length_seconds":160}}`); err != nil {
+		t.Fatal(err)
+	}
+	got := conn.next(t)
+	if got[presence.KeyVideoTitle] != "Rust in 100 Seconds" || got[presence.KeyVideoChannel] != "Fireship" ||
+		got[presence.KeyVideoStatus] != "playing" || got[presence.KeyVideoPosition] != float64(40) || got[presence.KeyVideoLength] != float64(160) {
+		t.Fatalf("video fields should be carried, got %v", got)
+	}
+	if _, ok := got[presence.KeySpotifyStatus]; ok {
+		t.Fatalf("a video must not read as music, got %v", got)
+	}
+}
+
 func TestPublishRejectsMalformedSnapshot(t *testing.T) {
 	srv := newFakeServer(t)
 	s, conn, _ := startSession(t, srv, baseDir(t, srv.URL))

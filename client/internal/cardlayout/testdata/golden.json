@@ -784,5 +784,69 @@
       "row": null,
       "detail": []
     }
+  ],
+  "video_phone_row": [
+    {
+      "account_id": "vera",
+      "row": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 4,
+          "rows": 1,
+          "type": "video",
+          "form": "player",
+          "color": "errorContainer",
+          "title": "Rust in 100 Seconds",
+          "subtitle": "Fireship",
+          "percent": 25
+        }
+      ],
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 2,
+          "rows": 1,
+          "type": "video",
+          "form": "player",
+          "title": "Rust in 100 Seconds",
+          "subtitle": "Fireship",
+          "percent": 25
+        }
+      ]
+    }
+  ],
+  "video_paused_without_length": [
+    {
+      "account_id": "vera",
+      "row": null,
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 4,
+          "rows": 1,
+          "type": "video",
+          "form": "player",
+          "title": "Lofi stream"
+        }
+      ]
+    },
+    {
+      "account_id": "walt",
+      "row": null,
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 4,
+          "rows": 1,
+          "type": "video",
+          "form": "player",
+          "dimmed": true
+        }
+      ]
+    }
   ]
 }

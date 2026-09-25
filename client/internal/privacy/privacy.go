@@ -91,6 +91,11 @@ var (
 	}
 	musicKeys = append([]string{presence.KeySpotifyStatus}, musicDetailKeys...)
 
+	videoKeys = []string{
+		presence.KeyVideoStatus, presence.KeyVideoTitle, presence.KeyVideoChannel,
+		presence.KeyVideoPosition, presence.KeyVideoLength,
+	}
+
 	systemKeys = []string{
 		presence.KeyUptimeHours, presence.KeyCPUPercent, presence.KeyCPUCount, presence.KeyMemUsedMB,
 		presence.KeyMemTotalMB, presence.KeyLoadAvg1m, presence.KeyPackageCount,
@@ -112,7 +117,7 @@ var (
 
 func keySet(extra ...string) map[string]bool {
 	set := make(map[string]bool)
-	for _, group := range [][]string{appKeys, gameKeys, musicKeys, systemKeys, extra} {
+	for _, group := range [][]string{appKeys, gameKeys, musicKeys, videoKeys, systemKeys, extra} {
 		for _, k := range group {
 			set[k] = true
 		}
@@ -236,6 +241,7 @@ func (f *Filter) Apply(snap presence.Snapshot) presence.Snapshot {
 	// included, so it goes with the apps rather than with Spotify.
 	if apps != LevelFull {
 		drop(out, presence.KeyMusic)
+		drop(out, videoKeys...)
 	}
 
 	if prof.System == LevelOff {

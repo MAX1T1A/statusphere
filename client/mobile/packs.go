@@ -42,6 +42,10 @@ func musicTile(form, size string) packTile {
 	return packTile{Type: "music", Form: form, Size: size, Color: "primaryContainer", OnMissing: "hide"}
 }
 
+func videoTile(size string) packTile {
+	return packTile{Type: "video", Form: "player", Size: size, Color: "errorContainer", OnMissing: "hide"}
+}
+
 func appTile(form, size string) packTile {
 	return packTile{Type: "scalar", Field: "active_app", Form: form, Size: size, Color: "secondaryContainer", OnMissing: "hide"}
 }
@@ -52,14 +56,14 @@ func batteryTile(form, size string) packTile {
 
 var packsBySurface = map[string][]pack{
 	RowSurface: {
-		{id: "cover", tiles: []packTile{musicTile("cover", "4x1")}},
-		{id: "vinyl", tiles: []packTile{musicTile("vinyl", "1x1"), appTile("text", "2x1"), batteryTile("ring", "1x1")}, avatarShape: "SineCookie"},
+		{id: "cover", tiles: []packTile{musicTile("cover", "4x1"), videoTile("4x1")}},
+		{id: "vinyl", tiles: []packTile{musicTile("vinyl", "1x1"), appTile("text", "2x1"), batteryTile("ring", "1x1"), videoTile("4x1")}, avatarShape: "SineCookie"},
 		{id: "minimal", tiles: []packTile{}},
 	},
 	DetailSurface: {
-		{id: "music", tiles: []packTile{musicTile("cover", "2x2"), appTile("text", "2x1"), batteryTile("bar", "2x1")}},
-		{id: "dashboard", tiles: []packTile{musicTile("vinyl", "2x2"), batteryTile("ring", "2x2"), appTile("big", "4x1")}},
-		{id: "compact", tiles: []packTile{musicTile("wave", "4x1"), appTile("text", "2x1"), batteryTile("bar", "2x1")}},
+		{id: "music", tiles: []packTile{musicTile("cover", "2x2"), appTile("text", "2x1"), batteryTile("bar", "2x1"), videoTile("4x1")}},
+		{id: "dashboard", tiles: []packTile{musicTile("vinyl", "2x2"), batteryTile("ring", "2x2"), appTile("big", "4x1"), videoTile("4x1")}},
+		{id: "compact", tiles: []packTile{musicTile("wave", "4x1"), videoTile("4x1"), appTile("text", "2x1"), batteryTile("bar", "2x1")}},
 	},
 }
 
