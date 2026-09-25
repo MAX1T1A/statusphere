@@ -10,6 +10,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -68,6 +70,7 @@ private const val GRID_COLUMNS = 4
 private val TileGap = 8.dp
 private val MinInset = 4.dp
 private const val INSET_FRACTION = 0.1f
+private val SelectedTileBorder = 3.dp
 private const val DIMMED_ALPHA = 0.45f
 private const val MUTED_ALPHA = 0.65f
 private const val TRACK_ALPHA = 0.25f
@@ -112,16 +115,19 @@ private val TileIcons = mapOf(
 )
 
 @Composable
-fun TileGrid(tiles: List<Tile>, modifier: Modifier = Modifier) {
+fun TileGrid(tiles: List<Tile>, modifier: Modifier = Modifier, selected: Int? = null, onTileClick: ((Int) -> Unit)? = null) {
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val cell = (maxWidth - TileGap * (GRID_COLUMNS - 1)) / GRID_COLUMNS
         Box(Modifier.fillMaxWidth().height(span(tiles.maxOfOrNull { it.row + it.rows } ?: 0, cell))) {
-            tiles.forEach {
+            tiles.forEachIndexed { i, tile ->
                 TileSurface(
-                    it,
+                    tile,
                     Modifier
-                        .offset(x = (cell + TileGap) * it.col, y = (cell + TileGap) * it.row)
-                        .size(span(it.cols, cell), span(it.rows, cell)),
+                        .offset(x = (cell + TileGap) * tile.col, y = (cell + TileGap) * tile.row)
+                        .size(span(tile.cols, cell), span(tile.rows, cell))
+                        .clip(CardShape)
+                        .then(if (onTileClick != null) Modifier.clickable { onTileClick(i) } else Modifier)
+                        .then(if (i == selected) Modifier.border(SelectedTileBorder, MaterialTheme.colorScheme.primary, CardShape) else Modifier),
                 )
             }
         }

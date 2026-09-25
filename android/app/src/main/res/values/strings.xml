@@ -46,6 +46,15 @@
     <string name="pack_custom_note">Pick tiles one by one</string>
     <string name="pack_custom_back">Back to packs</string>
     <string name="pack_custom_empty_detail">Nothing picked: details stay as by default</string>
+    <string name="pack_custom_tap_hint">Tap a tile to change it</string>
+    <string name="pack_custom_left_out">Did not fit:</string>
+    <string name="pack_custom_tile_left_out">No room on the card: pick a smaller size or remove another tile</string>
+    <string name="pack_custom_add">Add a tile</string>
+    <string name="pack_custom_add_kind">+ %1$s</string>
+    <string name="pack_custom_no_room">No room left: make a tile smaller or remove one</string>
+    <string name="tile_remove">Remove</string>
+    <string name="tile_move_earlier">Move earlier</string>
+    <string name="tile_move_later">Move later</string>
     <string name="tile_kind_music">Music</string>
     <string name="tile_kind_video">Video</string>
     <string name="tile_kind_app">App</string>

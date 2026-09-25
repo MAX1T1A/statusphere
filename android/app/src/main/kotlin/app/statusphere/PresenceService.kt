@@ -334,8 +334,11 @@ class PresenceService : Service() {
             runCatching { CustomTiles(tileKindsOf(Mobile.tileKinds()), customTilesOf(runningSession().customTiles(surface))) }
         }
 
-        suspend fun previewCustom(surface: String, tiles: List<CustomTile>): Result<Card> = withContext(Dispatchers.IO) {
-            runCatching { parseCard(runningSession().previewCustom(surface, tiles.toJSON())) }
+        suspend fun previewCustom(surface: String, tiles: List<CustomTile>): Result<CustomPreview> = withContext(Dispatchers.IO) {
+            runCatching {
+                val json = tiles.toJSON()
+                CustomPreview(tiles, parseCard(runningSession().previewCustom(surface, json)), customFitOf(Mobile.customFit(surface, json)))
+            }
         }
 
         private val editScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

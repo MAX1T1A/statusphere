@@ -140,7 +140,51 @@ func (s *Session) CustomTiles(surface string) (string, error) {
 	return string(data), err
 }
 
-func customPack(surface, tilesJSON string) (*pack, error) {
+// CustomFit tells the editor where tiles as SetCustom takes them stand in
+// the preview grid, as JSON {"tiles": [{"placed", "sizes"}], "room"}: whether
+// each tile got a spot, the sizes it would get one at with the rest kept, and
+// the sizes a tile appended after them would get one at.
+func CustomFit(surface, tilesJSON string) (string, error) {
+	type tileFit struct {
+		Placed bool     `json:"placed"`
+		Sizes  []string `json:"sizes"`
+	}
+	chosen, err := decodeCustom(surface, tilesJSON)
+	if err != nil {
+		return "", err
+	}
+	sizes := make([]string, len(chosen))
+	for i, c := range chosen {
+		sizes[i] = c.Size
+	}
+	fitsAt := func(i int) []string {
+		var out []string
+		for _, size := range tileSizes {
+			tried := slices.Clone(sizes)
+			if i == len(sizes) {
+				tried = append(tried, size)
+			} else {
+				tried[i] = size
+			}
+			if cardlayout.Placed(surface, tried)[i] {
+				out = append(out, size)
+			}
+		}
+		return out
+	}
+	placed := cardlayout.Placed(surface, sizes)
+	fit := struct {
+		Tiles []tileFit `json:"tiles"`
+		Room  []string  `json:"room"`
+	}{Tiles: make([]tileFit, len(chosen)), Room: fitsAt(len(chosen))}
+	for i := range chosen {
+		fit.Tiles[i] = tileFit{placed[i], fitsAt(i)}
+	}
+	data, err := json.Marshal(fit)
+	return string(data), err
+}
+
+func decodeCustom(surface, tilesJSON string) ([]customTile, error) {
 	if _, ok := packsBySurface[surface]; !ok {
 		return nil, fmt.Errorf("unknown surface %q", surface)
 	}
@@ -148,7 +192,6 @@ func customPack(surface, tilesJSON string) (*pack, error) {
 	if err := json.Unmarshal([]byte(tilesJSON), &chosen); err != nil {
 		return nil, err
 	}
-	p := &pack{id: CustomPack, tiles: make([]packTile, 0, len(chosen))}
 	for _, c := range chosen {
 		i := slices.IndexFunc(tileKinds, func(k tileKind) bool { return k.id == c.Kind })
 		if i < 0 {
@@ -157,6 +200,18 @@ func customPack(surface, tilesJSON string) (*pack, error) {
 		if !slices.Contains(tileKinds[i].forms, c.Form) || !slices.Contains(tileSizes, c.Size) {
 			return nil, fmt.Errorf("tile %s cannot be %s at %s", c.Kind, c.Form, c.Size)
 		}
+	}
+	return chosen, nil
+}
+
+func customPack(surface, tilesJSON string) (*pack, error) {
+	chosen, err := decodeCustom(surface, tilesJSON)
+	if err != nil {
+		return nil, err
+	}
+	p := &pack{id: CustomPack, tiles: make([]packTile, 0, len(chosen))}
+	for _, c := range chosen {
+		i := slices.IndexFunc(tileKinds, func(k tileKind) bool { return k.id == c.Kind })
 		p.tiles = append(p.tiles, tileKinds[i].build(c.Form, c.Size))
 	}
 	if surface == DetailSurface && len(p.tiles) == 0 {
