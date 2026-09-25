@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ButtonDefaults
@@ -21,6 +22,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,6 +42,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -121,6 +124,7 @@ private const val DISABLED_ALPHA = 0.38f
 @Composable
 fun AppearanceSheet(onDismiss: () -> Unit) {
     var surface by rememberSaveable { mutableStateOf(CardSurface.ROW) }
+    var sample by rememberSaveable { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -140,8 +144,24 @@ fun AppearanceSheet(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.error,
                 )
             }
-            key(surface) { CustomEditor(surface, onError = { error = it }) }
+            SampleSwitch(sample) { sample = it }
+            key(surface) { CustomEditor(surface, sample, onError = { error = it }) }
         }
+    }
+}
+
+@Composable
+private fun SampleSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(stringResource(R.string.appearance_sample), style = MaterialTheme.typography.titleSmall)
+            PackNote(R.string.appearance_sample_note)
+        }
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -157,7 +177,7 @@ private fun SurfacePreview(surface: CardSurface, card: Card) {
 }
 
 @Composable
-private fun CustomEditor(surface: CardSurface, onError: (String) -> Unit) {
+private fun CustomEditor(surface: CardSurface, sample: Boolean, onError: (String) -> Unit) {
     var kinds by remember { mutableStateOf<List<TileKind>>(emptyList()) }
     var chosen by remember { mutableStateOf<List<CustomTile>?>(null) }
     var preview by remember { mutableStateOf<CustomPreview?>(null) }
@@ -168,9 +188,9 @@ private fun CustomEditor(surface: CardSurface, onError: (String) -> Unit) {
             .onSuccess { kinds = it.kinds; chosen = it.chosen }
             .onFailure { onError(it.message ?: it.javaClass.simpleName) }
     }
-    LaunchedEffect(chosen) {
+    LaunchedEffect(chosen, sample) {
         val tiles = chosen ?: return@LaunchedEffect
-        PresenceService.previewCustom(surface.wire, tiles)
+        PresenceService.previewCustom(surface.wire, tiles, sample)
             .onSuccess { preview = it }
             .onFailure { onError(it.message ?: it.javaClass.simpleName) }
     }

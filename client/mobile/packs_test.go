@@ -145,7 +145,7 @@ func TestCustomTilesReachTheRoomAndReadBack(t *testing.T) {
 	conn.next(t)
 
 	const chosen = `[{"kind":"alarm","form":"clock","size":"1x1"},{"kind":"battery","form":"ring","size":"2x2"}]`
-	raw, err := s.PreviewCustom(DetailSurface, chosen)
+	raw, err := s.PreviewCustom(DetailSurface, chosen, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,4 +247,42 @@ func TestCustomFitMarksTilesTheRowHasNoRoomFor(t *testing.T) {
 		!slices.Equal(got.Tiles[0].Sizes, tileSizes) || !slices.Equal(got.Tiles[1].Sizes, beside) || !slices.Equal(got.Room, beside) {
 		t.Fatalf("a full-width battery has no row left beside a 2x2 cover, got %s", raw)
 	}
+}
+
+func TestSamplePreviewFillsOnlyWhatThePhoneLacks(t *testing.T) {
+	srv := newFakeServer(t)
+	s, conn, _ := startSession(t, srv, baseDir(t, srv.URL))
+	if err := s.Publish(`{"battery":{"percent":80,"charging":false}}`); err != nil {
+		t.Fatal(err)
+	}
+	conn.next(t)
+
+	const chosen = `[{"kind":"music","form":"cover","size":"2x2"},{"kind":"battery","form":"ring","size":"2x2"}]`
+	preview := func(sample bool) cardlayout.Card {
+		raw, err := s.PreviewCustom(DetailSurface, chosen, sample)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var card cardlayout.Card
+		if err := json.Unmarshal([]byte(raw), &card); err != nil {
+			t.Fatal(err)
+		}
+		if len(card.Detail) != 2 {
+			t.Fatalf("the preview should place both tiles, got %s", raw)
+		}
+		return card
+	}
+
+	live := preview(false)
+	if !live.Detail[0].Dimmed || live.Detail[0].Title != "" {
+		t.Fatalf("without samples the music tile should stay empty and dimmed, got %+v", live.Detail[0])
+	}
+	sampled := preview(true)
+	if music := sampled.Detail[0]; music.Dimmed || music.Title == "" {
+		t.Fatalf("with samples the music tile should show a track, got %+v", music)
+	}
+	if battery := sampled.Detail[1]; battery.Value != "80%" {
+		t.Fatalf("samples should not replace the phone's own battery, got %+v", battery)
+	}
+	conn.none(t, 300*time.Millisecond)
 }

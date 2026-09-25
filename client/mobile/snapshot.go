@@ -55,7 +55,10 @@ func parsePhoneSnapshot(raw string) (presence.Snapshot, error) {
 	if err := json.Unmarshal([]byte(raw), &in); err != nil {
 		return nil, fmt.Errorf("snapshot json: %w", err)
 	}
+	return in.presence(), nil
+}
 
+func (in phoneSnapshot) presence() presence.Snapshot {
 	snap := presence.New()
 	if m := in.Music; m != nil && m.Track != "" {
 		snap.Set(presence.KeySpotifyStatus, strings.ToLower(m.Status))
@@ -99,7 +102,7 @@ func parsePhoneSnapshot(raw string) (presence.Snapshot, error) {
 	if until := in.MeetingUntil; until != nil {
 		snap.Set(presence.KeyMeetingUntil, *until)
 	}
-	return snap, nil
+	return snap
 }
 
 func withoutPackage(filtered presence.Snapshot) presence.Snapshot {

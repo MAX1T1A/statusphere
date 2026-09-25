@@ -3,6 +3,7 @@ package mobile
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -309,19 +310,20 @@ func (s *Session) PreviewCard(surface, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return s.preview(surface, p)
+	return s.preview(surface, p, false)
 }
 
-// PreviewCustom is PreviewCard for tiles as SetCustom takes them.
-func (s *Session) PreviewCustom(surface, tilesJSON string) (string, error) {
+// PreviewCustom is PreviewCard for tiles as SetCustom takes them. With
+// sample set, every tile kind the phone has no data for shows made-up data.
+func (s *Session) PreviewCustom(surface, tilesJSON string, sample bool) (string, error) {
 	p, err := customPack(surface, tilesJSON)
 	if err != nil {
 		return "", err
 	}
-	return s.preview(surface, p)
+	return s.preview(surface, p, sample)
 }
 
-func (s *Session) preview(surface string, p *pack) (string, error) {
+func (s *Session) preview(surface string, p *pack, sample bool) (string, error) {
 	s.publishMu.Lock()
 	own := presence.New()
 	if s.current != nil {
@@ -329,10 +331,36 @@ func (s *Session) preview(surface string, p *pack) (string, error) {
 	}
 	s.publishMu.Unlock()
 
+	if sample {
+		fillMissingWithSamples(own, time.Now())
+	}
+
 	own.Set(presence.KeyAccountID, s.cfg.AccountID)
 	own.Set(presence.KeyLayout, withPack(readLayout(), surface, p.shownWithoutData()))
 	data, err := json.Marshal(cardlayout.Cards([]presence.Snapshot{own}, nil)[0])
 	return string(data), err
+}
+
+func fillMissingWithSamples(own presence.Snapshot, now time.Time) {
+	for _, part := range sampleParts(now) {
+		sample := part.presence()
+		if !slices.ContainsFunc(slices.Collect(maps.Keys(sample)), own.Has) {
+			maps.Copy(own, sample)
+		}
+	}
+}
+
+func sampleParts(now time.Time) []phoneSnapshot {
+	alarmAt := now.Add(7 * time.Hour).Unix()
+	meetingUntil := now.Add(40 * time.Minute).Unix()
+	return []phoneSnapshot{
+		{Music: &phoneMusic{Track: "Midnight City", Artist: "M83", Status: "Playing", PositionSeconds: 95, LengthSeconds: 243}},
+		{Video: &phoneVideo{Title: "Rust in 100 Seconds", Channel: "Fireship", Status: "Playing", PositionSeconds: 40, LengthSeconds: 150}},
+		{App: &phoneApp{Label: "Telegram"}},
+		{Battery: &phoneBattery{Percent: 76}},
+		{AlarmAt: &alarmAt},
+		{MeetingUntil: &meetingUntil},
+	}
 }
 
 func (p *pack) shownWithoutData() *pack {
