@@ -75,6 +75,9 @@ func Open(baseDir string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.RoomID == "" {
+		return nil, auth.ErrNoRoom
+	}
 	privacy.EnsureConfig()
 
 	s := &Session{
@@ -127,6 +130,17 @@ func (s *Session) Stop() {
 	}
 	cancel()
 	_ = s.ws.Close()
+}
+
+func (s *Session) Leave() (bool, error) {
+	ok, err := s.cfg.Leave()
+	if err != nil {
+		return false, err
+	}
+	if ok {
+		s.Stop()
+	}
+	return ok, nil
 }
 
 func (s *Session) Publish(snapshotJSON string) error {

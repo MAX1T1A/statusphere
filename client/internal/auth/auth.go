@@ -21,6 +21,7 @@ const fileName = "config.json"
 var client = &http.Client{Timeout: 10 * time.Second}
 
 var ErrNoAccount = errors.New("no account on this device and the invite names no server")
+var ErrNoRoom = errors.New("not in a room")
 
 type Config struct {
 	ServerURL     string `json:"server_url"`
@@ -46,7 +47,7 @@ func Load() (*Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
-	if cfg.Token == "" || cfg.ServerURL == "" || cfg.RoomID == "" {
+	if cfg.Token == "" || cfg.ServerURL == "" {
 		return nil, fmt.Errorf("incomplete config")
 	}
 	return &cfg, nil
@@ -231,11 +232,18 @@ func JoinInvite(invite string) (cfg *Config, registered bool, err error) {
 	return cfg, registered, cfg.Join(code)
 }
 
+const InviteLinkPrefix = "statusphere://join/"
+
 func EncodeInvite(serverURL, code string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(strings.TrimRight(serverURL, "/") + "\n" + code))
 }
 
+func InviteLink(serverURL, code string) string {
+	return InviteLinkPrefix + EncodeInvite(serverURL, code)
+}
+
 func DecodeInvite(s string) (serverURL, code string) {
+	s = strings.TrimPrefix(s, InviteLinkPrefix)
 	raw, err := base64.RawURLEncoding.DecodeString(s)
 	if err != nil {
 		return "", s
@@ -302,4 +310,22 @@ func (c *Config) Kick(accountID string) (bool, error) {
 		return false, err
 	}
 	return resp.OK, nil
+}
+
+// Leave keeps the account and device so a later JoinInvite reuses them.
+func (c *Config) Leave() (bool, error) {
+	if c.RoomID == "" {
+		return false, ErrNoRoom
+	}
+	var resp struct {
+		OK bool `json:"ok"`
+	}
+	if err := do(http.MethodPost, c.endpoint("/rooms/leave"), c.Token, map[string]string{"room": c.RoomID}, &resp); err != nil {
+		return false, err
+	}
+	if !resp.OK {
+		return false, nil
+	}
+	c.RoomID = ""
+	return true, c.Save()
 }

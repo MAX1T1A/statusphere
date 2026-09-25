@@ -75,6 +75,9 @@ func Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("no config found; register first:\n"+
 			"  statusphere --register https://your-server.com\n%w", err)
 	}
+	if cfg.RoomID == "" {
+		return fmt.Errorf("not in a room; join one first:\n  statusphere --join <invite>")
+	}
 
 	setupLogging()
 

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"rsc.io/qr"
+
 	"statusphere-client/internal/app"
 	"statusphere-client/internal/auth"
 	"statusphere-client/internal/presence"
@@ -39,11 +41,12 @@ var (
 	secretFlag    = flag.String("secret", "", "Account secret for --recover")
 	newDeviceFlag = flag.Bool("new-device", false, "Print a link code to add another device to this account")
 	inviteFlag    = flag.Bool("invite", false, "Print an invite code for the room you're in")
-	joinFlag      = flag.String("join", "", "Join a room using an invite <code>")
+	joinFlag      = flag.String("join", "", "Join a room using an invite <code> or a statusphere://join/... link")
 	devicesFlag   = flag.Bool("devices", false, "List devices on this account")
 	revokeFlag    = flag.String("revoke", "", "Revoke a device by <device_id>")
 	membersFlag   = flag.Bool("members", false, "List members of your room")
 	kickFlag      = flag.String("kick", "", "Remove a member by <account_id>")
+	leaveFlag     = flag.Bool("leave", false, "Leave the room you're in, keeping your account")
 	setNameFlag   = flag.String("set-name", "", "Set your account's display name")
 	postPhotoFlag = flag.String("post-photo", "", "Share <path> as your current photo status, replacing any previous one")
 
@@ -97,7 +100,9 @@ func dispatch() error {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Share with a friend:\n  statusphere --join %s\n", auth.EncodeInvite(c.ServerURL, code))
+			link := auth.InviteLink(c.ServerURL, code)
+			fmt.Printf("Share with a friend:\n  statusphere --join %s\n\n", auth.EncodeInvite(c.ServerURL, code))
+			fmt.Printf("Or scan:\n%s\n%s\n", link, renderQR(link))
 			return nil
 		})
 	case *joinFlag != "":
@@ -147,6 +152,19 @@ func dispatch() error {
 			fmt.Printf("Removed %s\n", *kickFlag)
 			return nil
 		})
+	case *leaveFlag:
+		return withConfig(func(c *auth.Config) error {
+			room := c.RoomID
+			ok, err := c.Leave()
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("cannot leave %s: you're the owner or not a member", room)
+			}
+			fmt.Printf("Left room %s\n", room)
+			return nil
+		})
 	default:
 		return run()
 	}
@@ -162,6 +180,44 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	return app.Run(ctx, app.Options{UI: *uiMode, Interval: *intervalArg})
+}
+
+// Explicit colors and quiet zone keep the code scannable on dark and light terminal themes.
+func renderQR(text string) string {
+	code, err := qr.Encode(text, qr.M)
+	if err != nil {
+		return fmt.Sprintf("(could not render QR: %v)", err)
+	}
+
+	const quietZone = 4
+	size := code.Size
+	black := func(x, y int) bool {
+		if x < 0 || y < 0 || x >= size || y >= size {
+			return false
+		}
+		return code.Black(x, y)
+	}
+	fgCode := func(on bool) string {
+		if on {
+			return "30"
+		}
+		return "97"
+	}
+	bgCode := func(on bool) string {
+		if on {
+			return "40"
+		}
+		return "107"
+	}
+
+	var b strings.Builder
+	for y := -quietZone; y < size+quietZone; y += 2 {
+		for x := -quietZone; x < size+quietZone; x++ {
+			fmt.Fprintf(&b, "\x1b[%s;%sm▀", fgCode(black(x, y)), bgCode(black(x, y+1)))
+		}
+		b.WriteString("\x1b[0m\n")
+	}
+	return b.String()
 }
 
 func runSetKind(kind string) error {
