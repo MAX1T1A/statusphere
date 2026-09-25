@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"statusphere-client/internal/auth"
@@ -43,13 +42,14 @@ import (
 const (
 	watchInterval = 2 * time.Second
 	refreshRate   = 1 * time.Second
-	memberPoll    = 15 * time.Second
+	photoPoll     = 15 * time.Second
 )
 
 type App struct {
 	ws       *transport.WSTransport
 	watcher  *watcher.Watcher
 	feed     *feed.Feed
+	roster   *feed.Roster
 	custom   *custom.Manager
 	notifier *notifier.Notifier
 
@@ -59,13 +59,6 @@ type App struct {
 	photos    *photo.Store
 	accountID string
 	cfg       *auth.Config
-
-	membersMu     sync.Mutex
-	members       []auth.MemberInfo
-	memberRefresh chan struct{}
-
-	labelsMu sync.Mutex
-	labels   map[string]string
 }
 
 // Options is how the process was started. Interval is the collect-and-publish
@@ -99,14 +92,14 @@ func Run(ctx context.Context, opts Options) error {
 	defer ws.Close()
 
 	a := &App{
-		ws:            ws,
-		feed:          feed.New(),
-		custom:        cm,
-		notifier:      notifier.New(cfg.AccountID),
-		photos:        photo.New(),
-		accountID:     cfg.AccountID,
-		cfg:           cfg,
-		memberRefresh: make(chan struct{}, 1),
+		ws:        ws,
+		feed:      feed.New(),
+		roster:    feed.NewRoster(cfg.Members),
+		custom:    cm,
+		notifier:  notifier.New(cfg.AccountID),
+		photos:    photo.New(),
+		accountID: cfg.AccountID,
+		cfg:       cfg,
 	}
 	a.watcher = watcher.New(coll, a.send, interval)
 	a.watcher.SetFilter(annotate)
@@ -211,13 +204,7 @@ func (a *App) send(snap presence.Snapshot) {
 	if err := a.ws.Send(snap); err != nil {
 		log.Printf("send: %v", err)
 	}
-	local := snap.Clone()
-	local.Set(presence.KeyDeviceID, a.cfg.DeviceID)
-	local.Set(presence.KeyAccountID, a.accountID)
-	if dn := a.ws.DeviceName(); dn != "" {
-		local.Set(presence.KeyDeviceName, dn)
-	}
-	a.feed.Update(local)
+	a.feed.UpdateOwn(snap, a.cfg.DeviceID, a.accountID, a.ws.DeviceName())
 }
 
 func (a *App) listen(ctx context.Context) {
@@ -239,7 +226,7 @@ func (a *App) listen(ctx context.Context) {
 
 		snap := presence.Snapshot(msg)
 		a.feed.Update(snap)
-		a.maybeRefreshMembers(snap.String(presence.KeyAccountID))
+		a.roster.Seen(snap.String(presence.KeyAccountID))
 		a.render()
 	})
 }
@@ -294,7 +281,7 @@ func (a *App) refresh(ctx context.Context) {
 }
 
 func (a *App) render() {
-	a.ui.UpdateDevices(a.roster())
+	a.ui.UpdateDevices(a.roster.Merge(a.feed.Snapshot()))
 	if a.jsonSink != nil {
 		a.jsonSink.UpdatePhotos(photoOutputs(a.photos.Snapshot()))
 	}
@@ -313,113 +300,15 @@ func photoOutputs(photos []photo.Photo) []jsonline.PhotoOut {
 	return out
 }
 
-func (a *App) roster() []presence.Snapshot {
-	live := a.feed.Snapshot()
-
-	a.membersMu.Lock()
-	members := a.members
-	a.membersMu.Unlock()
-
-	if len(members) == 0 {
-		return live
-	}
-
-	byAccount := map[string][]presence.Snapshot{}
-	for _, s := range live {
-		acc := s.String(presence.KeyAccountID)
-		if acc == "" {
-			acc = s.DeviceID()
-		}
-		if acc != "" {
-			byAccount[acc] = append(byAccount[acc], s)
-			a.rememberLabel(acc, s)
-		}
-	}
-
-	out := make([]presence.Snapshot, 0, len(members))
-	for _, m := range members {
-		if devs := byAccount[m.AccountID]; len(devs) > 0 {
-			for _, d := range devs {
-				d.Set(presence.KeyRole, m.Role)
-				if d.String(presence.KeyAccountName) == "" && m.Name != "" {
-					d.Set(presence.KeyAccountName, m.Name)
-				}
-			}
-			out = append(out, devs...)
-			continue
-		}
-		label := m.Name
-		if label == "" {
-			label = a.lastLabel(m.AccountID)
-		}
-		if label == "" {
-			label = shortID(m.AccountID)
-		}
-		out = append(out, presence.Snapshot{
-			presence.KeyAccountID:   m.AccountID,
-			presence.KeyAccountName: label,
-			presence.KeyRole:        m.Role,
-			presence.KeyOffline:     true,
-		})
-	}
-	return out
-}
-
-// rememberLabel keeps the label a device carried while it was online, so its owner
-// does not turn into a raw account id the moment the feed drops them.
-func (a *App) rememberLabel(accountID string, s presence.Snapshot) {
-	label := s.String(presence.KeyAccountName)
-	if label == "" {
-		label = s.DeviceName()
-	}
-	if label == "" {
-		return
-	}
-	a.labelsMu.Lock()
-	defer a.labelsMu.Unlock()
-	if a.labels == nil {
-		a.labels = map[string]string{}
-	}
-	a.labels[accountID] = label
-}
-
-func (a *App) lastLabel(accountID string) string {
-	a.labelsMu.Lock()
-	defer a.labelsMu.Unlock()
-	return a.labels[accountID]
-}
-
-func shortID(id string) string {
-	if len(id) > 8 {
-		return id[:8]
-	}
-	return id
-}
-
 func (a *App) pollMembers(ctx context.Context) {
-	a.refreshMembers()
-	ticker := time.NewTicker(memberPoll)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		case <-a.memberRefresh:
-		}
-		a.refreshMembers()
-	}
+	a.roster.Poll(ctx, a.membersRefreshed)
 }
 
-func (a *App) refreshMembers() {
-	members, err := a.cfg.Members()
+func (a *App) membersRefreshed(err error) {
 	if err != nil {
 		log.Printf("members: %v", err)
 		return
 	}
-	a.membersMu.Lock()
-	a.members = members
-	a.membersMu.Unlock()
 	a.render()
 }
 
@@ -439,7 +328,7 @@ func (a *App) handlePhotoStatus(msg map[string]any) {
 
 func (a *App) pollPhotos(ctx context.Context) {
 	a.refreshPhotos()
-	ticker := time.NewTicker(memberPoll)
+	ticker := time.NewTicker(photoPoll)
 	defer ticker.Stop()
 	for {
 		select {
@@ -529,27 +418,6 @@ func prunePhotoFiles(dir, accountID, keep string) {
 	}
 }
 
-func (a *App) maybeRefreshMembers(accountID string) {
-	if accountID == "" {
-		return
-	}
-	a.membersMu.Lock()
-	known := len(a.members) == 0
-	for _, m := range a.members {
-		if m.AccountID == accountID {
-			known = true
-			break
-		}
-	}
-	a.membersMu.Unlock()
-	if !known {
-		select {
-		case a.memberRefresh <- struct{}{}:
-		default:
-		}
-	}
-}
-
 func (a *App) SendMessage(to, text string) {
 	if err := a.ws.SendMessage(to, text); err != nil {
 		log.Printf("send message: %v", err)
@@ -565,7 +433,7 @@ func (a *App) Kick(accountID string) {
 			log.Printf("kick: %v", err)
 			return
 		}
-		a.refreshMembers()
+		a.membersRefreshed(a.roster.Refresh())
 	}()
 }
 

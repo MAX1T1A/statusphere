@@ -1,16 +1,14 @@
-package transport
+package config
 
 import (
 	"os"
 	"strings"
-
-	"statusphere-client/internal/config"
 )
 
-const nameFile = "device_name"
+const deviceNameFile = "device_name"
 
-func loadName() string {
-	if data, err := config.Read(nameFile); err == nil {
+func DeviceName() string {
+	if data, err := Read(deviceNameFile); err == nil {
 		if name := strings.TrimSpace(string(data)); name != "" {
 			return name
 		}
@@ -19,6 +17,6 @@ func loadName() string {
 	return hostname
 }
 
-func saveName(name string) {
-	_ = config.Write(nameFile, []byte(name), 0o600)
+func SetDeviceName(name string) error {
+	return Write(deviceNameFile, []byte(name), 0o600)
 }

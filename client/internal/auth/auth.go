@@ -6,10 +6,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -19,6 +19,8 @@ import (
 const fileName = "config.json"
 
 var client = &http.Client{Timeout: 10 * time.Second}
+
+var ErrNoAccount = errors.New("no account on this device and the invite names no server")
 
 type Config struct {
 	ServerURL     string `json:"server_url"`
@@ -111,17 +113,12 @@ func newSecret() string {
 	return hex.EncodeToString(b)
 }
 
-func deviceName() string {
-	name, _ := os.Hostname()
-	return name
-}
-
 func Register(serverURL string) (*Config, error) {
 	serverURL = strings.TrimRight(serverURL, "/")
 	secret := newSecret()
 
 	var resp accountResponse
-	body := map[string]string{"secret": secret, "name": deviceName()}
+	body := map[string]string{"secret": secret, "name": config.DeviceName()}
 	if err := do(http.MethodPost, serverURL+"/accounts/register", "", body, &resp); err != nil {
 		return nil, fmt.Errorf("register: %w", err)
 	}
@@ -144,7 +141,7 @@ func LinkDevice(serverURL, code string) (*Config, error) {
 	serverURL = strings.TrimRight(serverURL, "/")
 
 	var resp accountResponse
-	body := map[string]string{"code": code, "name": deviceName()}
+	body := map[string]string{"code": code, "name": config.DeviceName()}
 	if err := do(http.MethodPost, serverURL+"/devices/link", "", body, &resp); err != nil {
 		return nil, fmt.Errorf("link: %w", err)
 	}
@@ -177,7 +174,7 @@ func Recover(serverURL, accountID, secret string) (*Config, error) {
 	serverURL = strings.TrimRight(serverURL, "/")
 
 	var resp accountResponse
-	body := map[string]string{"account_id": accountID, "secret": secret, "name": deviceName()}
+	body := map[string]string{"account_id": accountID, "secret": secret, "name": config.DeviceName()}
 	if err := do(http.MethodPost, serverURL+"/accounts/recover", "", body, &resp); err != nil {
 		return nil, fmt.Errorf("recover: %w", err)
 	}
@@ -216,6 +213,22 @@ func (c *Config) Join(code string) error {
 	}
 	c.RoomID = resp.RoomID
 	return c.Save()
+}
+
+func JoinInvite(invite string) (cfg *Config, registered bool, err error) {
+	server, code := DecodeInvite(invite)
+
+	cfg, err = Load()
+	if err != nil || (server != "" && cfg.ServerURL != server) {
+		if server == "" {
+			return nil, false, ErrNoAccount
+		}
+		if cfg, err = Register(server); err != nil {
+			return nil, false, err
+		}
+		registered = true
+	}
+	return cfg, registered, cfg.Join(code)
 }
 
 func EncodeInvite(serverURL, code string) string {

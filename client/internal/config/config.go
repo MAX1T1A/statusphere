@@ -3,11 +3,21 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"sync/atomic"
 )
 
 const AppName = "statusphere"
 
+var baseDir atomic.Pointer[string]
+
+func SetDir(dir string) {
+	baseDir.Store(&dir)
+}
+
 func Dir() string {
+	if dir := baseDir.Load(); dir != nil && *dir != "" {
+		return *dir
+	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		dir = os.TempDir()

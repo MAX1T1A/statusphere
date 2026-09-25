@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -308,22 +309,14 @@ func isSet(name string) bool {
 }
 
 func joinRoom(arg string) error {
-	server, code := auth.DecodeInvite(arg)
-
-	cfg, err := auth.Load()
-	needRegister := err != nil || (server != "" && cfg.ServerURL != server)
-	if needRegister {
-		if server == "" {
-			return fmt.Errorf("no account found; register first: statusphere --register <server_url>")
-		}
-		cfg, err = auth.Register(server)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Account created on %s\n", server)
+	cfg, registered, err := auth.JoinInvite(arg)
+	if errors.Is(err, auth.ErrNoAccount) {
+		return fmt.Errorf("no account found; register first: statusphere --register <server_url>")
 	}
-
-	if err := cfg.Join(code); err != nil {
+	if registered {
+		fmt.Printf("Account created on %s\n", cfg.ServerURL)
+	}
+	if err != nil {
 		return err
 	}
 	fmt.Printf("Joined room %s\n", cfg.RoomID)

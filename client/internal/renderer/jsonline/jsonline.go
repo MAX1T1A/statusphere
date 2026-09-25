@@ -27,6 +27,10 @@ type payload struct {
 	Photos  []PhotoOut          `json:"photos"`
 }
 
+func Encode(members []presence.Snapshot, photos []PhotoOut) ([]byte, error) {
+	return json.Marshal(payload{Members: members, Photos: photos})
+}
+
 type JSONLine struct {
 	out  io.Writer
 	done chan struct{}
@@ -53,7 +57,7 @@ func (j *JSONLine) Stop() {
 func (j *JSONLine) UpdateDevices(devices []presence.Snapshot) {
 	j.mu.Lock()
 	j.members = devices
-	data, err := json.Marshal(payload{Members: j.members, Photos: j.photos})
+	data, err := Encode(j.members, j.photos)
 	j.mu.Unlock()
 	j.emit(data, err)
 }
@@ -61,7 +65,7 @@ func (j *JSONLine) UpdateDevices(devices []presence.Snapshot) {
 func (j *JSONLine) UpdatePhotos(photos []PhotoOut) {
 	j.mu.Lock()
 	j.photos = photos
-	data, err := json.Marshal(payload{Members: j.members, Photos: j.photos})
+	data, err := Encode(j.members, j.photos)
 	j.mu.Unlock()
 	j.emit(data, err)
 }

@@ -83,6 +83,13 @@ const (
 	GameStatusPlaying = "playing"
 )
 
+func SpotifyDisplay(artist, title string) string {
+	if artist == "" {
+		return title
+	}
+	return artist + " — " + title
+}
+
 func (s Snapshot) Kind() string {
 	if kind := s.String(KeyKind); kind != "" {
 		return kind

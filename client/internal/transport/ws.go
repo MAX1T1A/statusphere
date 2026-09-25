@@ -11,15 +11,16 @@ import (
 	"sync"
 	"time"
 
+	"statusphere-client/internal/config"
 	"statusphere-client/internal/presence"
 
 	"github.com/coder/websocket"
 )
 
 const (
-	reconnectDelay = 3 * time.Second
-	pingInterval   = 20 * time.Second
-	writeTimeout   = 5 * time.Second
+	reconnectDelay      = 3 * time.Second
+	defaultPingInterval = 20 * time.Second
+	writeTimeout        = 5 * time.Second
 )
 
 type WSTransport struct {
@@ -27,10 +28,12 @@ type WSTransport struct {
 	token    string
 	deviceID string
 
-	mu         sync.Mutex
-	deviceName string
-	conn       *websocket.Conn
-	cancel     context.CancelFunc
+	mu           sync.Mutex
+	deviceName   string
+	pingInterval time.Duration
+	onConnect    func()
+	conn         *websocket.Conn
+	cancel       context.CancelFunc
 }
 
 func NewWS(serverURL, token, deviceID, roomID string) *WSTransport {
@@ -40,10 +43,11 @@ func NewWS(serverURL, token, deviceID, roomID string) *WSTransport {
 	wsURL += "/ws?room=" + url.QueryEscape(roomID)
 
 	return &WSTransport{
-		url:        wsURL,
-		token:      token,
-		deviceID:   deviceID,
-		deviceName: loadName(),
+		url:          wsURL,
+		token:        token,
+		deviceID:     deviceID,
+		deviceName:   config.DeviceName(),
+		pingInterval: defaultPingInterval,
 	}
 }
 
@@ -69,13 +73,33 @@ func (t *WSTransport) SetDeviceName(name string) {
 	t.mu.Lock()
 	t.deviceName = name
 	t.mu.Unlock()
-	saveName(name)
+	_ = config.SetDeviceName(name)
 }
 
 func (t *WSTransport) DeviceName() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.deviceName
+}
+
+func (t *WSTransport) SetPingInterval(d time.Duration) {
+	t.mu.Lock()
+	t.pingInterval = d
+	t.mu.Unlock()
+}
+
+func (t *WSTransport) currentPingInterval() time.Duration {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.pingInterval
+}
+
+// OnConnect runs fn after every successful connect, the first one included:
+// the server forgets per-connection state such as the listen flag.
+func (t *WSTransport) OnConnect(fn func()) {
+	t.mu.Lock()
+	t.onConnect = fn
+	t.mu.Unlock()
 }
 
 func (t *WSTransport) drop() {
@@ -109,16 +133,7 @@ func (t *WSTransport) Send(snap presence.Snapshot) error {
 	if err != nil {
 		return err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
-	defer cancel()
-
-	if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
-		log.Printf("send error, dropping connection: %v", err)
-		t.drop()
-		return err
-	}
-	return nil
+	return t.write(conn, data)
 }
 
 func (t *WSTransport) SendMessage(to, text string) error {
@@ -134,12 +149,31 @@ func (t *WSTransport) SendMessage(to, text string) error {
 	if err != nil {
 		return err
 	}
+	return t.write(conn, data)
+}
 
+func (t *WSTransport) SendListen(on bool) error {
+	t.mu.Lock()
+	conn := t.conn
+	t.mu.Unlock()
+
+	if conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	data, err := json.Marshal(map[string]any{"type": "listen", "on": on})
+	if err != nil {
+		return err
+	}
+	return t.write(conn, data)
+}
+
+func (t *WSTransport) write(conn *websocket.Conn, data []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
 	defer cancel()
 
 	if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
-		log.Printf("send message error, dropping connection: %v", err)
+		log.Printf("send error, dropping connection: %v", err)
 		t.drop()
 		return err
 	}
@@ -194,23 +228,28 @@ func (t *WSTransport) connect(ctx context.Context) error {
 	t.mu.Lock()
 	t.conn = conn
 	t.cancel = pingCancel
+	onConnect := t.onConnect
 	t.mu.Unlock()
 
 	go t.pinger(pingCtx, conn)
 
 	log.Println("ws connected")
+	if onConnect != nil {
+		onConnect()
+	}
 	return nil
 }
 
 func (t *WSTransport) pinger(ctx context.Context, conn *websocket.Conn) {
-	ticker := time.NewTicker(pingInterval)
-	defer ticker.Stop()
+	timer := time.NewTimer(t.currentPingInterval())
+	defer timer.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-timer.C:
+			timer.Reset(t.currentPingInterval())
 			pingCtx, cancel := context.WithTimeout(ctx, writeTimeout)
 			err := conn.Ping(pingCtx)
 			cancel()

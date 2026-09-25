@@ -34,3 +34,20 @@ func TestWriteReadRoundTrip(t *testing.T) {
 		t.Fatalf("round trip = %q; want laptop", data)
 	}
 }
+
+func TestSetDirOverridesAndEmptyRestores(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", base)
+	files := t.TempDir()
+
+	config.SetDir(files)
+	t.Cleanup(func() { config.SetDir("") })
+	if config.File("config.json") != filepath.Join(files, "config.json") {
+		t.Fatalf("File() = %q; want under %q", config.File("config.json"), files)
+	}
+
+	config.SetDir("")
+	if config.Dir() != filepath.Join(base, config.AppName) {
+		t.Fatalf("Dir() after reset = %q", config.Dir())
+	}
+}

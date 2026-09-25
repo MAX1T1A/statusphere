@@ -7,7 +7,7 @@ import (
 	"statusphere-client/internal/presence"
 )
 
-const staleTTL = 5 * time.Minute
+const StaleTTL = 5 * time.Minute
 
 type Device struct {
 	Data     presence.Snapshot
@@ -40,6 +40,16 @@ func (f *Feed) Update(data presence.Snapshot) {
 	}
 }
 
+func (f *Feed) UpdateOwn(sent presence.Snapshot, deviceID, accountID, deviceName string) {
+	own := sent.Clone()
+	own.Set(presence.KeyDeviceID, deviceID)
+	own.Set(presence.KeyAccountID, accountID)
+	if deviceName != "" {
+		own.Set(presence.KeyDeviceName, deviceName)
+	}
+	f.Update(own)
+}
+
 func (f *Feed) Snapshot() []presence.Snapshot {
 	now := time.Now()
 
@@ -48,7 +58,7 @@ func (f *Feed) Snapshot() []presence.Snapshot {
 
 	result := make([]presence.Snapshot, 0, len(f.devices))
 	for id, dev := range f.devices {
-		if now.Sub(dev.LastSeen) > staleTTL {
+		if now.Sub(dev.LastSeen) > StaleTTL {
 			delete(f.devices, id)
 			continue
 		}
