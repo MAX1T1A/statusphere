@@ -13,13 +13,16 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -57,13 +61,16 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.PI
@@ -98,8 +105,9 @@ private val ART_TIMEOUT = 10.seconds
 
 @Composable
 fun RoomCards(accounts: List<Account>, selfId: String?, onLeft: () -> Unit, onIncognito: (IncognitoChoice) -> Unit) {
+    val pinnedId by PresenceService.pinned.collectAsStateWithLifecycle()
     RoomHeader(accounts, onLeft)
-    accounts.forEach { key(it.id) { AccountCard(it, pickable = it.id == selfId, onIncognito) } }
+    accounts.forEach { key(it.id) { AccountCard(it, pickable = it.id == selfId, pinned = it.id == pinnedId, onIncognito) } }
 }
 
 @Composable
@@ -163,49 +171,86 @@ private fun RoomHeader(accounts: List<Account>, onLeft: () -> Unit) {
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AccountCard(account: Account, pickable: Boolean, onIncognito: (IncognitoChoice) -> Unit) {
+private fun AccountCard(account: Account, pickable: Boolean, pinned: Boolean, onIncognito: (IncognitoChoice) -> Unit) {
+    val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     val presence = account.presence
     val card = account.card
     var detailShown by rememberSaveable { mutableStateOf(false) }
     var selfMenuOpen by remember { mutableStateOf(false) }
+    val (meetingShown, setMeetingShown) = if (pickable) rememberMeetingSwitch() else false to { _: Boolean -> }
     var renaming by rememberSaveable { mutableStateOf(false) }
     var styling by rememberSaveable { mutableStateOf(false) }
     Surface(
-        onClick = { detailShown = !detailShown },
-        enabled = card.detail.isNotEmpty(),
         shape = CardShape,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier
             .fillMaxWidth()
-            .alpha(if (presence == Presence.Offline) OFFLINE_ALPHA else 1f),
+            .alpha(if (presence == Presence.Offline) OFFLINE_ALPHA else 1f)
+            .combinedClickable(
+                enabled = if (pickable) card.detail.isNotEmpty() else true,
+                onClick = { if (card.detail.isNotEmpty()) detailShown = !detailShown },
+                onLongClick = if (pickable) null else {
+                    {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        PresenceService.togglePinned(context, account.id)
+                    }
+                },
+            ),
     ) {
         Column(Modifier.animateContentSize().padding(CardPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             IncognitoHeader(pickable, AvatarSize, onIncognito, avatar = { Avatar(account) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Box {
-                        Text(
-                            account.name,
-                            style = MaterialTheme.typography.bodyLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = if (pickable) Modifier.clickable { selfMenuOpen = true } else Modifier,
-                        )
-                        DropdownMenu(expanded = selfMenuOpen, onDismissRequest = { selfMenuOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.self_rename)) },
-                                onClick = {
-                                    selfMenuOpen = false
-                                    renaming = true
-                                },
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (pinned) {
+                            Icon(
+                                painterResource(R.drawable.ic_pin),
+                                contentDescription = stringResource(R.string.pinned_friend),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp),
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.self_appearance)) },
-                                onClick = {
-                                    selfMenuOpen = false
-                                    styling = true
-                                },
+                        }
+                        Box {
+                            Text(
+                                account.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = if (pickable) Modifier.clickable { selfMenuOpen = true } else Modifier,
                             )
+                            DropdownMenu(expanded = selfMenuOpen, onDismissRequest = { selfMenuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.self_rename)) },
+                                    onClick = {
+                                        selfMenuOpen = false
+                                        renaming = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.self_appearance)) },
+                                    onClick = {
+                                        selfMenuOpen = false
+                                        styling = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(stringResource(R.string.meeting_toggle_title))
+                                            Text(
+                                                stringResource(R.string.meeting_toggle_note),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.outline,
+                                            )
+                                        }
+                                    },
+                                    trailingIcon = { Switch(checked = meetingShown, onCheckedChange = null) },
+                                    onClick = { setMeetingShown(!meetingShown) },
+                                    modifier = Modifier.widthIn(max = 320.dp),
+                                )
+                            }
                         }
                     }
                     Text(

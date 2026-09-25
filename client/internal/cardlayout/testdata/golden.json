@@ -848,5 +848,78 @@
         }
       ]
     }
+  ],
+  "alarm_and_meeting_row": [
+    {
+      "account_id": "priya",
+      "row": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "alarm",
+          "form": "clock",
+          "color": "tertiaryContainer",
+          "value": "1790003600"
+        },
+        {
+          "col": 1,
+          "row": 0,
+          "cols": 2,
+          "rows": 1,
+          "type": "meeting",
+          "form": "banner",
+          "color": "errorContainer",
+          "value": "1790007200"
+        }
+      ],
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "alarm",
+          "form": "clock",
+          "value": "1790003600"
+        },
+        {
+          "col": 1,
+          "row": 0,
+          "cols": 2,
+          "rows": 1,
+          "type": "meeting",
+          "form": "banner",
+          "value": "1790007200"
+        }
+      ]
+    }
+  ],
+  "alarm_and_meeting_missing": [
+    {
+      "account_id": "walt",
+      "row": null,
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "alarm",
+          "form": "clock",
+          "dimmed": true
+        },
+        {
+          "col": 1,
+          "row": 0,
+          "cols": 2,
+          "rows": 1,
+          "type": "meeting",
+          "form": "banner",
+          "dimmed": true
+        }
+      ]
+    }
   ]
 }

@@ -50,7 +50,7 @@ function qmlBinding(name) {
     return new Function("root", "CardLayouts", "Translation", `return (function () ${block(at)})();`);
 }
 
-const functions = ["deviceRank", "stalled", "compareDevices", "labelDevice", "trackKey", "musicDevices", "gameDevices", "videoDevices", "currentPhotoFor", "percentForField", "iconForField", "formatUptime", "systemFieldsFor", "fieldsFor", "labelForKey", "detailFieldsFor", "fieldFor", "layoutFor", "ownsSurface", "sanitizeTile", "expandWildcardTiles", "surfaceTiles", "deviceForTile", "tileHasData", "hiddenFor"];
+const functions = ["deviceRank", "stalled", "compareDevices", "labelDevice", "trackKey", "musicDevices", "gameDevices", "videoDevices", "alarmDevices", "meetingDevices", "currentPhotoFor", "percentForField", "iconForField", "formatUptime", "systemFieldsFor", "fieldsFor", "labelForKey", "detailFieldsFor", "fieldFor", "layoutFor", "ownsSurface", "sanitizeTile", "expandWildcardTiles", "surfaceTiles", "deviceForTile", "tileHasData", "hiddenFor"];
 
 function roomFor(input) {
     const root = {
@@ -121,6 +121,12 @@ function tileOut(root, account, p) {
             "subtitle": d?.video_channel || undefined,
             "percent": d?.video_length > 0 ? (d.video_position ?? 0) / d.video_length * 100 : undefined
         });
+    } else if (type.reads === "alarm") {
+        const d = root.alarmDevices(account)[0];
+        out.value = d?.alarm_at !== undefined ? String(d.alarm_at) : undefined;
+    } else if (type.reads === "meeting") {
+        const d = root.meetingDevices(account)[0];
+        out.value = d?.meeting_until !== undefined ? String(d.meeting_until) : undefined;
     } else if (type.art === "photo") {
         out.image_url = root.currentPhotoFor(account)?.path || undefined;
     } else if (type.art === "picture") {

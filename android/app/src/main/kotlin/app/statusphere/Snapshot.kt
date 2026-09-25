@@ -1,5 +1,6 @@
 package app.statusphere
 
+import java.time.Instant
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -35,6 +36,8 @@ data class PhoneSnapshot(
     val video: Video? = null,
     val app: ForegroundApp? = null,
     val battery: Battery? = null,
+    val alarmAt: Instant? = null,
+    val meetingUntil: Instant? = null,
 ) {
     fun playing(now: Playback?): PhoneSnapshot = copy(music = now as? Music, video = now as? Video)
 
@@ -71,6 +74,8 @@ data class PhoneSnapshot(
                 put("charging", it.charging)
             })
         }
+        alarmAt?.let { put("alarm_at", it.epochSecond) }
+        meetingUntil?.let { put("meeting_until", it.epochSecond) }
     }.toString()
 }
 
@@ -79,11 +84,14 @@ data class Game(val name: String, val artUrl: String)
 sealed interface Presence {
     data object Offline : Presence
     data class Incognito(val note: String) : Presence
-    data class Online(val app: String, val music: Music?, val game: Game?) : Presence
+    data class Online(val app: String, val music: Music?, val video: Video?, val game: Game?) : Presence
 }
 
 // Wire names must match client/internal/cardlayout/cardlayout.go.
-enum class TileType(val wire: String) { SCALAR("scalar"), MUSIC("music"), GAME("game"), VIDEO("video"), PHOTO("photo"), PICTURE("picture") }
+enum class TileType(val wire: String) {
+    SCALAR("scalar"), MUSIC("music"), GAME("game"), VIDEO("video"),
+    ALARM("alarm"), MEETING("meeting"), PHOTO("photo"), PICTURE("picture"),
+}
 
 enum class ScalarForm(val wire: String) {
     RING("ring"),
@@ -161,6 +169,11 @@ private const val GAME_DISPLAY = "game_display"
 private const val GAME_HEADER_URL = "game_header_url"
 private const val GAME_HERO_URL = "game_hero_url"
 private const val GAME_PLAYING = "playing"
+private const val VIDEO_STATUS = "video_status"
+private const val VIDEO_TITLE = "video_title"
+private const val VIDEO_CHANNEL = "video_channel"
+private const val VIDEO_POSITION = "video_position"
+private const val VIDEO_LENGTH = "video_length"
 
 private const val SHORT_ID_LENGTH = 8
 private const val STALE_GAP_SECONDS = 45L
@@ -194,6 +207,7 @@ private fun accountOf(id: String, snapshots: List<JSONObject>): Account {
     val online = Presence.Online(
         app = primary.optString(ACTIVE_APP),
         music = devices.firstNotNullOfOrNull { musicOf(it) },
+        video = devices.firstNotNullOfOrNull { videoOf(it) },
         game = devices.firstNotNullOfOrNull { gameOf(it) },
     )
     return Account(id, name, online)
@@ -221,6 +235,18 @@ private fun musicOf(device: JSONObject): Music? {
         status = status,
         positionSeconds = device.optInt(SPOTIFY_POSITION),
         lengthSeconds = device.optInt(SPOTIFY_LENGTH),
+    )
+}
+
+private fun videoOf(device: JSONObject): Video? {
+    val status = PlaybackStatus.entries.find { it.wire == device.optString(VIDEO_STATUS) } ?: return null
+    val title = device.text(VIDEO_TITLE) ?: return null
+    return Video(
+        title = title,
+        channel = device.optString(VIDEO_CHANNEL),
+        status = status,
+        positionSeconds = device.optInt(VIDEO_POSITION),
+        lengthSeconds = device.optInt(VIDEO_LENGTH),
     )
 }
 

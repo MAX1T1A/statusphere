@@ -354,5 +354,47 @@
         "_layout": {"updated_at": 1790000000, "detail": [{"type": "video", "form": "player", "size": "4x1", "onMissing": "dim"}]}
       }
     ]
+  },
+  "alarm_and_meeting_row": {
+    "members": [
+      {
+        "device_id": "p1",
+        "account_id": "priya",
+        "account_name": "Priya",
+        "device_name": "phone",
+        "last_seen": 1790000000,
+        "alarm_at": 1790003600,
+        "meeting_until": 1790007200,
+        "_layout": {
+          "updated_at": 1790000000,
+          "row": [
+            {"type": "alarm", "form": "clock", "size": "1x1", "color": "tertiaryContainer", "onMissing": "hide"},
+            {"type": "meeting", "form": "banner", "size": "2x1", "color": "errorContainer", "onMissing": "hide"}
+          ],
+          "detail": [
+            {"type": "alarm", "size": "1x1", "onMissing": "dim"},
+            {"type": "meeting", "size": "2x1", "onMissing": "dim"}
+          ]
+        }
+      }
+    ]
+  },
+  "alarm_and_meeting_missing": {
+    "members": [
+      {
+        "device_id": "w1",
+        "account_id": "walt",
+        "account_name": "Walt",
+        "last_seen": 1790000000,
+        "active_app": "Telegram",
+        "_layout": {
+          "updated_at": 1790000000,
+          "detail": [
+            {"type": "alarm", "form": "clock", "size": "1x1", "onMissing": "dim"},
+            {"type": "meeting", "form": "banner", "size": "2x1", "onMissing": "dim"}
+          ]
+        }
+      }
+    ]
   }
 }

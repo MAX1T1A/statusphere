@@ -19,6 +19,7 @@ import android.text.format.DateFormat
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import app.statusphere.mobile.Mobile
 import app.statusphere.mobile.RoomListener
 import app.statusphere.mobile.Session
@@ -29,6 +30,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -63,7 +65,10 @@ private const val CHANNEL_ID = "presence"
 private const val NOTIFICATION_ID = 1
 private const val ACTION_GO_INCOGNITO = "app.statusphere.action.GO_INCOGNITO"
 private const val ACTION_GO_VISIBLE = "app.statusphere.action.GO_VISIBLE"
+private const val ACTION_MEETING_SETTING_CHANGED = "app.statusphere.action.MEETING_SETTING_CHANGED"
 private const val EXTRA_MINUTES = "minutes"
+private const val SETTINGS_PREFS = "settings"
+private const val KEY_PINNED_ACCOUNT = "pinned_account_id"
 
 class PresenceService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -73,6 +78,8 @@ class PresenceService : Service() {
     private lateinit var music: MusicTracker
     private lateinit var apps: ForegroundAppTracker
     private lateinit var battery: BatteryTracker
+    private lateinit var alarm: AlarmTracker
+    private lateinit var meeting: MeetingTracker
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -110,9 +117,13 @@ class PresenceService : Service() {
     override fun onCreate() {
         super.onCreate()
         startInForeground()
+        createLiveChannel(this)
+        mutablePinned.value = pinnedAccountId(this)
         music = MusicTracker(this) { now -> snapshot.update { it.playing(now) } }
         apps = ForegroundAppTracker(this)
         battery = BatteryTracker(this) { level -> snapshot.update { it.copy(battery = level) } }
+        alarm = AlarmTracker(this) { at -> snapshot.update { it.copy(alarmAt = at) } }
+        meeting = MeetingTracker(this) { until -> snapshot.update { it.copy(meetingUntil = until) } }
         screenOn.value = getSystemService(PowerManager::class.java).isInteractive
         val screenEvents = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
@@ -127,12 +138,15 @@ class PresenceService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         music.start()
         battery.start()
+        alarm.start()
+        meeting.start()
         val action = intent?.action
         if (action == ACTION_GO_INCOGNITO || action == ACTION_GO_VISIBLE) {
             val on = action == ACTION_GO_INCOGNITO
             val minutes = intent.getLongExtra(EXTRA_MINUTES, Mobile.IncognitoUntilTurnedOff)
             scope.launch { setIncognito(session.filterNotNull().first(), on, minutes) }
         }
+        if (action == ACTION_MEETING_SETTING_CHANGED) meeting.restart()
         return START_STICKY
     }
 
@@ -142,9 +156,12 @@ class PresenceService : Service() {
         getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback)
         music.stop()
         battery.stop()
+        alarm.stop()
+        meeting.stop()
         session.value?.let { thread(name = "session_stop") { it.stop() } }
         session.value = null
         mutableStatus.update { it.copy(room = null, me = null) }
+        clearLiveNotification(this)
         super.onDestroy()
     }
 
@@ -178,6 +195,7 @@ class PresenceService : Service() {
         }
         scope.launch { publishThrottled(s) }
         scope.launch { mirrorRoomToWidget(this@PresenceService, status) }
+        scope.launch { mirrorPinnedToNotification(this@PresenceService, status) }
         val me = status.map { it.me }.distinctUntilChanged()
         scope.launch { me.collect(::showNotification) }
         scope.launch { me.collectLatest { it?.incognitoUntil?.let { until -> expireIncognito(s, until) } } }
@@ -261,8 +279,20 @@ class PresenceService : Service() {
         private val mutableStatus = MutableStateFlow(PresenceStatus())
         val status: StateFlow<PresenceStatus> = mutableStatus.asStateFlow()
         private val session = MutableStateFlow<Session?>(null)
+        private val mutablePinned = MutableStateFlow<String?>(null)
+        val pinned: StateFlow<String?> = mutablePinned.asStateFlow()
 
         fun baseDir(context: Context): String = context.filesDir.path
+
+        fun pinnedAccountId(context: Context): String? = settings(context).getString(KEY_PINNED_ACCOUNT, null)
+
+        fun togglePinned(context: Context, accountId: String) {
+            val next = if (mutablePinned.value == accountId) null else accountId
+            settings(context).edit { putString(KEY_PINNED_ACCOUNT, next) }
+            mutablePinned.value = next
+        }
+
+        fun settings(context: Context) = context.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
 
         fun isJoined(context: Context): Boolean = runCatching { Mobile.open(baseDir(context)) }.isSuccess
 
@@ -300,10 +330,40 @@ class PresenceService : Service() {
             runCatching { runningSession().setPack(surface, id) }
         }
 
+        suspend fun customTiles(surface: String): Result<CustomTiles> = withContext(Dispatchers.IO) {
+            runCatching { CustomTiles(tileKindsOf(Mobile.tileKinds()), customTilesOf(runningSession().customTiles(surface))) }
+        }
+
+        suspend fun previewCustom(surface: String, tiles: List<CustomTile>): Result<Card> = withContext(Dispatchers.IO) {
+            runCatching { parseCard(runningSession().previewCustom(surface, tiles.toJSON())) }
+        }
+
+        private val editScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private var pendingCustom: Job? = null
+
+        // The server drops a presence frame sent within 0.5 s of the previous one, so
+        // a burst of edits must reach it as one save; editScope outlives the sheet.
+        fun saveCustomSoon(surface: String, tiles: List<CustomTile>) {
+            pendingCustom?.cancel()
+            pendingCustom = editScope.launch {
+                delay(PUBLISH_MIN_INTERVAL)
+                runCatching { runningSession().setCustom(surface, tiles.toJSON()) }
+                    .onFailure { Log.e(TAG, "custom_tiles_save_failed surface=$surface detail=${it.message}") }
+            }
+        }
+
         private fun runningSession(): Session = checkNotNull(session.value) { "presence service is not running" }
 
         fun setIncognito(context: Context, on: Boolean, minutes: Long) {
             ContextCompat.startForegroundService(context, incognitoCommand(context, on, minutes))
+        }
+
+        // Neither the toggle nor a permission grant fires a broadcast MeetingTracker
+        // listens for, so the screen calls this after either one changes.
+        fun refreshMeetingTracking(context: Context) {
+            ContextCompat.startForegroundService(
+                context, Intent(context, PresenceService::class.java).setAction(ACTION_MEETING_SETTING_CHANGED),
+            )
         }
 
         private fun incognitoCommand(context: Context, on: Boolean, minutes: Long) =

@@ -1,5 +1,7 @@
 package app.statusphere
 
+import android.content.Context
+import android.text.format.DateFormat
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -42,7 +44,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,6 +56,8 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
+import java.time.Instant
+import java.util.Date
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -136,6 +142,8 @@ private fun TileSurface(tile: Tile, modifier: Modifier) {
             when (tile.type) {
                 TileType.MUSIC -> CoverTile(tile, inset)
                 TileType.VIDEO -> VideoTile(tile, inset)
+                TileType.ALARM -> AlarmTile(tile, inset)
+                TileType.MEETING -> MeetingTile(tile, inset)
                 TileType.GAME, TileType.PHOTO, TileType.PICTURE -> PictureTile(tile, inset)
                 TileType.SCALAR, null -> when (tile.form) {
                     ScalarForm.RING -> RingTile(tile, inset)
@@ -439,6 +447,40 @@ private fun VideoTile(tile: Tile, modifier: Modifier) {
                 WavyProgress(tile.fraction, wavy = false, Modifier.fillMaxWidth().padding(top = 4.dp), content, content.copy(alpha = TRACK_ALPHA))
             }
         }
+    }
+}
+
+// tile.value is the field's unix timestamp: each viewer's device renders it in its
+// own timezone, which a phone publishing a pre-formatted string could not do.
+private fun localClockTime(context: Context, at: Instant): String = DateFormat.getTimeFormat(context).format(Date.from(at))
+
+@Composable
+private fun AlarmTile(tile: Tile, modifier: Modifier) {
+    val context = LocalContext.current
+    val due = tile.value.toLongOrNull()?.let(Instant::ofEpochSecond)?.takeIf { it.isAfter(Instant.now()) }
+    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.ic_tile_alarm), contentDescription = null, tint = mutedColor(), modifier = Modifier.size(TileIconSize))
+            TileLabel(stringResource(R.string.tile_alarm), Modifier.weight(1f))
+        }
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text(due?.let { localClockTime(context, it) } ?: MISSING_VALUE, autoSize = ValueSize, maxLines = 1, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+private fun MeetingTile(tile: Tile, modifier: Modifier) {
+    val context = LocalContext.current
+    val due = tile.value.toLongOrNull()?.let(Instant::ofEpochSecond)?.takeIf { it.isAfter(Instant.now()) }
+    Row(modifier.fillMaxSize(), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
+        Icon(painterResource(R.drawable.ic_tile_event_busy), contentDescription = null, modifier = Modifier.size(TileIconSize))
+        Text(
+            due?.let { stringResource(R.string.tile_meeting_until, localClockTime(context, it)) } ?: MISSING_VALUE,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

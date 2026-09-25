@@ -175,6 +175,31 @@ func TestVideoFollowsTheApps(t *testing.T) {
 	}
 }
 
+func TestAlarmAndMeetingFollowTheApps(t *testing.T) {
+	busy := func() presence.Snapshot {
+		s := sample()
+		s.Set(presence.KeyAlarmAt, 1790010000)
+		s.Set(presence.KeyMeetingUntil, 1790020000)
+		return s
+	}
+	if _, ok := New(Default()).Apply(busy()).Float(presence.KeyAlarmAt); !ok {
+		t.Error("visible mode should publish the alarm")
+	}
+	if _, ok := New(Default()).Apply(busy()).Float(presence.KeyMeetingUntil); !ok {
+		t.Error("visible mode should publish the meeting")
+	}
+
+	p := Default()
+	p.Mode = ModeIncognito
+	out := New(p).Apply(busy())
+	if out.Has(presence.KeyAlarmAt) {
+		t.Error("incognito still carries the alarm")
+	}
+	if out.Has(presence.KeyMeetingUntil) {
+		t.Error("incognito still carries the meeting")
+	}
+}
+
 // A field no collector version knows about must not walk out while hidden.
 func TestUnknownKeysDroppedWhileHidden(t *testing.T) {
 	p := Default()

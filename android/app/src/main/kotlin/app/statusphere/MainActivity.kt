@@ -26,6 +26,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
@@ -236,6 +237,26 @@ private fun PermissionsChecklist() {
             PermissionRow(R.string.permission_battery, permissions.batteryUnrestricted) {
                 openSettings(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
             }
+        }
+    }
+}
+
+@Composable
+internal fun rememberMeetingSwitch(): Pair<Boolean, (Boolean) -> Unit> {
+    val context = LocalContext.current
+    var enabled by remember { mutableStateOf(MeetingSettings.isEnabled(context)) }
+    val requestCalendar = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) enabled = false
+        MeetingSettings.setEnabled(context, enabled)
+        PresenceService.refreshMeetingTracking(context)
+    }
+    return enabled to { checked ->
+        enabled = checked
+        if (checked) {
+            requestCalendar.launch(Manifest.permission.READ_CALENDAR)
+        } else {
+            MeetingSettings.setEnabled(context, false)
+            PresenceService.refreshMeetingTracking(context)
         }
     }
 }

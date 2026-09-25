@@ -96,6 +96,9 @@ var (
 		presence.KeyVideoPosition, presence.KeyVideoLength,
 	}
 
+	alarmKeys   = []string{presence.KeyAlarmAt}
+	meetingKeys = []string{presence.KeyMeetingUntil}
+
 	systemKeys = []string{
 		presence.KeyUptimeHours, presence.KeyCPUPercent, presence.KeyCPUCount, presence.KeyMemUsedMB,
 		presence.KeyMemTotalMB, presence.KeyLoadAvg1m, presence.KeyPackageCount,
@@ -117,7 +120,7 @@ var (
 
 func keySet(extra ...string) map[string]bool {
 	set := make(map[string]bool)
-	for _, group := range [][]string{appKeys, gameKeys, musicKeys, videoKeys, systemKeys, extra} {
+	for _, group := range [][]string{appKeys, gameKeys, musicKeys, videoKeys, alarmKeys, meetingKeys, systemKeys, extra} {
 		for _, k := range group {
 			set[k] = true
 		}
@@ -238,10 +241,14 @@ func (f *Filter) Apply(snap presence.Snapshot) presence.Snapshot {
 		drop(out, musicKeys...)
 	}
 	// The generic mpris title is whatever any player has open, a browser video
-	// included, so it goes with the apps rather than with Spotify.
+	// included, so it goes with the apps rather than with Spotify. The alarm and
+	// the meeting are schedule information, same sensitivity as what app you
+	// have open, so they follow apps too.
 	if apps != LevelFull {
 		drop(out, presence.KeyMusic)
 		drop(out, videoKeys...)
+		drop(out, alarmKeys...)
+		drop(out, meetingKeys...)
 	}
 
 	if prof.System == LevelOff {
