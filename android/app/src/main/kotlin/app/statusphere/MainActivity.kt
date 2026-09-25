@@ -194,7 +194,6 @@ private fun MainScreen(onLeft: () -> Unit) {
         )
     }
     PermissionsChecklist()
-    MeetingToggle()
 }
 
 @Composable
@@ -243,7 +242,7 @@ private fun PermissionsChecklist() {
 }
 
 @Composable
-private fun MeetingToggle() {
+internal fun rememberMeetingSwitch(): Pair<Boolean, (Boolean) -> Unit> {
     val context = LocalContext.current
     var enabled by remember { mutableStateOf(MeetingSettings.isEnabled(context)) }
     val requestCalendar = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -251,32 +250,13 @@ private fun MeetingToggle() {
         MeetingSettings.setEnabled(context, enabled)
         PresenceService.refreshMeetingTracking(context)
     }
-    Surface(shape = CardShape, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.padding(CardPadding).fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(stringResource(R.string.meeting_toggle_title), style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    stringResource(R.string.meeting_toggle_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-            }
-            Switch(
-                checked = enabled,
-                onCheckedChange = { checked ->
-                    enabled = checked
-                    if (checked) {
-                        requestCalendar.launch(Manifest.permission.READ_CALENDAR)
-                    } else {
-                        MeetingSettings.setEnabled(context, false)
-                        PresenceService.refreshMeetingTracking(context)
-                    }
-                },
-            )
+    return enabled to { checked ->
+        enabled = checked
+        if (checked) {
+            requestCalendar.launch(Manifest.permission.READ_CALENDAR)
+        } else {
+            MeetingSettings.setEnabled(context, false)
+            PresenceService.refreshMeetingTracking(context)
         }
     }
 }

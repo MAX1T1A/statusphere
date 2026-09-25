@@ -22,6 +22,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -178,6 +180,7 @@ private fun AccountCard(account: Account, pickable: Boolean, pinned: Boolean, on
     val card = account.card
     var detailShown by rememberSaveable { mutableStateOf(false) }
     var selfMenuOpen by remember { mutableStateOf(false) }
+    val (meetingShown, setMeetingShown) = if (pickable) rememberMeetingSwitch() else false to { _: Boolean -> }
     var renaming by rememberSaveable { mutableStateOf(false) }
     var styling by rememberSaveable { mutableStateOf(false) }
     Surface(
@@ -231,6 +234,21 @@ private fun AccountCard(account: Account, pickable: Boolean, pinned: Boolean, on
                                         selfMenuOpen = false
                                         styling = true
                                     },
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(stringResource(R.string.meeting_toggle_title))
+                                            Text(
+                                                stringResource(R.string.meeting_toggle_note),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.outline,
+                                            )
+                                        }
+                                    },
+                                    trailingIcon = { Switch(checked = meetingShown, onCheckedChange = null) },
+                                    onClick = { setMeetingShown(!meetingShown) },
+                                    modifier = Modifier.widthIn(max = 320.dp),
                                 )
                             }
                         }
