@@ -5,9 +5,10 @@ import pytest
 from app.modules.rooms.application.commands.create_invite import CreateInvite, CreateInviteUseCase
 from app.modules.rooms.application.commands.join_room import JoinRoom, JoinRoomUseCase
 from app.modules.rooms.application.commands.kick_member import KickMember, KickMemberUseCase
+from app.modules.rooms.application.commands.leave_room import LeaveRoom, LeaveRoomUseCase
 from app.modules.rooms.application.queries.list_members import ListMembers, ListMembersUseCase
 from app.modules.rooms.domain.exceptions import InvalidOrExpiredInvite, NotRoomMember
-from app.modules.rooms.domain.policy import can_kick
+from app.modules.rooms.domain.policy import can_kick, can_leave
 from app.modules.rooms.infrastructure.invite_codec import InviteCodec
 from app.shared_kernel.actor import Actor
 
@@ -19,6 +20,12 @@ def test_can_kick_policy():
     assert can_kick("o", "o", "member") is False
     assert can_kick("o", "m", "owner") is False
     assert can_kick("o", "m", None) is False
+
+
+def test_can_leave_policy():
+    assert can_leave("member") is True
+    assert can_leave("owner") is False
+    assert can_leave(None) is False
 
 
 def test_invite_codec_round_trip():
@@ -113,6 +120,23 @@ async def test_kick_member_ok():
 async def test_kick_self_denied():
     uc = KickMemberUseCase(FakeReader(owned="r1", role="member"), lambda: FakeUoW())
     assert await uc.execute(KickMember(actor=ACTOR, target_account_id="owner1")) is False
+
+
+async def test_leave_member_ok():
+    uow = FakeUoW()
+    uc = LeaveRoomUseCase(FakeReader(role="member"), lambda: uow)
+    assert await uc.execute(LeaveRoom(actor=ACTOR, room="r1")) is True
+    assert uow.memberships.removed == [("r1", "owner1")]
+
+
+async def test_leave_owner_denied():
+    uc = LeaveRoomUseCase(FakeReader(role="owner"), lambda: FakeUoW())
+    assert await uc.execute(LeaveRoom(actor=ACTOR, room="r1")) is False
+
+
+async def test_leave_not_member_denied():
+    uc = LeaveRoomUseCase(FakeReader(role=None), lambda: FakeUoW())
+    assert await uc.execute(LeaveRoom(actor=ACTOR, room="r1")) is False
 
 
 async def test_list_members_ok():

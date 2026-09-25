@@ -42,6 +42,7 @@ from app.modules.realtime.infrastructure.hub import RealtimeHub
 from app.modules.rooms.application.commands.create_invite import CreateInvite, CreateInviteUseCase
 from app.modules.rooms.application.commands.join_room import JoinRoom, JoinRoomUseCase
 from app.modules.rooms.application.commands.kick_member import KickMember, KickMemberUseCase
+from app.modules.rooms.application.commands.leave_room import LeaveRoom, LeaveRoomUseCase
 from app.modules.rooms.application.queries.list_members import ListMembers, ListMembersUseCase
 from app.modules.rooms.infrastructure.invite_codec import InviteCodec
 from app.modules.rooms.infrastructure.readers import MembershipReader
@@ -94,6 +95,7 @@ def build_container(pool: Pool, started_at: float = 0.0, version: str = "") -> C
     bus.register(CreateInvite, CreateInviteUseCase(membership_reader, invite_codec))
     bus.register(JoinRoom, JoinRoomUseCase(rooms_uow, invite_codec))
     bus.register(KickMember, KickMemberUseCase(membership_reader, rooms_uow))
+    bus.register(LeaveRoom, LeaveRoomUseCase(membership_reader, rooms_uow))
     bus.register(ListMembers, ListMembersUseCase(membership_reader))
 
     message_reader = MessageReader(pool)
