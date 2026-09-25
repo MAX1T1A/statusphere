@@ -63,6 +63,7 @@ private const val CHANNEL_ID = "presence"
 private const val NOTIFICATION_ID = 1
 private const val ACTION_GO_INCOGNITO = "app.statusphere.action.GO_INCOGNITO"
 private const val ACTION_GO_VISIBLE = "app.statusphere.action.GO_VISIBLE"
+private const val ACTION_MEETING_SETTING_CHANGED = "app.statusphere.action.MEETING_SETTING_CHANGED"
 private const val EXTRA_MINUTES = "minutes"
 
 class PresenceService : Service() {
@@ -73,6 +74,8 @@ class PresenceService : Service() {
     private lateinit var music: MusicTracker
     private lateinit var apps: ForegroundAppTracker
     private lateinit var battery: BatteryTracker
+    private lateinit var alarm: AlarmTracker
+    private lateinit var meeting: MeetingTracker
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -113,6 +116,8 @@ class PresenceService : Service() {
         music = MusicTracker(this) { now -> snapshot.update { it.playing(now) } }
         apps = ForegroundAppTracker(this)
         battery = BatteryTracker(this) { level -> snapshot.update { it.copy(battery = level) } }
+        alarm = AlarmTracker(this) { at -> snapshot.update { it.copy(alarmAt = at) } }
+        meeting = MeetingTracker(this) { until -> snapshot.update { it.copy(meetingUntil = until) } }
         screenOn.value = getSystemService(PowerManager::class.java).isInteractive
         val screenEvents = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
@@ -127,12 +132,15 @@ class PresenceService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         music.start()
         battery.start()
+        alarm.start()
+        meeting.start()
         val action = intent?.action
         if (action == ACTION_GO_INCOGNITO || action == ACTION_GO_VISIBLE) {
             val on = action == ACTION_GO_INCOGNITO
             val minutes = intent.getLongExtra(EXTRA_MINUTES, Mobile.IncognitoUntilTurnedOff)
             scope.launch { setIncognito(session.filterNotNull().first(), on, minutes) }
         }
+        if (action == ACTION_MEETING_SETTING_CHANGED) meeting.restart()
         return START_STICKY
     }
 
@@ -142,6 +150,8 @@ class PresenceService : Service() {
         getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback)
         music.stop()
         battery.stop()
+        alarm.stop()
+        meeting.stop()
         session.value?.let { thread(name = "session_stop") { it.stop() } }
         session.value = null
         mutableStatus.update { it.copy(room = null, me = null) }
@@ -304,6 +314,14 @@ class PresenceService : Service() {
 
         fun setIncognito(context: Context, on: Boolean, minutes: Long) {
             ContextCompat.startForegroundService(context, incognitoCommand(context, on, minutes))
+        }
+
+        // Neither the toggle nor a permission grant fires a broadcast MeetingTracker
+        // listens for, so the screen calls this after either one changes.
+        fun refreshMeetingTracking(context: Context) {
+            ContextCompat.startForegroundService(
+                context, Intent(context, PresenceService::class.java).setAction(ACTION_MEETING_SETTING_CHANGED),
+            )
         }
 
         private fun incognitoCommand(context: Context, on: Boolean, minutes: Long) =

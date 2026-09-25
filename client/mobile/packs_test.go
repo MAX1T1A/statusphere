@@ -9,7 +9,7 @@ import (
 	"statusphere-client/internal/presence"
 )
 
-const fullPhone = `{"music":{"track":"Roygbiv","artist":"Boards of Canada","status":"Playing"},"video":{"title":"Rust in 100 Seconds","channel":"Fireship","status":"Playing"},"app":{"label":"Telegram","package":"org.telegram.messenger"},"battery":{"percent":80,"charging":false}}`
+const fullPhone = `{"music":{"track":"Roygbiv","artist":"Boards of Canada","status":"Playing"},"video":{"title":"Rust in 100 Seconds","channel":"Fireship","status":"Playing"},"app":{"label":"Telegram","package":"org.telegram.messenger"},"battery":{"percent":80,"charging":false},"alarm_at":1790003600,"meeting_until":1790007200}`
 
 func layoutOf(t *testing.T, frame map[string]any) map[string]any {
 	t.Helper()

@@ -11,6 +11,8 @@
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Requested at runtime only if the meeting toggle is switched on. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
 
     <queries>
         <intent>

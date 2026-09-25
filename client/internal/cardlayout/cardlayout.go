@@ -50,6 +50,8 @@ const (
 	Music   TileType = "music"
 	Game    TileType = "game"
 	Video   TileType = "video"
+	Alarm   TileType = "alarm"
+	Meeting TileType = "meeting"
 	Photo   TileType = "photo"
 	Picture TileType = "picture"
 )
@@ -64,6 +66,8 @@ var formsByType = map[TileType]formSet{
 	Music:   {"cover", []string{"cover", "vinyl", "wave"}},
 	Game:    {"banner", []string{"banner", "timer"}},
 	Video:   {"player", []string{"player"}},
+	Alarm:   {"clock", []string{"clock"}},
+	Meeting: {"banner", []string{"banner"}},
 	Photo:   {},
 	Picture: {},
 }
@@ -494,6 +498,10 @@ func (a *account) hasData(t spec) bool {
 		return len(a.gameDevices()) > 0
 	case Video:
 		return len(a.videoDevices()) > 0
+	case Alarm:
+		return len(a.alarmDevices()) > 0
+	case Meeting:
+		return len(a.meetingDevices()) > 0
 	case Photo:
 		return a.photoURL != ""
 	case Picture:
@@ -543,6 +551,18 @@ func (a *account) tile(t spec, p placement) Tile {
 				out.Percent = &progress
 			}
 		}
+	case Alarm:
+		if devices := a.alarmDevices(); len(devices) > 0 {
+			if at, ok := devices[0].Float(presence.KeyAlarmAt); ok {
+				out.Value = jsNumber(at)
+			}
+		}
+	case Meeting:
+		if devices := a.meetingDevices(); len(devices) > 0 {
+			if until, ok := devices[0].Float(presence.KeyMeetingUntil); ok {
+				out.Value = jsNumber(until)
+			}
+		}
 	case Photo:
 		out.ImageURL = a.photoURL
 	case Picture:
@@ -573,6 +593,20 @@ func (a *account) videoDevices() []presence.Snapshot {
 	return distinct(a.devices, func(d presence.Snapshot) (string, bool) {
 		title := d.String(presence.KeyVideoTitle)
 		return title + "/" + d.String(presence.KeyVideoChannel), d.String(presence.KeyVideoStatus) != "" && title != ""
+	})
+}
+
+func (a *account) alarmDevices() []presence.Snapshot {
+	return distinct(a.devices, func(d presence.Snapshot) (string, bool) {
+		at, ok := d.Float(presence.KeyAlarmAt)
+		return jsNumber(at), ok
+	})
+}
+
+func (a *account) meetingDevices() []presence.Snapshot {
+	return distinct(a.devices, func(d presence.Snapshot) (string, bool) {
+		until, ok := d.Float(presence.KeyMeetingUntil)
+		return jsNumber(until), ok
 	})
 }
 

@@ -226,6 +226,19 @@ func TestPublishCarriesVideoApartFromMusic(t *testing.T) {
 	}
 }
 
+func TestPublishCarriesAlarmAndMeeting(t *testing.T) {
+	srv := newFakeServer(t)
+	s, conn, _ := startSession(t, srv, baseDir(t, srv.URL))
+
+	if err := s.Publish(`{"alarm_at":1790003600,"meeting_until":1790007200}`); err != nil {
+		t.Fatal(err)
+	}
+	got := conn.next(t)
+	if got[presence.KeyAlarmAt] != float64(1790003600) || got[presence.KeyMeetingUntil] != float64(1790007200) {
+		t.Fatalf("alarm and meeting fields should be carried, got %v", got)
+	}
+}
+
 func TestPublishRejectsMalformedSnapshot(t *testing.T) {
 	srv := newFakeServer(t)
 	s, conn, _ := startSession(t, srv, baseDir(t, srv.URL))

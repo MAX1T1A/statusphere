@@ -1,5 +1,6 @@
 package app.statusphere
 
+import java.time.Instant
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -35,6 +36,8 @@ data class PhoneSnapshot(
     val video: Video? = null,
     val app: ForegroundApp? = null,
     val battery: Battery? = null,
+    val alarmAt: Instant? = null,
+    val meetingUntil: Instant? = null,
 ) {
     fun playing(now: Playback?): PhoneSnapshot = copy(music = now as? Music, video = now as? Video)
 
@@ -71,6 +74,8 @@ data class PhoneSnapshot(
                 put("charging", it.charging)
             })
         }
+        alarmAt?.let { put("alarm_at", it.epochSecond) }
+        meetingUntil?.let { put("meeting_until", it.epochSecond) }
     }.toString()
 }
 
@@ -83,7 +88,10 @@ sealed interface Presence {
 }
 
 // Wire names must match client/internal/cardlayout/cardlayout.go.
-enum class TileType(val wire: String) { SCALAR("scalar"), MUSIC("music"), GAME("game"), VIDEO("video"), PHOTO("photo"), PICTURE("picture") }
+enum class TileType(val wire: String) {
+    SCALAR("scalar"), MUSIC("music"), GAME("game"), VIDEO("video"),
+    ALARM("alarm"), MEETING("meeting"), PHOTO("photo"), PICTURE("picture"),
+}
 
 enum class ScalarForm(val wire: String) {
     RING("ring"),

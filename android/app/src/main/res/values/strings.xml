@@ -54,6 +54,10 @@
     <string name="permission_restricted_hint">Switch greyed out or \"App was denied access\"? Open App info, tap ⋮ and choose \"Allow restricted settings\", then try again.</string>
     <string name="permission_app_info">App info</string>
 
+    <string name="meeting_toggle_title">Show when you\'re in a meeting</string>
+    <string name="meeting_toggle_note">Reads your calendar to publish only the time you\'re free again, never the event title</string>
+    <string name="tile_meeting_until">Busy until %1$s</string>
+
     <string name="room_connecting">Connecting</string>
     <string name="room_online" tools:ignore="PluralsCandidate">%1$d of %2$d online</string>
     <string name="room_last_error">last error: %1$s</string>

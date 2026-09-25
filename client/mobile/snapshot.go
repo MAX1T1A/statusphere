@@ -9,10 +9,12 @@ import (
 )
 
 type phoneSnapshot struct {
-	Music   *phoneMusic   `json:"music"`
-	Video   *phoneVideo   `json:"video"`
-	App     *phoneApp     `json:"app"`
-	Battery *phoneBattery `json:"battery"`
+	Music        *phoneMusic   `json:"music"`
+	Video        *phoneVideo   `json:"video"`
+	App          *phoneApp     `json:"app"`
+	Battery      *phoneBattery `json:"battery"`
+	AlarmAt      *int64        `json:"alarm_at"`
+	MeetingUntil *int64        `json:"meeting_until"`
 }
 
 type phoneMusic struct {
@@ -90,6 +92,12 @@ func parsePhoneSnapshot(raw string) (presence.Snapshot, error) {
 	if b := in.Battery; b != nil {
 		snap.Set(presence.KeyBatteryPercent, b.Percent)
 		snap.Set(presence.KeyBatteryCharging, b.Charging)
+	}
+	if at := in.AlarmAt; at != nil {
+		snap.Set(presence.KeyAlarmAt, *at)
+	}
+	if until := in.MeetingUntil; until != nil {
+		snap.Set(presence.KeyMeetingUntil, *until)
 	}
 	return snap, nil
 }

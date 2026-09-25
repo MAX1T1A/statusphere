@@ -80,6 +80,14 @@ const (
 	KeyVideoChannel  = "video_channel"
 	KeyVideoPosition = "video_position"
 	KeyVideoLength   = "video_length"
+
+	// KeyAlarmAt is the phone's next alarm as a unix timestamp, published only
+	// while it is within the next 24h.
+	KeyAlarmAt = "alarm_at"
+
+	// KeyMeetingUntil is the end time of the calendar event covering right now,
+	// as a unix timestamp. Only the end time leaves the phone - never the title.
+	KeyMeetingUntil = "meeting_until"
 )
 
 // Device kinds. An empty kind reads as KindDesktop - that is what every client
