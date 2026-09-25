@@ -36,6 +36,14 @@ type Release struct {
 }
 
 func Latest(ctx context.Context) (*Release, error) {
+	return latest(ctx, func(string) string { return assetPrefix + runtime.GOARCH })
+}
+
+func LatestAndroid(ctx context.Context) (*Release, error) {
+	return latest(ctx, func(tag string) string { return "statusphere-" + tag + ".apk" })
+}
+
+func latest(ctx context.Context, assetFor func(tag string) string) (*Release, error) {
 	url := fmt.Sprintf("%s/repos/%s/releases/latest", strings.TrimRight(APIBase, "/"), repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -66,7 +74,7 @@ func Latest(ctx context.Context) (*Release, error) {
 		return nil, fmt.Errorf("github: no tag in latest release")
 	}
 
-	want := assetPrefix + runtime.GOARCH
+	want := assetFor(payload.TagName)
 	rel := &Release{Version: payload.TagName}
 	for _, a := range payload.Assets {
 		if a.Name == want {
@@ -75,7 +83,7 @@ func Latest(ctx context.Context) (*Release, error) {
 		}
 	}
 	if rel.AssetURL == "" {
-		return nil, fmt.Errorf("no build for %s/%s in %s", runtime.GOOS, runtime.GOARCH, payload.TagName)
+		return nil, fmt.Errorf("no %s in %s", want, payload.TagName)
 	}
 	return rel, nil
 }
@@ -92,53 +100,13 @@ func Apply(ctx context.Context, rel *Release) error {
 }
 
 func applyTo(ctx context.Context, rel *Release, exe string) error {
-	if rel == nil || rel.AssetURL == "" {
-		return fmt.Errorf("nothing to install")
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rel.AssetURL, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := downloadClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download: status %d", resp.StatusCode)
-	}
-
 	sweepStaged(filepath.Dir(exe))
-
-	tmp, err := os.CreateTemp(filepath.Dir(exe), ".statusphere-update-*")
+	tmpName, err := stage(ctx, rel, filepath.Dir(exe))
 	if err != nil {
-		return fmt.Errorf("cannot write to %s: %w", filepath.Dir(exe), err)
+		return err
 	}
-	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
 
-	written, err := io.Copy(tmp, io.LimitReader(resp.Body, maxAsset+1))
-	if err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if written > maxAsset {
-		return fmt.Errorf("release asset exceeds %d bytes", maxAsset)
-	}
-	if written < minAssetSize {
-		return fmt.Errorf("downloaded file looks truncated (%d bytes)", written)
-	}
-	if n := resp.ContentLength; n > 0 && written != n {
-		return fmt.Errorf("incomplete download: got %d of %d bytes", written, n)
-	}
 	mode := os.FileMode(0o755)
 	if fi, err := os.Stat(exe); err == nil {
 		mode = fi.Mode().Perm() | 0o100
@@ -147,6 +115,67 @@ func applyTo(ctx context.Context, rel *Release, exe string) error {
 		return err
 	}
 	return os.Rename(tmpName, exe)
+}
+
+func Download(ctx context.Context, rel *Release, dst string) error {
+	tmpName, err := stage(ctx, rel, filepath.Dir(dst))
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpName)
+	return os.Rename(tmpName, dst)
+}
+
+func stage(ctx context.Context, rel *Release, dir string) (string, error) {
+	if rel == nil || rel.AssetURL == "" {
+		return "", fmt.Errorf("nothing to install")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rel.AssetURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := downloadClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("download: status %d", resp.StatusCode)
+	}
+
+	tmp, err := os.CreateTemp(dir, ".statusphere-update-*")
+	if err != nil {
+		return "", fmt.Errorf("cannot write to %s: %w", dir, err)
+	}
+	tmpName := tmp.Name()
+	fail := func(err error) (string, error) {
+		os.Remove(tmpName)
+		return "", err
+	}
+
+	written, err := io.Copy(tmp, io.LimitReader(resp.Body, maxAsset+1))
+	if err != nil {
+		tmp.Close()
+		return fail(err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fail(err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fail(err)
+	}
+	if written > maxAsset {
+		return fail(fmt.Errorf("release asset exceeds %d bytes", maxAsset))
+	}
+	if written < minAssetSize {
+		return fail(fmt.Errorf("downloaded file looks truncated (%d bytes)", written))
+	}
+	if n := resp.ContentLength; n > 0 && written != n {
+		return fail(fmt.Errorf("incomplete download: got %d of %d bytes", written, n))
+	}
+	return tmpName, nil
 }
 
 func sweepStaged(dir string) {
@@ -167,7 +196,14 @@ func IsNewer(latest, current string) bool {
 	if latest == "" {
 		return false
 	}
-	if version.IsDev() || current == "" {
+	return version.IsDev() || Newer(latest, current)
+}
+
+func Newer(latest, current string) bool {
+	if latest == "" {
+		return false
+	}
+	if current == "" {
 		return true
 	}
 

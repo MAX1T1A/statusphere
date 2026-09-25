@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleInstallStatus(intent)
         pendingInvite = inviteFrom(intent)
         lifecycleScope.launch {
             val isJoined = withContext(Dispatchers.IO) { PresenceService.isJoined(this@MainActivity) }
@@ -102,12 +103,17 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleInstallStatus(intent)
         inviteFrom(intent)?.let { pendingInvite = it }
     }
 
     override fun onResume() {
         super.onResume()
         if (joined == true) PresenceService.start(this)
+    }
+
+    private fun handleInstallStatus(intent: Intent?) {
+        if (intent?.action == AppUpdate.ACTION_INSTALL_STATUS) AppUpdate.onInstallStatus(this, intent)
     }
 
     private fun inviteFrom(intent: Intent?): String? {
@@ -177,6 +183,7 @@ private fun StatusphereTheme(content: @Composable () -> Unit) {
 private fun MainScreen(onLeft: () -> Unit) {
     val context = LocalContext.current
     val status by PresenceService.status.collectAsStateWithLifecycle()
+    UpdateBanner()
     status.room?.let { room ->
         RoomCards(room, status.me?.accountId, onLeft) { PresenceService.setIncognito(context, it.on, it.minutes) }
     } ?: Text(

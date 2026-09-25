@@ -63,6 +63,29 @@ func TestLatestErrorsWithoutMatchingAsset(t *testing.T) {
 	}
 }
 
+func TestLatestAndroidPicksTaggedAPK(t *testing.T) {
+	withAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, releaseJSON("v9.9.9", "statusphere-linux-arm64", "statusphere-v9.9.8.apk", "statusphere-v9.9.9.apk"))
+	})
+
+	rel, err := LatestAndroid(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.Version != "v9.9.9" || !strings.HasSuffix(rel.AssetURL, "/statusphere-v9.9.9.apk") {
+		t.Fatalf("got %+v", rel)
+	}
+}
+
+func TestLatestAndroidErrorsWithoutAPK(t *testing.T) {
+	withAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, releaseJSON("v9.9.9", "statusphere-linux-arm64"))
+	})
+	if _, err := LatestAndroid(context.Background()); err == nil {
+		t.Fatal("expected an error while the release has no APK yet")
+	}
+}
+
 func TestLatestErrorsOnBadStatus(t *testing.T) {
 	withAPI(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusForbidden) })
 	if _, err := Latest(context.Background()); err == nil {
@@ -102,6 +125,54 @@ func TestIsNewerAlwaysTrueForDevBuild(t *testing.T) {
 
 	if !IsNewer("v0.0.1", "dev") {
 		t.Fatal("a dev build should always accept a real release")
+	}
+}
+
+func TestNewerComparesEvenInDevBuild(t *testing.T) {
+	old := version.Version
+	version.Version = "dev"
+	t.Cleanup(func() { version.Version = old })
+
+	if Newer("v0.14.0", "0.14.0") {
+		t.Fatal("the app passes its own version, so the dev client build must not matter")
+	}
+	if !Newer("v0.15.0", "0.14.0") {
+		t.Fatal("a later release must be newer")
+	}
+}
+
+func TestDownloadWritesDestination(t *testing.T) {
+	payload := strings.Repeat("A", 2<<20)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, payload)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	dst := filepath.Join(dir, "update.apk")
+	if err := Download(context.Background(), &Release{AssetURL: srv.URL}, dst); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(dst); string(got) != payload {
+		t.Fatalf("destination has %d bytes", len(got))
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Fatalf("temp files left behind: %d entries", len(entries))
+	}
+}
+
+func TestDownloadLeavesNothingOnTruncation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "too small")
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	if err := Download(context.Background(), &Release{AssetURL: srv.URL}, filepath.Join(dir, "update.apk")); err == nil {
+		t.Fatal("expected truncation to be rejected")
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("files left behind: %d entries", len(entries))
 	}
 }
 
