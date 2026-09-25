@@ -65,10 +65,15 @@ func (r *Roster) Seen(accountID string) {
 	}
 	r.mu.Unlock()
 	if !known {
-		select {
-		case r.refresh <- struct{}{}:
-		default:
-		}
+		r.Kick()
+	}
+}
+
+// Kick nudges an immediate refresh instead of waiting for the next poll tick.
+func (r *Roster) Kick() {
+	select {
+	case r.refresh <- struct{}{}:
+	default:
 	}
 }
 

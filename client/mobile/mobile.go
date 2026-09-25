@@ -24,6 +24,7 @@ import (
 
 type RoomListener interface {
 	OnRoom(roomJSON string)
+	// OnError reports a failure; an empty event clears the previous one.
 	OnError(event string, detail string)
 }
 
@@ -207,6 +208,15 @@ func (s *Session) SetPingSeconds(seconds int) error {
 
 func (s *Session) AccountID() string { return s.cfg.AccountID }
 
+// NetworkAvailable nudges an immediate roster refresh and drops the current
+// WS connection, for callers that observe the phone's connectivity changed
+// (e.g. wifi to mobile data) instead of waiting for a poll tick or a stale
+// read to notice.
+func (s *Session) NetworkAvailable() {
+	s.roster.Kick()
+	s.ws.Kick()
+}
+
 const IncognitoUntilTurnedOff = 0
 
 func (s *Session) SetIncognito(on bool, minutes int) error {
@@ -326,6 +336,7 @@ func (s *Session) membersRefreshed(err error) {
 		s.fail("room_members_fetch_failed", err)
 		return
 	}
+	s.clearError()
 	s.emit()
 }
 
@@ -387,5 +398,14 @@ func (s *Session) fail(event string, err error) {
 	s.mu.Unlock()
 	if listener != nil {
 		listener.OnError(event, err.Error())
+	}
+}
+
+func (s *Session) clearError() {
+	s.mu.Lock()
+	listener := s.listener
+	s.mu.Unlock()
+	if listener != nil {
+		listener.OnError("", "")
 	}
 }

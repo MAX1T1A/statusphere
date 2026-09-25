@@ -10,6 +10,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -78,6 +80,13 @@ class PresenceService : Service() {
         }
     }
 
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            val s = session.value ?: return
+            scope.launch { withContext(sessionDispatcher) { runCatching { s.networkAvailable() } } }
+        }
+    }
+
     private val roomListener = object : RoomListener {
         override fun onRoom(roomJSON: String) {
             val room = runCatching { parseRoom(roomJSON) }
@@ -87,6 +96,10 @@ class PresenceService : Service() {
         }
 
         override fun onError(event: String, detail: String) {
+            if (event.isEmpty()) {
+                mutableStatus.update { it.copy(lastError = null) }
+                return
+            }
             Log.e(TAG, "$event detail=$detail")
             mutableStatus.update { it.copy(lastError = "$event: $detail") }
         }
@@ -107,6 +120,7 @@ class PresenceService : Service() {
             addAction(Intent.ACTION_USER_PRESENT)
         }
         ContextCompat.registerReceiver(this, screenReceiver, screenEvents, ContextCompat.RECEIVER_NOT_EXPORTED)
+        getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(networkCallback)
         scope.launch { run() }
     }
 
@@ -125,6 +139,7 @@ class PresenceService : Service() {
     override fun onDestroy() {
         scope.cancel()
         unregisterReceiver(screenReceiver)
+        getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback)
         music.stop()
         battery.stop()
         session.value?.let { thread(name = "session_stop") { it.stop() } }

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,16 +29,18 @@ type fakeConn struct {
 
 type fakeServer struct {
 	*httptest.Server
-	conns       chan *fakeConn
-	members     []auth.MemberInfo
-	nameFailure int
-	lastName    string
+	conns         chan *fakeConn
+	members       []auth.MemberInfo
+	memberFetches atomic.Int32
+	nameFailure   int
+	lastName      string
 }
 
 func newFakeServer(t *testing.T, members ...auth.MemberInfo) *fakeServer {
 	srv := &fakeServer{conns: make(chan *fakeConn, 4), members: members}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/rooms/members", func(w http.ResponseWriter, _ *http.Request) {
+		srv.memberFetches.Add(1)
 		_ = json.NewEncoder(w).Encode(map[string]any{"members": srv.members})
 	})
 	mux.HandleFunc("/accounts/name", func(w http.ResponseWriter, r *http.Request) {
@@ -268,6 +271,28 @@ func TestListenStateAndSnapshotResentAfterReconnect(t *testing.T) {
 	}
 	if got := again.next(t); got[presence.KeySpotifyTrack] != "Roygbiv" {
 		t.Fatalf("the current snapshot should be resent after reconnect, got %v", got)
+	}
+}
+
+func TestNetworkAvailableReconnectsWSAndKicksRoster(t *testing.T) {
+	srv := newFakeServer(t, auth.MemberInfo{AccountID: "acc-bob", Name: "Bob", Role: "member"})
+	s, conn, _ := startSession(t, srv, baseDir(t, srv.URL))
+	before := srv.memberFetches.Load()
+
+	s.NetworkAvailable()
+
+	again := srv.nextConn(t, waitFrame+3*time.Second) // waits out reconnectDelay before dialing again
+	if again == conn {
+		t.Fatal("a network change should drop the old ws connection and open a new one")
+	}
+
+	deadline := time.After(waitFrame)
+	for srv.memberFetches.Load() == before {
+		select {
+		case <-deadline:
+			t.Fatal("a network change should trigger an immediate members refetch, not wait for the poll tick")
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }
 
