@@ -432,8 +432,13 @@ func (a *App) Kick(accountID string) {
 		return
 	}
 	go func() {
-		if _, err := a.cfg.Kick(accountID); err != nil {
+		ok, err := a.cfg.Kick(accountID)
+		if err != nil {
 			log.Printf("kick: %v", err)
+			return
+		}
+		if !ok {
+			log.Printf("kick: server refused to remove %s", accountID)
 			return
 		}
 		a.membersRefreshed(a.roster.Refresh())

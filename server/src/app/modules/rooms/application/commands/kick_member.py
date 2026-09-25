@@ -6,6 +6,7 @@ from app.shared_kernel.operation import AuthenticatedOperation
 
 
 class KickMember(AuthenticatedOperation):
+    room: str
     target_account_id: str
 
 
@@ -17,13 +18,10 @@ class KickMemberUseCase:
     async def execute(self, op: KickMember) -> bool:
         if op.actor.account_id == op.target_account_id:
             return False
-        room_id = await self._reader.managed_room(op.actor.account_id)
-        if room_id is None:
-            return False
-        actor_role = await self._reader.role_of(room_id, op.actor.account_id)
-        target_role = await self._reader.role_of(room_id, op.target_account_id)
+        actor_role = await self._reader.role_of(op.room, op.actor.account_id)
+        target_role = await self._reader.role_of(op.room, op.target_account_id)
         if not can_manage(actor_role, target_role):
             return False
         async with self._uow_factory() as uow:
-            await uow.memberships.remove_member(room_id, op.target_account_id)
+            await uow.memberships.remove_member(op.room, op.target_account_id)
         return True

@@ -121,37 +121,37 @@ async def test_join_bad_code():
 
 async def test_owner_kicks_member():
     uow = FakeUoW()
-    reader = FakeReader(managed="r1", roles={"owner1": "owner", "m1": "member"})
+    reader = FakeReader(roles={"owner1": "owner", "m1": "member"})
     uc = KickMemberUseCase(reader, lambda: uow)
-    assert await uc.execute(KickMember(actor=ACTOR, target_account_id="m1")) is True
+    assert await uc.execute(KickMember(actor=ACTOR, room="r1", target_account_id="m1")) is True
     assert uow.memberships.removed == [("r1", "m1")]
 
 
 async def test_admin_kicks_member():
     uow = FakeUoW()
-    reader = FakeReader(managed="r1", roles={"admin1": "admin", "m1": "member"})
+    reader = FakeReader(roles={"admin1": "admin", "m1": "member"})
     uc = KickMemberUseCase(reader, lambda: uow)
-    assert await uc.execute(KickMember(actor=ADMIN, target_account_id="m1")) is True
+    assert await uc.execute(KickMember(actor=ADMIN, room="r1", target_account_id="m1")) is True
     assert uow.memberships.removed == [("r1", "m1")]
 
 
 async def test_admin_cannot_kick_owner():
     uow = FakeUoW()
-    reader = FakeReader(managed="r1", roles={"admin1": "admin", "owner1": "owner"})
+    reader = FakeReader(roles={"admin1": "admin", "owner1": "owner"})
     uc = KickMemberUseCase(reader, lambda: uow)
-    assert await uc.execute(KickMember(actor=ADMIN, target_account_id="owner1")) is False
+    assert await uc.execute(KickMember(actor=ADMIN, room="r1", target_account_id="owner1")) is False
     assert uow.memberships.removed == []
 
 
 async def test_member_cannot_kick():
-    reader = FakeReader(managed=None, roles={"member1": "member", "m1": "member"})
+    reader = FakeReader(roles={"member1": "member", "m1": "member"})
     uc = KickMemberUseCase(reader, lambda: FakeUoW())
-    assert await uc.execute(KickMember(actor=MEMBER, target_account_id="m1")) is False
+    assert await uc.execute(KickMember(actor=MEMBER, room="r1", target_account_id="m1")) is False
 
 
 async def test_kick_self_denied():
-    uc = KickMemberUseCase(FakeReader(managed="r1", roles={"owner1": "owner"}), lambda: FakeUoW())
-    assert await uc.execute(KickMember(actor=ACTOR, target_account_id="owner1")) is False
+    uc = KickMemberUseCase(FakeReader(roles={"owner1": "owner"}), lambda: FakeUoW())
+    assert await uc.execute(KickMember(actor=ACTOR, room="r1", target_account_id="owner1")) is False
 
 
 async def test_leave_member_ok():
@@ -219,9 +219,9 @@ async def test_member_cannot_change_roles():
 
 
 async def test_demoted_admin_loses_rights():
-    reader = FakeReader(managed=None, roles={"admin1": "member", "m1": "member"})
+    reader = FakeReader(roles={"admin1": "member", "m1": "member"})
     uc = KickMemberUseCase(reader, lambda: FakeUoW())
-    assert await uc.execute(KickMember(actor=ADMIN, target_account_id="m1")) is False
+    assert await uc.execute(KickMember(actor=ADMIN, room="r1", target_account_id="m1")) is False
 
 
 async def test_list_members_ok():

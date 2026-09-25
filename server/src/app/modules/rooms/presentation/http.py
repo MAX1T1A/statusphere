@@ -25,6 +25,7 @@ class JoinRequest(BaseModel):
 
 
 class KickRequest(BaseModel):
+    room: str
     account_id: str
 
 
@@ -64,7 +65,7 @@ async def members(
 async def kick(
     body: KickRequest, actor: Actor = Depends(require_actor), bus: UseCaseBus = Depends(get_bus)
 ) -> dict:
-    return {"ok": await bus.dispatch(KickMember(actor=actor, target_account_id=body.account_id))}
+    return {"ok": await bus.dispatch(KickMember(actor=actor, room=body.room, target_account_id=body.account_id))}
 
 
 @router.post("/leave")

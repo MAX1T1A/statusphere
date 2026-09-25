@@ -328,7 +328,8 @@ func (c *Config) Kick(accountID string) (bool, error) {
 	var resp struct {
 		OK bool `json:"ok"`
 	}
-	if err := do(http.MethodPost, c.endpoint("/rooms/kick"), c.Token, map[string]string{"account_id": accountID}, &resp); err != nil {
+	body := map[string]string{"room": c.RoomID, "account_id": accountID}
+	if err := do(http.MethodPost, c.endpoint("/rooms/kick"), c.Token, body, &resp); err != nil {
 		return false, err
 	}
 	return resp.OK, nil
