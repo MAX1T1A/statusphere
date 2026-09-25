@@ -57,8 +57,6 @@ class MusicTracker(context: Context, private val onChange: (Playback?) -> Unit) 
         publish()
     }
 
-    fun current(): Playback? = chosen()?.toPlayback()
-
     // getActiveSessions returns controllers in priority order, most recently active first.
     private fun chosen(): MediaController? =
         controllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: controllers.firstOrNull()

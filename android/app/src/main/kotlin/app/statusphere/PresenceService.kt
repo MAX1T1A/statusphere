@@ -202,7 +202,7 @@ class PresenceService : Service() {
         screenOn.collectLatest { on ->
             if (on) {
                 applyMode(s, ScreenMode.ON)
-                pollAppAndMusicPosition()
+                pollForegroundApp()
             } else {
                 snapshot.update { it.copy(app = null) }
                 applyMode(s, ScreenMode.OFF)
@@ -220,10 +220,10 @@ class PresenceService : Service() {
         }
     }
 
-    private suspend fun pollAppAndMusicPosition() {
+    private suspend fun pollForegroundApp() {
         while (true) {
             val app = withContext(Dispatchers.IO) { apps.current() }
-            snapshot.update { it.copy(app = app).playing(music.current()) }
+            snapshot.update { it.copy(app = app) }
             delay(APP_POLL_INTERVAL)
         }
     }
