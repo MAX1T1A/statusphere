@@ -290,3 +290,22 @@ func (c *Config) Kick(accountID string) (bool, error) {
 	}
 	return resp.OK, nil
 }
+
+func (c *Config) Promote(accountID string) (bool, error) {
+	return c.setRole(accountID, "admin")
+}
+
+func (c *Config) Demote(accountID string) (bool, error) {
+	return c.setRole(accountID, "member")
+}
+
+func (c *Config) setRole(accountID, role string) (bool, error) {
+	var resp struct {
+		OK bool `json:"ok"`
+	}
+	body := map[string]string{"room": c.RoomID, "account_id": accountID, "role": role}
+	if err := do(http.MethodPost, c.endpoint("/rooms/role"), c.Token, body, &resp); err != nil {
+		return false, err
+	}
+	return resp.OK, nil
+}

@@ -66,6 +66,22 @@ func TestOwnerKicksWithXAndConfirm(t *testing.T) {
 	}
 }
 
+func TestAdminKicksWithXAndConfirm(t *testing.T) {
+	ctrl := &recordingCtrl{}
+	m := rosterModel("admin")
+	m.ctrl = ctrl
+	selectAccount(&m, "acc-bob")
+
+	m = send(m, key("x"))
+	if m.confirmKick != "acc-bob" {
+		t.Fatalf("x should arm a kick confirmation, got %q", m.confirmKick)
+	}
+	m = send(m, key("y"))
+	if len(ctrl.kicked) != 1 || ctrl.kicked[0] != "acc-bob" {
+		t.Fatalf("y should confirm the kick, got %v", ctrl.kicked)
+	}
+}
+
 func TestKickConfirmCancels(t *testing.T) {
 	ctrl := &recordingCtrl{}
 	m := rosterModel("owner")
@@ -132,11 +148,14 @@ func TestSelfCardNotSelectable(t *testing.T) {
 	}
 }
 
-func TestIsOwner(t *testing.T) {
-	if !rosterModel("owner").isOwner() {
-		t.Fatal("expected owner")
+func TestIsManager(t *testing.T) {
+	if !rosterModel("owner").isManager() {
+		t.Fatal("expected owner to be a manager")
 	}
-	if rosterModel("member").isOwner() {
-		t.Fatal("expected non-owner")
+	if !rosterModel("admin").isManager() {
+		t.Fatal("expected admin to be a manager")
+	}
+	if rosterModel("member").isManager() {
+		t.Fatal("expected non-manager")
 	}
 }
