@@ -8,6 +8,7 @@ import (
 	"io"
 	"sync"
 
+	"statusphere-client/internal/cardlayout"
 	"statusphere-client/internal/presence"
 )
 
@@ -25,10 +26,15 @@ type PhotoOut struct {
 type payload struct {
 	Members []presence.Snapshot `json:"members"`
 	Photos  []PhotoOut          `json:"photos"`
+	Cards   []cardlayout.Card   `json:"cards"`
 }
 
 func Encode(members []presence.Snapshot, photos []PhotoOut) ([]byte, error) {
-	return json.Marshal(payload{Members: members, Photos: photos})
+	photoByAccount := make(map[string]string, len(photos))
+	for _, p := range photos {
+		photoByAccount[p.AccountID] = p.Path
+	}
+	return json.Marshal(payload{Members: members, Photos: photos, Cards: cardlayout.Cards(members, photoByAccount)})
 }
 
 type JSONLine struct {

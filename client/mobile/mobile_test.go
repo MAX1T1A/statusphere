@@ -13,6 +13,7 @@ import (
 	"github.com/coder/websocket"
 
 	"statusphere-client/internal/auth"
+	"statusphere-client/internal/cardlayout"
 	"statusphere-client/internal/config"
 	"statusphere-client/internal/presence"
 	"statusphere-client/internal/privacy"
@@ -323,6 +324,7 @@ func TestHideAppsMatchesPackageAndPackageNeverLeaves(t *testing.T) {
 type roomPayload struct {
 	Members []presence.Snapshot `json:"members"`
 	Photos  []json.RawMessage   `json:"photos"`
+	Cards   []cardlayout.Card   `json:"cards"`
 }
 
 func TestRoomJSONMergesLiveDevicesWithMembers(t *testing.T) {
@@ -351,8 +353,8 @@ func TestRoomJSONMergesLiveDevicesWithMembers(t *testing.T) {
 		if err := json.Unmarshal([]byte(raw), &fields); err != nil {
 			t.Fatalf("room is not a json object: %v", err)
 		}
-		if len(fields) != 2 || fields["members"] == nil || string(fields["photos"]) != "[]" {
-			t.Fatalf("room shape should be {members, photos: []}, got %s", raw)
+		if len(fields) != 3 || fields["members"] == nil || string(fields["photos"]) != "[]" || fields["cards"] == nil {
+			t.Fatalf("room shape should be {members, photos: [], cards}, got %s", raw)
 		}
 
 		var room roomPayload
@@ -372,6 +374,13 @@ func TestRoomJSONMergesLiveDevicesWithMembers(t *testing.T) {
 		}
 		if !ann.Has(presence.KeyOffline) || ann.String(presence.KeyAccountName) != "Ann" {
 			t.Fatalf("ann should be an offline placeholder, got %v", ann)
+		}
+		cardAccounts := map[string]bool{}
+		for _, c := range room.Cards {
+			cardAccounts[c.AccountID] = true
+		}
+		if len(room.Cards) != 2 || !cardAccounts["acc-bob"] || !cardAccounts["acc-ann"] {
+			t.Fatalf("room should carry one card per account, got %+v", room.Cards)
 		}
 		return
 	}
