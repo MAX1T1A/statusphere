@@ -28,8 +28,12 @@
     <string name="rename_save">Save</string>
     <string name="rename_failed">Could not rename: %1$s</string>
 
-    <string name="self_rename">Change name</string>
+    <string name="settings">Settings</string>
+    <string name="settings_back">Back</string>
+    <string name="settings_name_hint">Tap to change your name</string>
+    <string name="settings_version">Statusphere %1$s</string>
     <string name="self_appearance">Card appearance</string>
+    <string name="self_appearance_note">Choose the tiles your card shows</string>
     <string name="appearance_row">Card</string>
     <string name="appearance_detail">Details</string>
     <string name="appearance_failed">Could not change appearance: %1$s</string>

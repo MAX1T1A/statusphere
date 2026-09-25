@@ -55,6 +55,7 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     private var joined by mutableStateOf<Boolean?>(null)
     private var pendingInvite by mutableStateOf<String?>(null)
+    private var settingsOpen by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -76,6 +77,13 @@ class MainActivity : ComponentActivity() {
                             joined = true
                         },
                     )
+                    joined == true && settingsOpen -> SettingsScreen(
+                        onBack = { settingsOpen = false },
+                        onLeft = {
+                            settingsOpen = false
+                            joined = false
+                        },
+                    )
                     joined == true -> Scaffold { padding ->
                         Column(
                             Modifier
@@ -85,7 +93,7 @@ class MainActivity : ComponentActivity() {
                                 .verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(CardSpacing),
                         ) {
-                            MainScreen(onLeft = { joined = false })
+                            MainScreen(onOpenSettings = { settingsOpen = true })
                         }
                         pendingInvite?.let { invite ->
                             SwitchRoomDialog(
@@ -180,12 +188,12 @@ private fun StatusphereTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun MainScreen(onLeft: () -> Unit) {
+private fun MainScreen(onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     val status by PresenceService.status.collectAsStateWithLifecycle()
     UpdateBanner()
     status.room?.let { room ->
-        RoomCards(room, status.me?.accountId, onLeft) { PresenceService.setIncognito(context, it.on, it.minutes) }
+        RoomCards(room, status.me?.accountId, onOpenSettings) { PresenceService.setIncognito(context, it.on, it.minutes) }
     } ?: Text(
         stringResource(R.string.room_connecting),
         style = MaterialTheme.typography.bodyMedium,

@@ -23,13 +23,11 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,23 +36,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -76,6 +68,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -94,12 +87,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 internal val CardShape = RoundedCornerShape(17.dp)
 internal val CardPadding = 12.dp
 internal val CardSpacing = 12.dp
 internal val ArtShape = RoundedCornerShape(12.dp)
+private val SettingsButtonSize = 32.dp
+private val SettingsIconSize = 16.dp
+private const val SETTINGS_ICON_ALPHA = 0.6f
 private val AvatarSize = 40.dp
 private val BadgeSize = 13.dp
 private val BadgeBorder = 2.dp
@@ -122,71 +117,30 @@ private const val ART_CACHE_BYTES = 24 * 1024 * 1024
 private val ART_TIMEOUT = 10.seconds
 
 @Composable
-fun RoomCards(accounts: List<Account>, selfId: String?, onLeft: () -> Unit, onIncognito: (IncognitoChoice) -> Unit) {
+fun RoomCards(accounts: List<Account>, selfId: String?, onOpenSettings: () -> Unit, onIncognito: (IncognitoChoice) -> Unit) {
     val pinnedId by PresenceService.pinned.collectAsStateWithLifecycle()
-    RoomHeader(accounts, onLeft)
+    RoomHeader(accounts, onOpenSettings)
     accounts.forEach { key(it.id) { AccountCard(it, pickable = it.id == selfId, pinned = it.id == pinnedId, onIncognito) } }
 }
 
 @Composable
-private fun RoomHeader(accounts: List<Account>, onLeft: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var menuOpen by remember { mutableStateOf(false) }
-    var confirming by remember { mutableStateOf(false) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    Box(Modifier.padding(horizontal = CardPadding)) {
+private fun RoomHeader(accounts: List<Account>, onOpenSettings: () -> Unit) {
+    Row(Modifier.padding(start = CardPadding), verticalAlignment = Alignment.CenterVertically) {
         Text(
             stringResource(R.string.room_online, accounts.count { it.presence !is Presence.Offline }, accounts.size),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.clickable { menuOpen = true },
+            modifier = Modifier.weight(1f),
         )
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.leave_room)) },
-                onClick = {
-                    menuOpen = false
-                    confirming = true
-                },
+        IconButton(onClick = onOpenSettings, modifier = Modifier.size(SettingsButtonSize)) {
+            Icon(
+                painterResource(R.drawable.ic_settings),
+                contentDescription = stringResource(R.string.settings),
+                tint = MaterialTheme.colorScheme.outline.copy(alpha = SETTINGS_ICON_ALPHA),
+                modifier = Modifier.size(SettingsIconSize),
             )
         }
     }
-    error?.let {
-        Text(
-            stringResource(R.string.leave_failed, it),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(horizontal = CardPadding),
-        )
-    }
-
-    if (!confirming) return
-    AlertDialog(
-        onDismissRequest = { if (!busy) confirming = false },
-        title = { Text(stringResource(R.string.leave_room_title)) },
-        text = { Text(stringResource(R.string.leave_room_message)) },
-        confirmButton = {
-            TextButton(
-                enabled = !busy,
-                onClick = {
-                    busy = true
-                    error = null
-                    scope.launch {
-                        val result = PresenceService.leaveRoom(context)
-                        busy = false
-                        confirming = false
-                        result.onSuccess { onLeft() }.onFailure { error = it.message ?: it.javaClass.simpleName }
-                    }
-                },
-            ) { Text(stringResource(R.string.leave_room_confirm)) }
-        },
-        dismissButton = {
-            TextButton(enabled = !busy, onClick = { confirming = false }) { Text(stringResource(R.string.action_cancel)) }
-        },
-    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -197,10 +151,6 @@ private fun AccountCard(account: Account, pickable: Boolean, pinned: Boolean, on
     val presence = account.presence
     val card = account.card
     var detailShown by rememberSaveable { mutableStateOf(false) }
-    var selfMenuOpen by remember { mutableStateOf(false) }
-    val (meetingShown, setMeetingShown) = if (pickable) rememberMeetingSwitch() else false to { _: Boolean -> }
-    var renaming by rememberSaveable { mutableStateOf(false) }
-    var styling by rememberSaveable { mutableStateOf(false) }
     Surface(
         shape = CardShape,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -230,46 +180,12 @@ private fun AccountCard(account: Account, pickable: Boolean, pinned: Boolean, on
                                 modifier = Modifier.size(14.dp),
                             )
                         }
-                        Box {
-                            Text(
-                                account.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = if (pickable) Modifier.clickable { selfMenuOpen = true } else Modifier,
-                            )
-                            DropdownMenu(expanded = selfMenuOpen, onDismissRequest = { selfMenuOpen = false }) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.self_rename)) },
-                                    onClick = {
-                                        selfMenuOpen = false
-                                        renaming = true
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.self_appearance)) },
-                                    onClick = {
-                                        selfMenuOpen = false
-                                        styling = true
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Column {
-                                            Text(stringResource(R.string.meeting_toggle_title))
-                                            Text(
-                                                stringResource(R.string.meeting_toggle_note),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.outline,
-                                            )
-                                        }
-                                    },
-                                    trailingIcon = { Switch(checked = meetingShown, onCheckedChange = null) },
-                                    onClick = { setMeetingShown(!meetingShown) },
-                                    modifier = Modifier.widthIn(max = 320.dp),
-                                )
-                            }
-                        }
+                        Text(
+                            account.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                     Text(
                         presence.statusLine(LocalResources.current),
@@ -299,61 +215,10 @@ private fun AccountCard(account: Account, pickable: Boolean, pinned: Boolean, on
             }
         }
     }
-    if (renaming) RenameDialog(account.name) { renaming = false }
-    if (styling) AppearanceSheet { styling = false }
 }
 
 @Composable
-private fun RenameDialog(currentName: String, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var name by rememberSaveable { mutableStateOf(currentName) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(stringResource(R.string.rename_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    enabled = !busy,
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                error?.let {
-                    Text(
-                        stringResource(R.string.rename_failed, it),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !busy && name.isNotBlank(),
-                onClick = {
-                    busy = true
-                    error = null
-                    scope.launch {
-                        val result = PresenceService.setName(context, name.trim())
-                        busy = false
-                        result.onSuccess { onDismiss() }.onFailure { error = it.message ?: it.javaClass.simpleName }
-                    }
-                },
-            ) { Text(stringResource(R.string.rename_save)) }
-        },
-        dismissButton = {
-            TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
-        },
-    )
-}
-
-@Composable
-private fun Avatar(account: Account) {
+internal fun Avatar(account: Account, size: Dp = AvatarSize, initialStyle: TextStyle = MaterialTheme.typography.titleMedium) {
     val colors = MaterialTheme.colorScheme
     val presence = account.presence
     val offline = presence is Presence.Offline
@@ -362,7 +227,7 @@ private fun Avatar(account: Account) {
         is Presence.Incognito -> colors.secondary
         is Presence.Online -> colors.primary
     }
-    Box(Modifier.size(AvatarSize)) {
+    Box(Modifier.size(size)) {
         Box(
             Modifier
                 .matchParentSize()
@@ -379,7 +244,7 @@ private fun Avatar(account: Account) {
             } else {
                 Text(
                     account.name.take(1).uppercase().ifEmpty { "?" },
-                    style = MaterialTheme.typography.titleMedium,
+                    style = initialStyle,
                     color = if (offline) colors.outline else colors.onSecondaryContainer,
                 )
             }
