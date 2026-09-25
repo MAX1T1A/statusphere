@@ -112,6 +112,10 @@ async def ws_endpoint(websocket: WebSocket, room: str = "") -> None:
                 )
                 continue
 
+            if snapshot.get("type") == "listen":
+                hub.set_listening(room, device_id, bool(snapshot.get("on")))
+                continue
+
             now = time.monotonic()
             if now - last_presence_at < MIN_MESSAGE_INTERVAL:
                 continue

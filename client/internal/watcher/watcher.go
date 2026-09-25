@@ -10,7 +10,7 @@ import (
 	"statusphere-client/internal/presence"
 )
 
-const defaultHeartbeat = 30 * time.Second
+const DefaultHeartbeat = 30 * time.Second
 
 var volatileKeys = map[string]bool{
 	presence.KeyUptimeHours: true,
@@ -31,9 +31,7 @@ type Watcher struct {
 	filter    func(presence.Snapshot) presence.Snapshot
 	interval  time.Duration
 	heartbeat time.Duration
-
-	last     presence.Snapshot
-	lastSent time.Time
+	gate      Gate
 
 	injectMu sync.Mutex
 	inject   map[string]any
@@ -45,7 +43,7 @@ func New(c *collector.Collector, onChange func(presence.Snapshot), interval time
 		collector: c,
 		onChange:  onChange,
 		interval:  interval,
-		heartbeat: defaultHeartbeat,
+		heartbeat: DefaultHeartbeat,
 		inject:    make(map[string]any),
 		trigger:   make(chan struct{}, 1),
 	}
@@ -98,12 +96,26 @@ func (w *Watcher) Tick(ctx context.Context) {
 		snap = w.filter(snap)
 	}
 
-	changed := w.last == nil || !w.last.EqualExcept(snap, volatileKeys)
-	heartbeatDue := time.Since(w.lastSent) >= w.heartbeat
-
-	if changed || heartbeatDue {
-		w.last = snap
-		w.lastSent = time.Now()
+	if w.gate.Pass(snap, w.heartbeat) {
 		w.onChange(snap)
 	}
+}
+
+type Gate struct {
+	last     presence.Snapshot
+	lastSent time.Time
+}
+
+func (g *Gate) Pass(snap presence.Snapshot, heartbeat time.Duration) bool {
+	changed := g.last == nil || !g.last.EqualExcept(snap, volatileKeys)
+	if !changed && time.Since(g.lastSent) < heartbeat {
+		return false
+	}
+	g.last = snap
+	g.lastSent = time.Now()
+	return true
+}
+
+func (g *Gate) NextHeartbeat(heartbeat time.Duration) time.Time {
+	return g.lastSent.Add(heartbeat)
 }

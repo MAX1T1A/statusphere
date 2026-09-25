@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"strings"
 	"time"
+
+	"rsc.io/qr"
 
 	"statusphere-client/internal/app"
 	"statusphere-client/internal/auth"
@@ -38,11 +41,14 @@ var (
 	secretFlag    = flag.String("secret", "", "Account secret for --recover")
 	newDeviceFlag = flag.Bool("new-device", false, "Print a link code to add another device to this account")
 	inviteFlag    = flag.Bool("invite", false, "Print an invite code for the room you're in")
-	joinFlag      = flag.String("join", "", "Join a room using an invite <code>")
+	joinFlag      = flag.String("join", "", "Join a room using an invite <code> or a statusphere://join/... link")
 	devicesFlag   = flag.Bool("devices", false, "List devices on this account")
 	revokeFlag    = flag.String("revoke", "", "Revoke a device by <device_id>")
 	membersFlag   = flag.Bool("members", false, "List members of your room")
 	kickFlag      = flag.String("kick", "", "Remove a member by <account_id>")
+	leaveFlag     = flag.Bool("leave", false, "Leave the room you're in, keeping your account")
+	promoteFlag   = flag.String("promote", "", "Grant admin rights to a member by <account_id>")
+	demoteFlag    = flag.String("demote", "", "Revoke admin rights from a member by <account_id>")
 	setNameFlag   = flag.String("set-name", "", "Set your account's display name")
 	postPhotoFlag = flag.String("post-photo", "", "Share <path> as your current photo status, replacing any previous one")
 
@@ -96,7 +102,9 @@ func dispatch() error {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Share with a friend:\n  statusphere --join %s\n", auth.EncodeInvite(c.ServerURL, code))
+			link := auth.InviteLink(c.ServerURL, code)
+			fmt.Printf("Share with a friend:\n  statusphere --join %s\n\n", auth.EncodeInvite(c.ServerURL, code))
+			fmt.Printf("Or scan:\n%s\n%s\n", link, renderQR(link))
 			return nil
 		})
 	case *joinFlag != "":
@@ -146,6 +154,43 @@ func dispatch() error {
 			fmt.Printf("Removed %s\n", *kickFlag)
 			return nil
 		})
+	case *leaveFlag:
+		return withConfig(func(c *auth.Config) error {
+			room := c.RoomID
+			ok, err := c.Leave()
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("cannot leave %s: you're the owner or not a member", room)
+			}
+			fmt.Printf("Left room %s\n", room)
+			return nil
+		})
+	case *promoteFlag != "":
+		return withConfig(func(c *auth.Config) error {
+			ok, err := c.Promote(*promoteFlag)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("cannot grant admin to %s", *promoteFlag)
+			}
+			fmt.Printf("%s is now an admin\n", *promoteFlag)
+			return nil
+		})
+	case *demoteFlag != "":
+		return withConfig(func(c *auth.Config) error {
+			ok, err := c.Demote(*demoteFlag)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("cannot revoke admin from %s", *demoteFlag)
+			}
+			fmt.Printf("%s is no longer an admin\n", *demoteFlag)
+			return nil
+		})
 	default:
 		return run()
 	}
@@ -161,6 +206,44 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	return app.Run(ctx, app.Options{UI: *uiMode, Interval: *intervalArg})
+}
+
+// Explicit colors and quiet zone keep the code scannable on dark and light terminal themes.
+func renderQR(text string) string {
+	code, err := qr.Encode(text, qr.M)
+	if err != nil {
+		return fmt.Sprintf("(could not render QR: %v)", err)
+	}
+
+	const quietZone = 4
+	size := code.Size
+	black := func(x, y int) bool {
+		if x < 0 || y < 0 || x >= size || y >= size {
+			return false
+		}
+		return code.Black(x, y)
+	}
+	fgCode := func(on bool) string {
+		if on {
+			return "30"
+		}
+		return "97"
+	}
+	bgCode := func(on bool) string {
+		if on {
+			return "40"
+		}
+		return "107"
+	}
+
+	var b strings.Builder
+	for y := -quietZone; y < size+quietZone; y += 2 {
+		for x := -quietZone; x < size+quietZone; x++ {
+			fmt.Fprintf(&b, "\x1b[%s;%sm▀", fgCode(black(x, y)), bgCode(black(x, y+1)))
+		}
+		b.WriteString("\x1b[0m\n")
+	}
+	return b.String()
 }
 
 func runSetKind(kind string) error {
@@ -308,22 +391,14 @@ func isSet(name string) bool {
 }
 
 func joinRoom(arg string) error {
-	server, code := auth.DecodeInvite(arg)
-
-	cfg, err := auth.Load()
-	needRegister := err != nil || (server != "" && cfg.ServerURL != server)
-	if needRegister {
-		if server == "" {
-			return fmt.Errorf("no account found; register first: statusphere --register <server_url>")
-		}
-		cfg, err = auth.Register(server)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Account created on %s\n", server)
+	cfg, registered, err := auth.JoinInvite(arg)
+	if errors.Is(err, auth.ErrNoAccount) {
+		return fmt.Errorf("no account found; register first: statusphere --register <server_url>")
 	}
-
-	if err := cfg.Join(code); err != nil {
+	if registered {
+		fmt.Printf("Account created on %s\n", cfg.ServerURL)
+	}
+	if err != nil {
 		return err
 	}
 	fmt.Printf("Joined room %s\n", cfg.RoomID)
@@ -335,7 +410,13 @@ func withConfig(fn func(*auth.Config) error) error {
 	if err != nil {
 		return fmt.Errorf("no account found; register first: statusphere --register <server_url>")
 	}
-	return fn(cfg)
+	if err := fn(cfg); err != nil {
+		if errors.Is(err, auth.ErrNoRoom) {
+			return fmt.Errorf("not in a room; join one first:\n  statusphere --join <invite>")
+		}
+		return err
+	}
+	return nil
 }
 
 func register(serverURL string) error {

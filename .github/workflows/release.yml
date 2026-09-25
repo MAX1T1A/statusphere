@@ -43,3 +43,59 @@ jobs:
             client/dist/statusphere-linux-amd64 \
             client/dist/statusphere-linux-arm64 \
             --clobber
+
+  android:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: client/go.mod
+          cache-dependency-path: client/go.sum
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260908204917-8b95e45f8d3e
+          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20260908204917-8b95e45f8d3e
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          "$(go env GOPATH)/bin/gomobile" init
+
+      - name: Install Android SDK components
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platforms;android-36" "build-tools;36.1.0" "ndk;30.0.16248370"
+
+      - name: Decode signing keystore
+        run: base64 -d <<< "$STATUSPHERE_KEYSTORE_BASE64" > "$RUNNER_TEMP/statusphere-release.jks"
+        env:
+          STATUSPHERE_KEYSTORE_BASE64: ${{ secrets.STATUSPHERE_KEYSTORE_BASE64 }}
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease -PreleaseVersionName="${TAG#v}"
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          STATUSPHERE_KEYSTORE_FILE: ${{ runner.temp }}/statusphere-release.jks
+          STATUSPHERE_KEYSTORE_PASSWORD: ${{ secrets.STATUSPHERE_KEYSTORE_PASSWORD }}
+          STATUSPHERE_KEY_ALIAS: ${{ secrets.STATUSPHERE_KEY_ALIAS }}
+          STATUSPHERE_KEY_PASSWORD: ${{ secrets.STATUSPHERE_KEY_PASSWORD }}
+
+      - name: Verify APK signature
+        run: '"$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs unsynced/android/build/app/outputs/apk/release/app-release.apk'
+
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          cp unsynced/android/build/app/outputs/apk/release/app-release.apk "statusphere-$TAG.apk"
+          gh release upload "$TAG" "statusphere-$TAG.apk" --clobber

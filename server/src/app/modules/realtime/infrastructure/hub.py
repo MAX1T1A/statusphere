@@ -19,6 +19,7 @@ class _Subscriber:
     device_id: str
     account_id: str
     queue: asyncio.Queue
+    listening: bool = True
 
 
 @dataclass
@@ -42,9 +43,7 @@ class RealtimeHub(IMessageDelivery, IPresenceBroadcast, IPhotoBroadcast):
         if room:
             room.subscribers = [s for s in room.subscribers if s is not subscriber]
 
-    async def subscribe(self, token: str, device_id: str, account_id: str) -> AsyncGenerator[dict, None]:
-        queue: asyncio.Queue = asyncio.Queue(maxsize=128)
-        room = self._get_or_create(token)
+    def _replay_snapshots(self, room: _Room, device_id: str, queue: asyncio.Queue) -> None:
         now = time.monotonic()
         for other_device, (seen_at, snapshot) in room.last_snapshot.items():
             if other_device != device_id and now - seen_at <= REPLAY_MAX_AGE:
@@ -52,6 +51,22 @@ class RealtimeHub(IMessageDelivery, IPresenceBroadcast, IPhotoBroadcast):
                     queue.put_nowait(snapshot)
                 except asyncio.QueueFull:
                     pass
+
+    def set_listening(self, token: str, device_id: str, on: bool) -> None:
+        room = self._rooms.get(token)
+        if not room:
+            return
+        for subscriber in room.subscribers:
+            if subscriber.device_id != device_id:
+                continue
+            subscriber.listening = on
+            if on:
+                self._replay_snapshots(room, device_id, subscriber.queue)
+
+    async def subscribe(self, token: str, device_id: str, account_id: str) -> AsyncGenerator[dict, None]:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=128)
+        room = self._get_or_create(token)
+        self._replay_snapshots(room, device_id, queue)
         subscriber = _Subscriber(device_id=device_id, account_id=account_id, queue=queue)
         room.subscribers.append(subscriber)
         try:
@@ -68,7 +83,7 @@ class RealtimeHub(IMessageDelivery, IPresenceBroadcast, IPhotoBroadcast):
         stamped = {**data, "account_id": account_id, "account_name": account_name, "device_id": device_id}
         room.last_snapshot[device_id] = (time.monotonic(), stamped)
         for subscriber in room.subscribers:
-            if subscriber.device_id != device_id:
+            if subscriber.device_id != device_id and subscriber.listening:
                 try:
                     subscriber.queue.put_nowait(stamped)
                 except asyncio.QueueFull:

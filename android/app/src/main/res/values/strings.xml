@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="app_name">Statusphere</string>
+
+    <string name="app_tagline">See what friends are playing and doing, live</string>
+
+    <string name="join_invite">Invite code</string>
+    <string name="join_invite_hint" tools:ignore="TypographyDashes">Run sstatus --invite on a friend\'s computer</string>
+    <string name="join_paste">Paste invite code</string>
+    <string name="join_scan">Scan QR</string>
+    <string name="join_name">Your name</string>
+    <string name="join_name_hint">How friends see you. Optional</string>
+    <string name="join_button">Join room</string>
+    <string name="join_failed">Could not join: %1$s</string>
+
+    <string name="join_switch_title">Join a different room?</string>
+    <string name="join_switch_message">You\'re already in a room. Joining this one leaves it first.</string>
+    <string name="join_switch_confirm">Leave &amp; join</string>
+    <string name="action_cancel">Cancel</string>
+
+    <string name="leave_room">Leave room</string>
+    <string name="leave_room_title">Leave room?</string>
+    <string name="leave_room_message">You\'ll need a new invite to rejoin.</string>
+    <string name="leave_room_confirm">Leave</string>
+    <string name="leave_failed">Could not leave: %1$s</string>
+
+    <string name="permissions_title">Permissions</string>
+    <string name="permission_notification_access">Notification access (music)</string>
+    <string name="permission_usage_access">Usage access (current app)</string>
+    <string name="permission_post_notifications">Show notifications</string>
+    <string name="permission_battery">Unrestricted battery use</string>
+    <string name="permission_not_granted">Not granted</string>
+    <string name="permission_open">Open</string>
+
+    <string name="room_connecting">Connecting</string>
+    <string name="room_online" tools:ignore="PluralsCandidate">%1$d of %2$d online</string>
+    <string name="room_last_error">last error: %1$s</string>
+
+    <string name="widget_label">Friends</string>
+    <string name="widget_description">Who is online and what they are playing</string>
+    <string name="widget_join">Open Statusphere to join</string>
+    <string name="widget_saved_at">as of %1$s</string>
+
+    <string name="status_online">Online</string>
+    <string name="status_offline">Offline</string>
+    <string name="status_incognito">Incognito</string>
+    <string name="status_playing_game">Playing %1$s</string>
+    <string name="music_paused">Paused</string>
+
+    <string name="service_channel">Presence sharing</string>
+    <string name="service_notification_title">Sharing your presence</string>
+
+    <string name="incognito_hidden">Hidden from your room</string>
+    <string name="incognito_until">Hidden until %1$s</string>
+    <string name="incognito_pick_hint">Slide, then let go</string>
+    <string name="incognito_visible">Visible</string>
+    <string name="incognito_15m_chip">15m</string>
+    <string name="incognito_15m">15 minutes</string>
+    <string name="incognito_1h_chip">1h</string>
+    <string name="incognito_1h">1 hour</string>
+    <string name="incognito_until_turned_off">Until I say</string>
+    <string name="incognito_go">Go incognito</string>
+    <string name="incognito_go_visible">Go visible</string>
+</resources>

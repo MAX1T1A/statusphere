@@ -24,6 +24,9 @@ type PhotoInfo struct {
 // previous one. The server re-encodes/resizes it, so no client-side work beyond
 // a size cap is done here.
 func (c *Config) PostPhoto(path string) (*PhotoInfo, error) {
+	if err := c.requireRoom(); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -41,6 +44,9 @@ func (c *Config) PostPhoto(path string) (*PhotoInfo, error) {
 }
 
 func (c *Config) ListRoomPhotos() ([]PhotoInfo, error) {
+	if err := c.requireRoom(); err != nil {
+		return nil, err
+	}
 	var resp struct {
 		Photos []PhotoInfo `json:"photos"`
 	}

@@ -38,6 +38,9 @@ const (
 	KeyDiskUsedPercent = "disk_used_percent"
 	KeyDiskFreeGB      = "disk_free_gb"
 
+	KeyBatteryPercent  = "battery_percent"
+	KeyBatteryCharging = "battery_charging"
+
 	KeyActiveApp       = "active_app"
 	KeyActiveWindow    = "active_window"
 	KeyActiveWorkspace = "active_workspace"
@@ -82,6 +85,13 @@ const (
 	GameSourceSteam   = "steam"
 	GameStatusPlaying = "playing"
 )
+
+func SpotifyDisplay(artist, title string) string {
+	if artist == "" {
+		return title
+	}
+	return artist + " — " + title
+}
 
 func (s Snapshot) Kind() string {
 	if kind := s.String(KeyKind); kind != "" {

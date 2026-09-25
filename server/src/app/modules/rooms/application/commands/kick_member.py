@@ -1,7 +1,7 @@
 from typing import Callable
 
 from app.modules.rooms.application.interfaces import IMembershipReader, IRoomsUnitOfWork
-from app.modules.rooms.domain.policy import can_kick
+from app.modules.rooms.domain.policy import can_manage
 from app.shared_kernel.operation import AuthenticatedOperation
 
 
@@ -15,11 +15,14 @@ class KickMemberUseCase:
         self._uow_factory = uow_factory
 
     async def execute(self, op: KickMember) -> bool:
-        room_id = await self._reader.owned_room(op.actor.account_id)
+        if op.actor.account_id == op.target_account_id:
+            return False
+        room_id = await self._reader.managed_room(op.actor.account_id)
         if room_id is None:
             return False
-        role = await self._reader.role_of(room_id, op.target_account_id)
-        if not can_kick(op.actor.account_id, op.target_account_id, role):
+        actor_role = await self._reader.role_of(room_id, op.actor.account_id)
+        target_role = await self._reader.role_of(room_id, op.target_account_id)
+        if not can_manage(actor_role, target_role):
             return False
         async with self._uow_factory() as uow:
             await uow.memberships.remove_member(room_id, op.target_account_id)

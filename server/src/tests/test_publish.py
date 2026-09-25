@@ -85,6 +85,42 @@ async def test_subscribe_does_not_replay_a_stale_snapshot(monkeypatch):
     assert await _still_waiting(agen), "a device that stopped publishing must not look freshly online to a new joiner"
 
 
+async def test_set_listening_off_stops_snapshots_but_not_chat():
+    hub = RealtimeHub()
+    room = hub._get_or_create("room1")
+    queue = asyncio.Queue()
+    room.subscribers.append(_Subscriber(device_id="watcher", account_id="acc-2", queue=queue))
+
+    hub.set_listening("room1", "watcher", False)
+    await hub.publish("room1", "acc-1", "Max", "device-1", {"x": 1})
+    assert queue.empty(), "a paused subscriber must not receive presence snapshots"
+
+    await hub.deliver("room1", "acc-1", "Max", "", "hi", "2026-01-01T00:00:00")
+    assert queue.get_nowait()["type"] == "msg", "chat still reaches a paused subscriber"
+
+
+async def test_set_listening_on_replays_fresh_snapshots_and_skips_stale_ones(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(hubmod.time, "monotonic", lambda: now[0])
+    hub = RealtimeHub()
+    room = hub._get_or_create("room1")
+    queue = asyncio.Queue()
+    room.subscribers.append(_Subscriber(device_id="watcher", account_id="acc-2", queue=queue, listening=False))
+
+    await hub.publish("room1", "acc-1", "Max", "device-1", {"x": 1})
+    now[0] = REPLAY_MAX_AGE + 1
+    await hub.publish("room1", "acc-3", "Sam", "device-3", {"x": 2})
+
+    hub.set_listening("room1", "watcher", True)
+
+    replayed = queue.get_nowait()
+    assert replayed["device_id"] == "device-3", "only the fresh snapshot is replayed"
+    assert queue.empty(), "the stale snapshot from device-1 is skipped"
+
+    await hub.publish("room1", "acc-1", "Max", "device-1", {"x": 3})
+    assert queue.get_nowait()["x"] == 3, "publishes resume reaching the subscriber after resume"
+
+
 async def test_group_message_goes_to_everyone_incl_sender():
     hub = RealtimeHub()
     room = hub._get_or_create("r")

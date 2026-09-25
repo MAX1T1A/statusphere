@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Base.Statusphere" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.Statusphere" parent="Base.Statusphere">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+
+    <color name="window_background">#FFFEF7FF</color>
+    <color name="launcher_background">#FF3949AB</color>
+</resources>

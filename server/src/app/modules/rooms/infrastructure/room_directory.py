@@ -15,5 +15,5 @@ class RoomDirectory:
             await uow.memberships.add_member(room_id, account_id, "owner")
         return room_id
 
-    async def owned_room(self, account_id: str) -> str | None:
-        return await self._reader.owned_room(account_id)
+    async def managed_room(self, account_id: str) -> str | None:
+        return await self._reader.managed_room(account_id)

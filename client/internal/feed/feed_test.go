@@ -35,7 +35,7 @@ func TestSnapshotPrunesStale(t *testing.T) {
 	f := New()
 	f.devices["old"] = &Device{
 		Data:     presence.Snapshot{presence.KeyDeviceID: "old"},
-		LastSeen: time.Now().Add(-2 * staleTTL),
+		LastSeen: time.Now().Add(-2 * StaleTTL),
 	}
 	f.Update(presence.Snapshot{presence.KeyDeviceID: "fresh"})
 

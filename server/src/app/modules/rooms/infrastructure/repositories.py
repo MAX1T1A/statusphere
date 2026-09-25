@@ -22,3 +22,11 @@ class MembershipRepository(IMembershipRepository):
             room_id,
             account_id,
         )
+
+    async def set_role(self, room_id: str, account_id: str, role: str) -> None:
+        await self._conn.execute(
+            "UPDATE room_members SET role = $3 WHERE room_id = $1 AND account_id = $2",
+            room_id,
+            account_id,
+            role,
+        )

@@ -8,6 +8,7 @@ import (
 	"io"
 	"sync"
 
+	"statusphere-client/internal/cardlayout"
 	"statusphere-client/internal/presence"
 )
 
@@ -25,6 +26,15 @@ type PhotoOut struct {
 type payload struct {
 	Members []presence.Snapshot `json:"members"`
 	Photos  []PhotoOut          `json:"photos"`
+	Cards   []cardlayout.Card   `json:"cards"`
+}
+
+func Encode(members []presence.Snapshot, photos []PhotoOut) ([]byte, error) {
+	photoByAccount := make(map[string]string, len(photos))
+	for _, p := range photos {
+		photoByAccount[p.AccountID] = p.Path
+	}
+	return json.Marshal(payload{Members: members, Photos: photos, Cards: cardlayout.Cards(members, photoByAccount)})
 }
 
 type JSONLine struct {
@@ -53,7 +63,7 @@ func (j *JSONLine) Stop() {
 func (j *JSONLine) UpdateDevices(devices []presence.Snapshot) {
 	j.mu.Lock()
 	j.members = devices
-	data, err := json.Marshal(payload{Members: j.members, Photos: j.photos})
+	data, err := Encode(j.members, j.photos)
 	j.mu.Unlock()
 	j.emit(data, err)
 }
@@ -61,7 +71,7 @@ func (j *JSONLine) UpdateDevices(devices []presence.Snapshot) {
 func (j *JSONLine) UpdatePhotos(photos []PhotoOut) {
 	j.mu.Lock()
 	j.photos = photos
-	data, err := json.Marshal(payload{Members: j.members, Photos: j.photos})
+	data, err := Encode(j.members, j.photos)
 	j.mu.Unlock()
 	j.emit(data, err)
 }

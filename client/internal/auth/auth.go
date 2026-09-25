@@ -6,10 +6,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -19,6 +19,9 @@ import (
 const fileName = "config.json"
 
 var client = &http.Client{Timeout: 10 * time.Second}
+
+var ErrNoAccount = errors.New("no account on this device and the invite names no server")
+var ErrNoRoom = errors.New("not in a room")
 
 type Config struct {
 	ServerURL     string `json:"server_url"`
@@ -44,7 +47,7 @@ func Load() (*Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
-	if cfg.Token == "" || cfg.ServerURL == "" || cfg.RoomID == "" {
+	if cfg.Token == "" || cfg.ServerURL == "" {
 		return nil, fmt.Errorf("incomplete config")
 	}
 	return &cfg, nil
@@ -86,6 +89,12 @@ func do(method, url, token string, body, out any) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var errBody struct {
+			Detail string `json:"detail"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&errBody) == nil && errBody.Detail != "" {
+			return fmt.Errorf("%s %s: status %d: %s", method, url, resp.StatusCode, errBody.Detail)
+		}
 		return fmt.Errorf("%s %s: status %d", method, url, resp.StatusCode)
 	}
 	if out != nil {
@@ -96,6 +105,13 @@ func do(method, url, token string, body, out any) error {
 
 func (c *Config) endpoint(path string) string {
 	return strings.TrimRight(c.ServerURL, "/") + path
+}
+
+func (c *Config) requireRoom() error {
+	if c.RoomID == "" {
+		return ErrNoRoom
+	}
+	return nil
 }
 
 type accountResponse struct {
@@ -111,17 +127,12 @@ func newSecret() string {
 	return hex.EncodeToString(b)
 }
 
-func deviceName() string {
-	name, _ := os.Hostname()
-	return name
-}
-
 func Register(serverURL string) (*Config, error) {
 	serverURL = strings.TrimRight(serverURL, "/")
 	secret := newSecret()
 
 	var resp accountResponse
-	body := map[string]string{"secret": secret, "name": deviceName()}
+	body := map[string]string{"secret": secret, "name": config.DeviceName()}
 	if err := do(http.MethodPost, serverURL+"/accounts/register", "", body, &resp); err != nil {
 		return nil, fmt.Errorf("register: %w", err)
 	}
@@ -144,7 +155,7 @@ func LinkDevice(serverURL, code string) (*Config, error) {
 	serverURL = strings.TrimRight(serverURL, "/")
 
 	var resp accountResponse
-	body := map[string]string{"code": code, "name": deviceName()}
+	body := map[string]string{"code": code, "name": config.DeviceName()}
 	if err := do(http.MethodPost, serverURL+"/devices/link", "", body, &resp); err != nil {
 		return nil, fmt.Errorf("link: %w", err)
 	}
@@ -177,7 +188,7 @@ func Recover(serverURL, accountID, secret string) (*Config, error) {
 	serverURL = strings.TrimRight(serverURL, "/")
 
 	var resp accountResponse
-	body := map[string]string{"account_id": accountID, "secret": secret, "name": deviceName()}
+	body := map[string]string{"account_id": accountID, "secret": secret, "name": config.DeviceName()}
 	if err := do(http.MethodPost, serverURL+"/accounts/recover", "", body, &resp); err != nil {
 		return nil, fmt.Errorf("recover: %w", err)
 	}
@@ -197,6 +208,9 @@ func Recover(serverURL, accountID, secret string) (*Config, error) {
 }
 
 func (c *Config) Invite() (string, error) {
+	if err := c.requireRoom(); err != nil {
+		return "", err
+	}
 	var resp struct {
 		Code string `json:"code"`
 	}
@@ -218,11 +232,34 @@ func (c *Config) Join(code string) error {
 	return c.Save()
 }
 
+func JoinInvite(invite string) (cfg *Config, registered bool, err error) {
+	server, code := DecodeInvite(invite)
+
+	cfg, err = Load()
+	if err != nil || (server != "" && cfg.ServerURL != server) {
+		if server == "" {
+			return nil, false, ErrNoAccount
+		}
+		if cfg, err = Register(server); err != nil {
+			return nil, false, err
+		}
+		registered = true
+	}
+	return cfg, registered, cfg.Join(code)
+}
+
+const InviteLinkPrefix = "statusphere://join/"
+
 func EncodeInvite(serverURL, code string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(strings.TrimRight(serverURL, "/") + "\n" + code))
 }
 
+func InviteLink(serverURL, code string) string {
+	return InviteLinkPrefix + EncodeInvite(serverURL, code)
+}
+
 func DecodeInvite(s string) (serverURL, code string) {
+	s = strings.TrimPrefix(s, InviteLinkPrefix)
 	raw, err := base64.RawURLEncoding.DecodeString(s)
 	if err != nil {
 		return "", s
@@ -267,6 +304,9 @@ type MemberInfo struct {
 }
 
 func (c *Config) Members() ([]MemberInfo, error) {
+	if err := c.requireRoom(); err != nil {
+		return nil, err
+	}
 	var resp struct {
 		Members []MemberInfo `json:"members"`
 	}
@@ -282,10 +322,53 @@ func (c *Config) SetAccountName(name string) error {
 }
 
 func (c *Config) Kick(accountID string) (bool, error) {
+	if err := c.requireRoom(); err != nil {
+		return false, err
+	}
 	var resp struct {
 		OK bool `json:"ok"`
 	}
 	if err := do(http.MethodPost, c.endpoint("/rooms/kick"), c.Token, map[string]string{"account_id": accountID}, &resp); err != nil {
+		return false, err
+	}
+	return resp.OK, nil
+}
+
+// Leave keeps the account and device so a later JoinInvite reuses them.
+func (c *Config) Leave() (bool, error) {
+	if err := c.requireRoom(); err != nil {
+		return false, err
+	}
+	var resp struct {
+		OK bool `json:"ok"`
+	}
+	if err := do(http.MethodPost, c.endpoint("/rooms/leave"), c.Token, map[string]string{"room": c.RoomID}, &resp); err != nil {
+		return false, err
+	}
+	if !resp.OK {
+		return false, nil
+	}
+	c.RoomID = ""
+	return true, c.Save()
+}
+
+func (c *Config) Promote(accountID string) (bool, error) {
+	return c.setRole(accountID, "admin")
+}
+
+func (c *Config) Demote(accountID string) (bool, error) {
+	return c.setRole(accountID, "member")
+}
+
+func (c *Config) setRole(accountID, role string) (bool, error) {
+	if err := c.requireRoom(); err != nil {
+		return false, err
+	}
+	var resp struct {
+		OK bool `json:"ok"`
+	}
+	body := map[string]string{"room": c.RoomID, "account_id": accountID, "role": role}
+	if err := do(http.MethodPost, c.endpoint("/rooms/role"), c.Token, body, &resp); err != nil {
 		return false, err
 	}
 	return resp.OK, nil

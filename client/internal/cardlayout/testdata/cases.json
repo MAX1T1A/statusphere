@@ -1,0 +1,298 @@
+{
+  "music_only_phone": {
+    "members": [
+      {
+        "device_id": "p1",
+        "account_id": "anna",
+        "account_name": "Anna",
+        "device_name": "Pixel",
+        "last_seen": 1790000000,
+        "spotify_status": "playing",
+        "spotify_track": "Windowlicker",
+        "spotify_artist": "Aphex Twin",
+        "spotify_album": "Windowlicker",
+        "spotify_art_url": "https://i.scdn.co/image/ab67",
+        "spotify_display": "Aphex Twin - Windowlicker",
+        "music": "Aphex Twin - Windowlicker"
+      }
+    ]
+  },
+  "active_app_phone": {
+    "members": [
+      {
+        "device_id": "p2",
+        "account_id": "bob",
+        "account_name": "Bob",
+        "last_seen": 1790000000,
+        "active_app": "Telegram"
+      }
+    ]
+  },
+  "desktop_standard": {
+    "members": [
+      {
+        "device_id": "d1",
+        "account_id": "carl",
+        "account_name": "Carl",
+        "device_name": "arch",
+        "last_seen": 1790000000,
+        "cpu_percent": 12.6,
+        "cpu_count": 16,
+        "memory_used_mb": 21155,
+        "memory_total_mb": 31663,
+        "disk_used_percent": 71.4,
+        "disk_free_gb": 120.6,
+        "load_avg_1m": 1.234,
+        "uptime_hours": 30.5,
+        "package_count": 1432,
+        "active_app": "kitty",
+        "active_window": "nvim ~/Projects/statusphere/client/internal/cardlayout",
+        "active_workspace": 3
+      }
+    ]
+  },
+  "server_metrics_only": {
+    "members": [
+      {
+        "device_id": "s1",
+        "account_id": "srv",
+        "account_name": "box",
+        "_kind": "server",
+        "last_seen": 1790000000,
+        "cpu_percent": 3,
+        "memory_used_mb": 512,
+        "memory_total_mb": 2048,
+        "disk_used_percent": 92,
+        "disk_free_gb": 4,
+        "load_avg_1m": 0.5,
+        "uptime_hours": 0.4
+      }
+    ]
+  },
+  "custom_fields": {
+    "members": [
+      {
+        "device_id": "d2",
+        "account_id": "dana",
+        "account_name": "Dana",
+        "last_seen": 1790000000,
+        "cpu_percent": 40,
+        "uptime_hours": 100,
+        "custom_fields": ["mood", "gpu", "project", "unread", "cpu", "empty", "region"],
+        "mood": "focused",
+        "gpu": "63 %",
+        "project": "statusphere android port",
+        "unread": 7,
+        "cpu": "custom cpu loses",
+        "empty": "",
+        "region": "Berlin",
+        "region_icon": "public"
+      }
+    ]
+  },
+  "game_with_layout": {
+    "members": [
+      {
+        "device_id": "d3",
+        "account_id": "egor",
+        "account_name": "Egor",
+        "last_seen": 1790000000,
+        "game_source": "steam",
+        "game_status": "playing",
+        "game_appid": 570,
+        "game_name": "Dota 2",
+        "game_display": "Dota 2",
+        "game_header_url": "https://cdn.steam/570/header.jpg",
+        "game_hero_url": "https://cdn.steam/570/hero.jpg",
+        "game_logo_url": "https://cdn.steam/570/logo.png",
+        "cpu_percent": 55,
+        "active_app": "dota2",
+        "_layout": {
+          "updated_at": 1789990000,
+          "detail": [
+            {"type": "game", "form": "banner", "size": "4x1", "onMissing": "hide"},
+            {"type": "music", "form": "wave", "size": "4x1", "color": "primary", "onMissing": "hide"},
+            {"type": "scalar", "field": "cpu", "form": "ring", "size": "1x1", "color": "tertiaryContainer", "onMissing": "dim"},
+            {"type": "scalar", "field": "local_time", "form": "clock", "size": "1x1", "shape": "auto", "onMissing": "dim"},
+            {"type": "scalar", "field": "active_app", "form": "text", "size": "2x1"}
+          ]
+        }
+      }
+    ]
+  },
+  "layout_override": {
+    "members": [
+      {
+        "device_id": "a-desk",
+        "account_id": "fox",
+        "account_name": "Fox",
+        "last_seen": 1790000000,
+        "cpu_percent": 20,
+        "active_app": "firefox",
+        "custom_fields": ["mood", "gpu", "region"],
+        "mood": "sleepy",
+        "gpu": "80%",
+        "region": "Tbilisi",
+        "_layout": {
+          "updated_at": 1789000000,
+          "row": [{"type": "scalar", "field": "mood", "form": "big", "size": "4x1"}],
+          "detail": [{"type": "scalar", "field": "mood", "form": "text", "size": "4x1"}]
+        }
+      },
+      {
+        "device_id": "b-lap",
+        "account_id": "fox",
+        "last_seen": 1790000000,
+        "spotify_status": "playing",
+        "spotify_track": "Teardrop",
+        "spotify_artist": "Massive Attack",
+        "spotify_art_url": "https://i.scdn.co/image/tear",
+        "cpu_percent": 5,
+        "_layout": {
+          "updated_at": 1789500000,
+          "row": [
+            {"type": "music", "form": "cover", "size": "2x1", "onMissing": "hide"},
+            {"type": "photo", "size": "1x1", "onMissing": "hide"},
+            {"type": "picture", "url": "https://example.com/cat.gif", "size": "1x1", "color": "tertiary"},
+            {"type": "picture", "url": "http://insecure.example.com/x.png", "size": "1x1", "onMissing": "hide"},
+            {"type": "scalar", "field": "nothing_here", "form": "number", "size": "1x1", "onMissing": "hide"}
+          ],
+          "detail": [
+            {"type": "scalar", "field": "cpu", "form": "bar", "size": "2x1", "device": "a-desk", "color": "primaryContainer"},
+            {"type": "scalar", "field": "cpu", "form": "number", "size": "1x1", "color": "secondary"},
+            {"type": "scalar", "field": "gpu", "form": "ring", "size": "1x1", "color": "tertiaryContainer", "onMissing": "dim"},
+            {"type": "scalar", "field": "*", "form": "number", "size": "1x1", "onMissing": "dim"},
+            {"type": "scalar", "field": "weather", "form": "weather", "size": "2x1", "onMissing": "dim"},
+            {"type": "scalar", "field": "moon", "form": "moon", "size": "1x1", "onMissing": "hide"},
+            {"type": "scalar", "form": "text", "size": "1x1"},
+            {"type": "scalar", "field": "cpu", "form": "sparkline", "size": "1x1"},
+            {"type": "scalar", "field": "cpu", "size": "3x3"},
+            {"type": "hologram", "size": "1x1"},
+            "not a tile"
+          ]
+        }
+      }
+    ],
+    "photos": [
+      {"account_id": "fox", "path": "file:///tmp/fox.jpg", "created_at": "2026-09-25T11:00:00Z", "expires_at": "2026-09-26T11:00:00Z"}
+    ]
+  },
+  "empty_detail_layout_falls_back": {
+    "members": [
+      {
+        "device_id": "g1",
+        "account_id": "gleb",
+        "account_name": "Gleb",
+        "last_seen": 1790000000,
+        "cpu_percent": 90,
+        "active_app": "code",
+        "_layout": {
+          "updated_at": 1789000000,
+          "row": [],
+          "detail": [{"type": "bogus"}]
+        }
+      }
+    ]
+  },
+  "packing_overflow": {
+    "members": [
+      {
+        "device_id": "h1",
+        "account_id": "hana",
+        "account_name": "Hana",
+        "last_seen": 1790000000,
+        "cpu_percent": 33,
+        "active_app": "blender",
+        "uptime_hours": 5,
+        "_layout": {
+          "updated_at": 1789000000,
+          "row": [
+            {"type": "scalar", "field": "cpu", "form": "ring", "size": "2x2"},
+            {"type": "scalar", "field": "active_app", "form": "text", "size": "2x1"},
+            {"type": "scalar", "field": "uptime", "form": "number", "size": "1x1"},
+            {"type": "scalar", "field": "cpu", "form": "number", "size": "1x1"},
+            {"type": "scalar", "field": "active_app", "form": "text", "size": "4x1"},
+            {"type": "scalar", "field": "uptime", "form": "number", "size": "1x1"}
+          ],
+          "detail": [
+            {"type": "scalar", "field": "active_app", "form": "text", "size": "4x1"},
+            {"type": "scalar", "field": "cpu", "form": "ring", "size": "2x2"},
+            {"type": "scalar", "field": "cpu", "form": "ring", "size": "2x2"},
+            {"type": "scalar", "field": "cpu", "form": "ring", "size": "2x2"},
+            {"type": "scalar", "field": "uptime", "form": "number", "size": "4x1"},
+            {"type": "scalar", "field": "uptime", "form": "number", "size": "1x1"}
+          ]
+        }
+      }
+    ]
+  },
+  "many_fields_grow": {
+    "members": [
+      {
+        "device_id": "i1",
+        "account_id": "ivan",
+        "account_name": "Ivan",
+        "last_seen": 1790000000,
+        "cpu_percent": 71,
+        "memory_used_mb": 256,
+        "memory_total_mb": 1024,
+        "disk_used_percent": 50,
+        "load_avg_1m": 2,
+        "cpu_count": 4,
+        "uptime_hours": 72,
+        "package_count": 900,
+        "active_workspace": "2",
+        "active_app": "steam",
+        "custom_fields": ["temp", "battery"],
+        "temp": "54°C",
+        "battery": "88%"
+      }
+    ]
+  },
+  "multi_device_primary": {
+    "members": [
+      {
+        "device_id": "j-desk",
+        "account_id": "jan",
+        "account_name": "Jan",
+        "last_seen": 1790000000,
+        "cpu_percent": 10,
+        "active_app": "slack"
+      },
+      {
+        "device_id": "j-phone",
+        "account_id": "jan",
+        "last_seen": 1790000000,
+        "active_app": "Spotify",
+        "spotify_status": "playing",
+        "spotify_track": "Roygbiv",
+        "spotify_artist": "Boards of Canada",
+        "spotify_art_url": "https://i.scdn.co/image/roy",
+        "_layout": {
+          "updated_at": 1789000000,
+          "detail": [
+            {"type": "music", "form": "vinyl", "size": "2x2"},
+            {"type": "scalar", "field": "cpu", "form": "ring", "size": "1x1"},
+            {"type": "scalar", "field": "cpu", "form": "ring", "size": "1x1", "device": "j-desk"},
+            {"type": "scalar", "field": "active_app", "size": "2x1", "device": "gone"}
+          ]
+        }
+      }
+    ]
+  },
+  "offline_and_incognito": {
+    "members": [
+      {"device_id": "k1", "account_id": "kira", "account_name": "Kira", "_offline": true, "last_seen": 1780000000},
+      {
+        "device_id": "l1",
+        "account_id": "lev",
+        "account_name": "Lev",
+        "last_seen": 1790000000,
+        "_incognito": true,
+        "_incognito_note": "on a call",
+        "_layout": {"updated_at": 1789000000, "row": [{"type": "scalar", "field": "mood", "size": "1x1"}]}
+      },
+      {"device_id": "m1", "last_seen": 1790000000}
+    ]
+  }
+}

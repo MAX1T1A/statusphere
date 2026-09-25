@@ -1,9 +1,13 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from app.modules.rooms.application.commands.create_invite import CreateInvite
 from app.modules.rooms.application.commands.join_room import JoinRoom
 from app.modules.rooms.application.commands.kick_member import KickMember
+from app.modules.rooms.application.commands.leave_room import LeaveRoom
+from app.modules.rooms.application.commands.set_member_role import SetMemberRole
 from app.modules.rooms.application.queries.list_members import ListMembers
 from app.platform.web.deps import get_bus, require_actor
 from app.shared_kernel.actor import Actor
@@ -22,6 +26,16 @@ class JoinRequest(BaseModel):
 
 class KickRequest(BaseModel):
     account_id: str
+
+
+class LeaveRequest(BaseModel):
+    room: str
+
+
+class RoleRequest(BaseModel):
+    room: str
+    account_id: str
+    role: Literal["member", "admin"]
 
 
 @router.post("/invite")
@@ -51,3 +65,18 @@ async def kick(
     body: KickRequest, actor: Actor = Depends(require_actor), bus: UseCaseBus = Depends(get_bus)
 ) -> dict:
     return {"ok": await bus.dispatch(KickMember(actor=actor, target_account_id=body.account_id))}
+
+
+@router.post("/leave")
+async def leave(
+    body: LeaveRequest, actor: Actor = Depends(require_actor), bus: UseCaseBus = Depends(get_bus)
+) -> dict:
+    return {"ok": await bus.dispatch(LeaveRoom(actor=actor, room=body.room))}
+
+
+@router.post("/role")
+async def set_role(
+    body: RoleRequest, actor: Actor = Depends(require_actor), bus: UseCaseBus = Depends(get_bus)
+) -> dict:
+    op = SetMemberRole(actor=actor, room=body.room, target_account_id=body.account_id, role=body.role)
+    return {"ok": await bus.dispatch(op)}

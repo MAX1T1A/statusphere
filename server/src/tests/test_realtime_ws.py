@@ -41,9 +41,15 @@ class FakeBus:
 
 
 class FakeHub:
+    def __init__(self):
+        self.listening_calls = []
+
     async def subscribe(self, room, device_id, account_id):
         return
         yield  # pragma: no cover - makes this an async generator that never yields
+
+    def set_listening(self, room, device_id, on):
+        self.listening_calls.append((room, device_id, on))
 
 
 @dataclass
@@ -98,3 +104,22 @@ def test_accepts_valid_token_active_device_and_membership():
     with client.websocket_connect(f"/ws?room={ROOM_ID}", headers={"x-room-token": token()}) as ws:
         ws.send_text('{"app": "code"}')
         ws.close()
+
+
+def test_listen_frame_toggles_the_hub_and_is_not_ingested_as_presence():
+    app = FastAPI()
+    app.include_router(ws_router)
+    container = FakeContainer(accounts=FakeAccounts(), membership=FakeMembership())
+    app.state.container = container
+    client = TestClient(app)
+
+    with client.websocket_connect(f"/ws?room={ROOM_ID}", headers={"x-room-token": token()}) as ws:
+        ws.send_text('{"type": "listen", "on": false}')
+        ws.send_text('{"type": "listen", "on": true}')
+        ws.close()
+
+    assert container.hub.listening_calls == [
+        (ROOM_ID, DEVICE_ID, False),
+        (ROOM_ID, DEVICE_ID, True),
+    ]
+    assert container.bus.dispatched == []

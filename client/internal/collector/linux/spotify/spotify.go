@@ -2,7 +2,6 @@ package spotify
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -144,10 +143,6 @@ func (p *player) collect(ctx context.Context, snap presence.Snapshot) error {
 		}
 	}
 
-	if artist != "" {
-		snap.Set(presence.KeySpotifyDisplay, fmt.Sprintf("%s — %s", artist, title))
-	} else {
-		snap.Set(presence.KeySpotifyDisplay, title)
-	}
+	snap.Set(presence.KeySpotifyDisplay, presence.SpotifyDisplay(artist, title))
 	return nil
 }

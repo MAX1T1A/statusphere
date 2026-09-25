@@ -1,0 +1,832 @@
+{
+  "music_only_phone": [
+    {
+      "account_id": "anna",
+      "row": null,
+      "detail": []
+    }
+  ],
+  "active_app_phone": [
+    {
+      "account_id": "bob",
+      "row": null,
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "active_app",
+          "label": "App",
+          "value": "Telegram",
+          "icon": "apps"
+        }
+      ]
+    }
+  ],
+  "desktop_standard": [
+    {
+      "account_id": "carl",
+      "row": null,
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 2,
+          "rows": 2,
+          "type": "scalar",
+          "form": "ring",
+          "color": "primaryContainer",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "13%",
+          "icon": "planner_review",
+          "percent": 12.6
+        },
+        {
+          "col": 2,
+          "row": 0,
+          "cols": 2,
+          "rows": 1,
+          "type": "scalar",
+          "form": "text",
+          "color": "secondaryContainer",
+          "field": "active_window",
+          "label": "Window",
+          "value": "nvim ~/Projects/statusphere/client/internal/cardlayout",
+          "icon": "web_asset"
+        },
+        {
+          "col": 2,
+          "row": 1,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "ring",
+          "color": "tertiaryContainer",
+          "field": "mem",
+          "label": "Memory",
+          "value": "20.7/30.9G",
+          "icon": "memory",
+          "percent": 66.81299939993052
+        },
+        {
+          "col": 3,
+          "row": 1,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "ring",
+          "color": "primaryContainer",
+          "field": "disk",
+          "label": "Disk",
+          "value": "71%",
+          "note": "121G free",
+          "icon": "storage",
+          "percent": 71.4
+        },
+        {
+          "col": 0,
+          "row": 2,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "uptime",
+          "label": "Uptime",
+          "value": "31h",
+          "icon": "schedule"
+        },
+        {
+          "col": 1,
+          "row": 2,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "workspace",
+          "label": "Workspace",
+          "value": "3",
+          "icon": "desktop_windows"
+        },
+        {
+          "col": 2,
+          "row": 2,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "active_app",
+          "label": "App",
+          "value": "kitty",
+          "icon": "apps"
+        },
+        {
+          "col": 3,
+          "row": 2,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "package_count",
+          "label": "Packages",
+          "value": "1432",
+          "icon": "inventory_2"
+        },
+        {
+          "col": 0,
+          "row": 3,
+          "cols": 4,
+          "rows": 1,
+          "type": "scalar",
+          "form": "text",
+          "color": "secondaryContainer",
+          "field": "load",
+          "label": "Load",
+          "value": "1.23 / 16",
+          "icon": "speed"
+        }
+      ]
+    }
+  ],
+  "server_metrics_only": [
+    {
+      "account_id": "srv",
+      "row": null,
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 2,
+          "rows": 2,
+          "type": "scalar",
+          "form": "ring",
+          "color": "primaryContainer",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "3%",
+          "icon": "planner_review",
+          "percent": 3
+        },
+        {
+          "col": 2,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "ring",
+          "color": "tertiaryContainer",
+          "field": "mem",
+          "label": "Memory",
+          "value": "0.5/2.0G",
+          "icon": "memory",
+          "percent": 25
+        },
+        {
+          "col": 3,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "ring",
+          "color": "primaryContainer",
+          "field": "disk",
+          "label": "Disk",
+          "value": "92%",
+          "note": "4G free",
+          "icon": "storage",
+          "percent": 92
+        },
+        {
+          "col": 2,
+          "row": 1,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "load",
+          "label": "Load",
+          "value": "0.50",
+          "icon": "speed"
+        },
+        {
+          "col": 3,
+          "row": 1,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "uptime",
+          "label": "Uptime",
+          "value": "24m",
+          "icon": "schedule"
+        }
+      ]
+    }
+  ],
+  "custom_fields": [
+    {
+      "account_id": "dana",
+      "row": null,
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 2,
+          "rows": 1,
+          "type": "scalar",
+          "form": "text",
+          "color": "secondaryContainer",
+          "field": "project",
+          "label": "Project",
+          "value": "statusphere android port",
+          "icon": "terminal"
+        },
+        {
+          "col": 2,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "ring",
+          "color": "primaryContainer",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "40%",
+          "icon": "planner_review",
+          "percent": 40
+        },
+        {
+          "col": 3,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "uptime",
+          "label": "Uptime",
+          "value": "4d",
+          "icon": "schedule"
+        },
+        {
+          "col": 0,
+          "row": 1,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "mood",
+          "label": "Mood",
+          "value": "focused",
+          "icon": "mood"
+        },
+        {
+          "col": 1,
+          "row": 1,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "ring",
+          "color": "tertiaryContainer",
+          "field": "gpu",
+          "label": "Gpu",
+          "value": "63 %",
+          "icon": "deployed_code",
+          "percent": 63
+        },
+        {
+          "col": 2,
+          "row": 1,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "unread",
+          "label": "Unread",
+          "value": "7"
+        },
+        {
+          "col": 3,
+          "row": 1,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "region",
+          "label": "Region",
+          "value": "Berlin",
+          "icon": "public"
+        }
+      ]
+    }
+  ],
+  "game_with_layout": [
+    {
+      "account_id": "egor",
+      "row": null,
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 4,
+          "rows": 1,
+          "type": "game",
+          "form": "banner",
+          "title": "Dota 2",
+          "image_url": "https://cdn.steam/570/hero.jpg"
+        },
+        {
+          "col": 0,
+          "row": 1,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "ring",
+          "color": "tertiaryContainer",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "55%",
+          "icon": "planner_review",
+          "percent": 55
+        },
+        {
+          "col": 1,
+          "row": 1,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "clock",
+          "dimmed": true,
+          "field": "local_time",
+          "label": "Local Time"
+        },
+        {
+          "col": 2,
+          "row": 1,
+          "cols": 2,
+          "rows": 1,
+          "type": "scalar",
+          "form": "text",
+          "field": "active_app",
+          "label": "App",
+          "value": "dota2",
+          "icon": "apps"
+        }
+      ]
+    }
+  ],
+  "layout_override": [
+    {
+      "account_id": "fox",
+      "row": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 2,
+          "rows": 1,
+          "type": "music",
+          "form": "cover",
+          "title": "Teardrop",
+          "subtitle": "Massive Attack",
+          "image_url": "https://i.scdn.co/image/tear"
+        },
+        {
+          "col": 2,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "photo",
+          "image_url": "file:///tmp/fox.jpg"
+        },
+        {
+          "col": 3,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "picture",
+          "color": "tertiary",
+          "image_url": "https://example.com/cat.gif"
+        }
+      ],
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 2,
+          "rows": 1,
+          "type": "scalar",
+          "form": "bar",
+          "color": "primaryContainer",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "20%",
+          "icon": "planner_review",
+          "percent": 20
+        },
+        {
+          "col": 2,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondary",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "5%",
+          "icon": "planner_review",
+          "percent": 5
+        },
+        {
+          "col": 3,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "ring",
+          "color": "tertiaryContainer",
+          "dimmed": true,
+          "field": "gpu",
+          "label": "Gpu"
+        },
+        {
+          "col": 0,
+          "row": 1,
+          "cols": 2,
+          "rows": 1,
+          "type": "scalar",
+          "form": "weather",
+          "dimmed": true,
+          "field": "weather",
+          "label": "Weather"
+        }
+      ]
+    }
+  ],
+  "empty_detail_layout_falls_back": [
+    {
+      "account_id": "gleb",
+      "row": [],
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 2,
+          "rows": 2,
+          "type": "scalar",
+          "form": "ring",
+          "color": "primaryContainer",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "90%",
+          "icon": "planner_review",
+          "percent": 90
+        },
+        {
+          "col": 2,
+          "row": 0,
+          "cols": 2,
+          "rows": 2,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "active_app",
+          "label": "App",
+          "value": "code",
+          "icon": "apps"
+        }
+      ]
+    }
+  ],
+  "packing_overflow": [
+    {
+      "account_id": "hana",
+      "row": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 2,
+          "rows": 2,
+          "type": "scalar",
+          "form": "ring",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "33%",
+          "icon": "planner_review",
+          "percent": 33
+        },
+        {
+          "col": 2,
+          "row": 0,
+          "cols": 2,
+          "rows": 1,
+          "type": "scalar",
+          "form": "text",
+          "field": "active_app",
+          "label": "App",
+          "value": "blender",
+          "icon": "apps"
+        },
+        {
+          "col": 2,
+          "row": 1,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "field": "uptime",
+          "label": "Uptime",
+          "value": "5h",
+          "icon": "schedule"
+        },
+        {
+          "col": 3,
+          "row": 1,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "33%",
+          "icon": "planner_review",
+          "percent": 33
+        }
+      ],
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 4,
+          "rows": 1,
+          "type": "scalar",
+          "form": "text",
+          "field": "active_app",
+          "label": "App",
+          "value": "blender",
+          "icon": "apps"
+        },
+        {
+          "col": 0,
+          "row": 1,
+          "cols": 2,
+          "rows": 2,
+          "type": "scalar",
+          "form": "ring",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "33%",
+          "icon": "planner_review",
+          "percent": 33
+        },
+        {
+          "col": 2,
+          "row": 1,
+          "cols": 2,
+          "rows": 2,
+          "type": "scalar",
+          "form": "ring",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "33%",
+          "icon": "planner_review",
+          "percent": 33
+        },
+        {
+          "col": 0,
+          "row": 3,
+          "cols": 4,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "field": "uptime",
+          "label": "Uptime",
+          "value": "5h",
+          "icon": "schedule"
+        }
+      ]
+    }
+  ],
+  "many_fields_grow": [
+    {
+      "account_id": "ivan",
+      "row": null,
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 2,
+          "rows": 2,
+          "type": "scalar",
+          "form": "ring",
+          "color": "primaryContainer",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "71%",
+          "icon": "planner_review",
+          "percent": 71
+        },
+        {
+          "col": 2,
+          "row": 0,
+          "cols": 2,
+          "rows": 2,
+          "type": "scalar",
+          "form": "ring",
+          "color": "tertiaryContainer",
+          "field": "mem",
+          "label": "Memory",
+          "value": "0.3/1.0G",
+          "icon": "memory",
+          "percent": 25
+        },
+        {
+          "col": 0,
+          "row": 2,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "ring",
+          "color": "primaryContainer",
+          "field": "disk",
+          "label": "Disk",
+          "value": "50%",
+          "icon": "storage",
+          "percent": 50
+        },
+        {
+          "col": 1,
+          "row": 2,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "load",
+          "label": "Load",
+          "value": "2.00 / 4",
+          "icon": "speed"
+        },
+        {
+          "col": 2,
+          "row": 2,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "uptime",
+          "label": "Uptime",
+          "value": "3d",
+          "icon": "schedule"
+        },
+        {
+          "col": 3,
+          "row": 2,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "workspace",
+          "label": "Workspace",
+          "value": "2",
+          "icon": "desktop_windows"
+        },
+        {
+          "col": 0,
+          "row": 3,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "active_app",
+          "label": "App",
+          "value": "steam",
+          "icon": "apps"
+        },
+        {
+          "col": 1,
+          "row": 3,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "package_count",
+          "label": "Packages",
+          "value": "900",
+          "icon": "inventory_2"
+        },
+        {
+          "col": 2,
+          "row": 3,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "number",
+          "color": "secondaryContainer",
+          "field": "temp",
+          "label": "Temp",
+          "value": "54°C"
+        },
+        {
+          "col": 3,
+          "row": 3,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "ring",
+          "color": "tertiaryContainer",
+          "field": "battery",
+          "label": "Battery",
+          "value": "88%",
+          "percent": 88
+        }
+      ]
+    }
+  ],
+  "multi_device_primary": [
+    {
+      "account_id": "jan",
+      "row": null,
+      "detail": [
+        {
+          "col": 0,
+          "row": 0,
+          "cols": 2,
+          "rows": 2,
+          "type": "music",
+          "form": "vinyl",
+          "title": "Roygbiv",
+          "subtitle": "Boards of Canada",
+          "image_url": "https://i.scdn.co/image/roy"
+        },
+        {
+          "col": 2,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "ring",
+          "field": "cpu",
+          "label": "Cpu"
+        },
+        {
+          "col": 3,
+          "row": 0,
+          "cols": 1,
+          "rows": 1,
+          "type": "scalar",
+          "form": "ring",
+          "field": "cpu",
+          "label": "CPU",
+          "value": "10%",
+          "icon": "planner_review",
+          "percent": 10
+        },
+        {
+          "col": 2,
+          "row": 1,
+          "cols": 2,
+          "rows": 1,
+          "type": "scalar",
+          "form": "text",
+          "field": "active_app",
+          "label": "Active App"
+        }
+      ]
+    }
+  ],
+  "offline_and_incognito": [
+    {
+      "account_id": "kira",
+      "row": null,
+      "detail": []
+    },
+    {
+      "account_id": "lev",
+      "row": null,
+      "detail": []
+    },
+    {
+      "account_id": "m1",
+      "row": null,
+      "detail": []
+    }
+  ]
+}

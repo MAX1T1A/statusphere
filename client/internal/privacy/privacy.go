@@ -95,6 +95,7 @@ var (
 		presence.KeyUptimeHours, presence.KeyCPUPercent, presence.KeyCPUCount, presence.KeyMemUsedMB,
 		presence.KeyMemTotalMB, presence.KeyLoadAvg1m, presence.KeyPackageCount,
 		presence.KeyDiskUsedPercent, presence.KeyDiskFreeGB,
+		presence.KeyBatteryPercent, presence.KeyBatteryCharging,
 		presence.KeyHealth, presence.KeyHealthNote,
 	}
 
