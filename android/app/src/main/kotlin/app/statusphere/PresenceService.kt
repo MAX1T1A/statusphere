@@ -69,6 +69,7 @@ class PresenceService : Service() {
     private val screenOn = MutableStateFlow(false)
     private lateinit var music: MusicTracker
     private lateinit var apps: ForegroundAppTracker
+    private lateinit var battery: BatteryTracker
     private val session = MutableStateFlow<Session?>(null)
 
     private val screenReceiver = object : BroadcastReceiver() {
@@ -98,6 +99,7 @@ class PresenceService : Service() {
         startInForeground()
         music = MusicTracker(this) { track -> snapshot.update { it.copy(music = track) } }
         apps = ForegroundAppTracker(this)
+        battery = BatteryTracker(this) { level -> snapshot.update { it.copy(battery = level) } }
         screenOn.value = getSystemService(PowerManager::class.java).isInteractive
         val screenEvents = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
@@ -110,6 +112,7 @@ class PresenceService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         music.start()
+        battery.start()
         val action = intent?.action
         if (action == ACTION_GO_INCOGNITO || action == ACTION_GO_VISIBLE) {
             val on = action == ACTION_GO_INCOGNITO
@@ -123,6 +126,7 @@ class PresenceService : Service() {
         scope.cancel()
         unregisterReceiver(screenReceiver)
         music.stop()
+        battery.stop()
         session.value?.let { thread(name = "session_stop") { it.stop() } }
         session.value = null
         mutableStatus.update { it.copy(room = null, me = null) }

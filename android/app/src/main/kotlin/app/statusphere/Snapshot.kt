@@ -17,8 +17,10 @@ data class Music(
 
 data class ForegroundApp(val label: String, val packageName: String)
 
+data class Battery(val percent: Int, val charging: Boolean)
+
 // Field names must match phoneSnapshot in client/mobile/snapshot.go.
-data class PhoneSnapshot(val music: Music? = null, val app: ForegroundApp? = null) {
+data class PhoneSnapshot(val music: Music? = null, val app: ForegroundApp? = null, val battery: Battery? = null) {
     fun toJson(): String = JSONObject().apply {
         music?.let {
             put("music", JSONObject().apply {
@@ -37,6 +39,12 @@ data class PhoneSnapshot(val music: Music? = null, val app: ForegroundApp? = nul
                 put("package", it.packageName)
             })
         }
+        battery?.let {
+            put("battery", JSONObject().apply {
+                put("percent", it.percent)
+                put("charging", it.charging)
+            })
+        }
     }.toString()
 }
 
@@ -51,7 +59,19 @@ sealed interface Presence {
 // Wire names must match client/internal/cardlayout/cardlayout.go.
 enum class TileType(val wire: String) { SCALAR("scalar"), MUSIC("music"), GAME("game"), PHOTO("photo"), PICTURE("picture") }
 
-enum class ScalarForm(val wire: String) { RING("ring"), BAR("bar"), NUMBER("number"), TEXT("text") }
+enum class ScalarForm(val wire: String) {
+    RING("ring"),
+    DIAL("dial"),
+    BAR("bar"),
+    NUMBER("number"),
+    TEXT("text"),
+    BIG("big"),
+    CLOCK("clock"),
+    WEATHER("weather"),
+    WEATHER_LIVE("weatherLive"),
+    MOON("moon"),
+    SUN("sun"),
+}
 
 enum class TileColor(val wire: String) {
     PRIMARY("primary"),
@@ -75,6 +95,8 @@ data class Tile(
     val dimmed: Boolean,
     val label: String,
     val value: String,
+    val note: String,
+    val icon: String,
     val percent: Float?,
     val title: String,
     val subtitle: String,
@@ -198,6 +220,8 @@ private fun tileOf(tile: JSONObject): Tile = Tile(
     dimmed = tile.optBoolean("dimmed"),
     label = tile.optString("label"),
     value = tile.optString("value"),
+    note = tile.optString("note"),
+    icon = tile.optString("icon"),
     percent = if (tile.has("percent")) tile.optDouble("percent").toFloat() else null,
     title = tile.optString("title"),
     subtitle = tile.optString("subtitle"),
