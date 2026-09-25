@@ -6,7 +6,13 @@ import android.graphics.BitmapFactory
 import android.os.SystemClock
 import android.util.Log
 import android.util.LruCache
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -105,6 +111,10 @@ private val WaveLength = 28.dp
 private val WaveSampleStep = 2.dp
 
 private const val OFFLINE_ALPHA = 0.6f
+private val CardSectionGap = 16.dp
+private const val DETAIL_ANIMATION_MS = 250
+private val DetailEnter = expandVertically(tween(DETAIL_ANIMATION_MS, easing = FastOutSlowInEasing), expandFrom = Alignment.Top) + fadeIn(tween(DETAIL_ANIMATION_MS))
+private val DetailExit = shrinkVertically(tween(DETAIL_ANIMATION_MS, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top) + fadeOut(tween(DETAIL_ANIMATION_MS / 2))
 private const val PAUSED_ART_ALPHA = 0.5f
 private const val MIN_BANNER_ASPECT = 2f
 private const val WAVE_PERIOD_MS = 7000
@@ -208,7 +218,7 @@ private fun AccountCard(account: Account, pickable: Boolean, pinned: Boolean, on
                 },
             ),
     ) {
-        Column(Modifier.animateContentSize().padding(CardPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(CardPadding)) {
             IncognitoHeader(pickable, AvatarSize, onIncognito, avatar = { Avatar(account) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -270,15 +280,23 @@ private fun AccountCard(account: Account, pickable: Boolean, pinned: Boolean, on
                     )
                 }
             }
-            if (card.row != null) {
-                if (card.row.isNotEmpty()) TileGrid(card.row, Modifier.padding(top = 8.dp))
-            } else if (presence is Presence.Online && (presence.game != null || presence.music != null)) {
-                Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    presence.game?.let { GameBanner(it) }
-                    presence.music?.let { MusicCard(it) }
+            Column(Modifier.animateContentSize()) {
+                if (card.row != null) {
+                    if (card.row.isNotEmpty()) TileGrid(card.row, Modifier.padding(top = CardSectionGap))
+                } else if (presence is Presence.Online && (presence.game != null || presence.music != null)) {
+                    Column(Modifier.padding(top = CardSectionGap), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        presence.game?.let { GameBanner(it) }
+                        presence.music?.let { MusicCard(it) }
+                    }
                 }
             }
-            if (detailShown && card.detail.isNotEmpty()) TileGrid(card.detail, Modifier.padding(top = 8.dp))
+            AnimatedVisibility(
+                visible = detailShown && card.detail.isNotEmpty(),
+                enter = DetailEnter,
+                exit = DetailExit,
+            ) {
+                TileGrid(card.detail, Modifier.padding(top = CardSectionGap))
+            }
         }
     }
     if (renaming) RenameDialog(account.name) { renaming = false }

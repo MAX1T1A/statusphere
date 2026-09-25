@@ -46,7 +46,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 
 const val TAG = "Statusphere"
 
@@ -316,18 +315,6 @@ class PresenceService : Service() {
 
         suspend fun setName(context: Context, name: String): Result<Unit> = withContext(Dispatchers.IO) {
             runCatching { Mobile.open(baseDir(context)).setName(name) }
-        }
-
-        suspend fun packChoices(surface: String): Result<PackChoices> = withContext(Dispatchers.IO) {
-            runCatching {
-                val s = runningSession()
-                val ids = listOf(Mobile.DefaultPack) + JSONArray(Mobile.packs(surface)).strings()
-                PackChoices(s.activePack(surface), ids.map { PackChoice(it, parseCard(s.previewCard(surface, it))) })
-            }
-        }
-
-        suspend fun setPack(surface: String, id: String): Result<Unit> = withContext(Dispatchers.IO) {
-            runCatching { runningSession().setPack(surface, id) }
         }
 
         suspend fun customTiles(surface: String): Result<CustomTiles> = withContext(Dispatchers.IO) {

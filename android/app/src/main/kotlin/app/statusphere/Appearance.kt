@@ -28,9 +28,9 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -44,13 +44,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.statusphere.mobile.Mobile
-import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
-
-data class PackChoice(val id: String, val preview: Card)
-
-data class PackChoices(val active: String, val packs: List<PackChoice>)
 
 data class TileKind(val kind: String, val forms: List<String>, val sizes: List<String>)
 
@@ -94,16 +89,6 @@ private enum class CardSurface(val wire: String, @StringRes val title: Int) {
     DETAIL(Mobile.DetailSurface, R.string.appearance_detail),
 }
 
-private val PACK_NAMES = mapOf(
-    Mobile.DefaultPack to R.string.pack_default,
-    "cover" to R.string.pack_cover,
-    "vinyl" to R.string.pack_vinyl,
-    "minimal" to R.string.pack_minimal,
-    "music" to R.string.pack_music,
-    "dashboard" to R.string.pack_dashboard,
-    "compact" to R.string.pack_compact,
-)
-
 private val KIND_NAMES = mapOf(
     "music" to R.string.tile_kind_music,
     "video" to R.string.tile_kind_video,
@@ -135,19 +120,8 @@ private const val DISABLED_ALPHA = 0.38f
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppearanceSheet(onDismiss: () -> Unit) {
-    val scope = rememberCoroutineScope()
     var surface by rememberSaveable { mutableStateOf(CardSurface.ROW) }
-    var editing by rememberSaveable(surface) { mutableStateOf(false) }
-    var choices by remember { mutableStateOf<PackChoices?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(surface, editing) {
-        choices = null
-        if (editing) return@LaunchedEffect
-        PresenceService.packChoices(surface.wire)
-            .onSuccess { choices = it }
-            .onFailure { error = it.message ?: it.javaClass.simpleName }
-    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         PrimaryTabRow(selectedTabIndex = surface.ordinal) {
@@ -166,38 +140,7 @@ fun AppearanceSheet(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.error,
                 )
             }
-            if (editing) {
-                CustomEditor(surface, onBack = { editing = false }, onError = { error = it })
-            } else choices?.let { current ->
-                current.packs.forEach { pack ->
-                    PackOption(surface, pack, selected = pack.id == current.active) {
-                        error = null
-                        scope.launch {
-                            PresenceService.setPack(surface.wire, pack.id)
-                                .onSuccess { choices = current.copy(active = pack.id) }
-                                .onFailure { error = it.message ?: it.javaClass.simpleName }
-                        }
-                    }
-                }
-                CustomOption(selected = current.active == Mobile.CustomPack) { editing = true }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PackOption(surface: CardSurface, pack: PackChoice, selected: Boolean, onPick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        onClick = onPick,
-        shape = CardShape,
-        color = colors.surfaceContainerLow,
-        border = if (selected) BorderStroke(2.dp, colors.primary) else null,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(CardPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(PACK_NAMES[pack.id]?.let { stringResource(it) } ?: pack.id, style = MaterialTheme.typography.bodyLarge)
-            SurfacePreview(surface, pack.preview)
+            key(surface) { CustomEditor(surface, onError = { error = it }) }
         }
     }
 }
@@ -214,24 +157,7 @@ private fun SurfacePreview(surface: CardSurface, card: Card) {
 }
 
 @Composable
-private fun CustomOption(selected: Boolean, onPick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        onClick = onPick,
-        shape = CardShape,
-        color = colors.surfaceContainerLow,
-        border = if (selected) BorderStroke(2.dp, colors.primary) else null,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(CardPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.pack_custom), style = MaterialTheme.typography.bodyLarge)
-            PackNote(R.string.pack_custom_note)
-        }
-    }
-}
-
-@Composable
-private fun CustomEditor(surface: CardSurface, onBack: () -> Unit, onError: (String) -> Unit) {
+private fun CustomEditor(surface: CardSurface, onError: (String) -> Unit) {
     var kinds by remember { mutableStateOf<List<TileKind>>(emptyList()) }
     var chosen by remember { mutableStateOf<List<CustomTile>?>(null) }
     var preview by remember { mutableStateOf<CustomPreview?>(null) }
@@ -255,7 +181,6 @@ private fun CustomEditor(surface: CardSurface, onBack: () -> Unit, onError: (Str
         PresenceService.saveCustomSoon(surface.wire, next)
     }
 
-    TextButton(onClick = onBack) { Text(stringResource(R.string.pack_custom_back)) }
     val shown = preview ?: return
     val current = shown.tiles
     val placed = shown.fit.tiles.indices.filter { shown.fit.tiles[it].placed }
