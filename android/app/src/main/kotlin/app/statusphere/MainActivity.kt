@@ -2,6 +2,7 @@ package app.statusphere
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -219,6 +220,13 @@ private fun PermissionsChecklist() {
             PermissionRow(R.string.permission_notification_access, permissions.notificationAccess) {
                 openSettings(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
             }
+            if (!permissions.notificationAccess && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                RestrictedSettingsHint {
+                    context.startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+                    )
+                }
+            }
             PermissionRow(R.string.permission_usage_access, permissions.usageAccess) {
                 openSettings(Settings.ACTION_USAGE_ACCESS_SETTINGS)
             }
@@ -229,6 +237,23 @@ private fun PermissionsChecklist() {
                 openSettings(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
             }
         }
+    }
+}
+
+@Composable
+private fun RestrictedSettingsHint(onOpenAppInfo: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            stringResource(R.string.permission_restricted_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onOpenAppInfo) { Text(stringResource(R.string.permission_app_info)) }
     }
 }
 

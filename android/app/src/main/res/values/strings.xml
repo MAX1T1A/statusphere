@@ -31,6 +31,8 @@
     <string name="permission_battery">Unrestricted battery use</string>
     <string name="permission_not_granted">Not granted</string>
     <string name="permission_open">Open</string>
+    <string name="permission_restricted_hint">Switch greyed out or \"App was denied access\"? Open App info, tap ⋮ and choose \"Allow restricted settings\", then try again.</string>
+    <string name="permission_app_info">App info</string>
 
     <string name="room_connecting">Connecting</string>
     <string name="room_online" tools:ignore="PluralsCandidate">%1$d of %2$d online</string>
