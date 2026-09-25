@@ -12,8 +12,13 @@ import kotlin.time.Duration.Companion.seconds
 class ForegroundAppTracker(private val context: Context) {
     private val usageStats = context.getSystemService(UsageStatsManager::class.java)
     private val packageManager = context.packageManager
+    private val launcherPackage by lazy {
+        packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)
+            ?.activityInfo?.packageName
+    }
     private var queriedUntil = 0L
     private var latestPackage: String? = null
+    private var latestApp: ForegroundApp? = null
 
     fun current(): ForegroundApp? {
         val now = System.currentTimeMillis()
@@ -21,8 +26,9 @@ class ForegroundAppTracker(private val context: Context) {
         latestResumedPackage(from, now)?.let { latestPackage = it }
         queriedUntil = now
         val pkg = latestPackage ?: return null
-        if (pkg == context.packageName || pkg == launcherPackage()) return null
-        return ForegroundApp(label = labelOf(pkg), packageName = pkg)
+        if (pkg == context.packageName || pkg == launcherPackage) return null
+        if (pkg != latestApp?.packageName) latestApp = ForegroundApp(label = labelOf(pkg), packageName = pkg)
+        return latestApp
     }
 
     private fun latestResumedPackage(from: Long, to: Long): String? {
@@ -35,10 +41,6 @@ class ForegroundAppTracker(private val context: Context) {
         }
         return latest
     }
-
-    private fun launcherPackage(): String? = packageManager
-        .resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)
-        ?.activityInfo?.packageName
 
     private fun labelOf(pkg: String): String = try {
         packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()

@@ -11,8 +11,16 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val MEETING_LOOKAHEAD: Duration = Duration.ofHours(24)
+private val ONCHANGE_DEBOUNCE: Duration = Duration.ofMillis(300)
 private const val PREF_MEETING_ENABLED = "meeting_enabled"
 
 object MeetingSettings {
@@ -28,13 +36,22 @@ class MeetingTracker(private val context: Context, private val onChange: (Instan
     private val mainHandler = Handler(Looper.getMainLooper())
     private var started = false
     private var boundary: Runnable? = null
+    private var debounced: Runnable? = null
+    private var scope: CoroutineScope? = null
+    private var queryJob: Job? = null
 
     private val observer = object : ContentObserver(mainHandler) {
-        override fun onChange(selfChange: Boolean) = publish()
+        override fun onChange(selfChange: Boolean) {
+            debounced?.let(mainHandler::removeCallbacks)
+            val runnable = Runnable(::publish)
+            debounced = runnable
+            mainHandler.postDelayed(runnable, ONCHANGE_DEBOUNCE.toMillis())
+        }
     }
 
     fun start() {
         if (started || !MeetingSettings.isEnabled(context) || !hasPermission()) return
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         context.contentResolver.registerContentObserver(CalendarContract.Instances.CONTENT_URI, true, observer)
         started = true
         publish()
@@ -45,6 +62,12 @@ class MeetingTracker(private val context: Context, private val onChange: (Instan
         context.contentResolver.unregisterContentObserver(observer)
         boundary?.let(mainHandler::removeCallbacks)
         boundary = null
+        debounced?.let(mainHandler::removeCallbacks)
+        debounced = null
+        queryJob?.cancel()
+        queryJob = null
+        scope?.cancel()
+        scope = null
         started = false
     }
 
@@ -60,13 +83,16 @@ class MeetingTracker(private val context: Context, private val onChange: (Instan
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
 
     private fun publish() {
-        val now = Instant.now()
-        val instances = queryInstances(now)
-        val current = instances.filter { !it.begin.isAfter(now) && it.end.isAfter(now) }
-        val until = current.maxOfOrNull { it.end }
-        onChange(until)
-        val next = instances.filter { it.begin.isAfter(now) }.minOfOrNull { it.begin }
-        scheduleBoundary(until ?: next)
+        queryJob?.cancel()
+        queryJob = scope?.launch {
+            val now = Instant.now()
+            val instances = withContext(Dispatchers.IO) { queryInstances(now) }
+            val current = instances.filter { !it.begin.isAfter(now) && it.end.isAfter(now) }
+            val until = current.maxOfOrNull { it.end }
+            onChange(until)
+            val next = instances.filter { it.begin.isAfter(now) }.minOfOrNull { it.begin }
+            scheduleBoundary(until ?: next)
+        }
     }
 
     private fun scheduleBoundary(at: Instant?) {

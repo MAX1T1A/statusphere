@@ -84,6 +84,8 @@ private val MinDialWaveAmplitude = 1.5.dp
 private const val DIAL_WAVE_LENGTH_FRACTION = 0.12f
 private val MinDialWaveLength = 12.dp
 private const val DIAL_WAVE_PERIOD_MS = 2000
+private const val DIAL_WAVE_MIN_STEPS = 20
+private const val DIAL_WAVE_DEGREES_PER_STEP = 2f
 
 private val ValueSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 40.sp)
 private val SentenceSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 28.sp)
@@ -144,7 +146,7 @@ private fun TileSurface(tile: Tile, modifier: Modifier) {
                 TileType.VIDEO -> VideoTile(tile, inset)
                 TileType.ALARM -> AlarmTile(tile, inset)
                 TileType.MEETING -> MeetingTile(tile, inset)
-                TileType.GAME, TileType.PHOTO, TileType.PICTURE -> PictureTile(tile, inset)
+                TileType.GAME, TileType.PHOTO, TileType.PICTURE -> PictureTile(tile, inset, max(maxWidth, maxHeight))
                 TileType.SCALAR, null -> when (tile.form) {
                     ScalarForm.RING -> RingTile(tile, inset)
                     ScalarForm.DIAL -> DialTile(tile, inset)
@@ -274,6 +276,7 @@ private fun DialTile(tile: Tile, modifier: Modifier) = RingLikeTile(tile, modifi
 private fun RingLikeTile(tile: Tile, modifier: Modifier, wavy: Boolean) {
     val content = LocalContentColor.current
     val wavePhase = if (wavy) dialWavePhase() else null
+    val wavePath = remember { Path() }
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         val diameter = min(maxWidth, maxHeight)
         val stroke = max(MinRingStroke, diameter * RING_STROKE_FRACTION)
@@ -289,7 +292,7 @@ private fun RingLikeTile(tile: Tile, modifier: Modifier, wavy: Boolean) {
                 val amplitude = kotlin.math.max(MinDialWaveAmplitude.toPx(), size.minDimension * DIAL_WAVE_AMPLITUDE_FRACTION)
                 val waveLength = kotlin.math.max(MinDialWaveLength.toPx(), size.minDimension * DIAL_WAVE_LENGTH_FRACTION)
                 val radius = (size.minDimension - width) / 2
-                val path = dialWavePath(center, radius, amplitude, waveLength, tile.fraction, wavePhase())
+                val path = dialWavePath(wavePath, center, radius, amplitude, waveLength, tile.fraction, wavePhase())
                 drawPath(path, content, style = Stroke(width, cap = StrokeCap.Round))
             }
         }
@@ -313,11 +316,11 @@ private fun dialWavePhase(): () -> Float {
 
 // Ported from WavyRing.qml's PathPolyline: an arc from -90deg whose radius is
 // modulated by a travelling sine wave, tapered to the plain radius at both ends.
-private fun dialWavePath(center: Offset, radius: Float, amplitude: Float, waveLength: Float, fraction: Float, phase: Float): Path {
+private fun dialWavePath(path: Path, center: Offset, radius: Float, amplitude: Float, waveLength: Float, fraction: Float, phase: Float): Path {
     val degree = 360f * fraction.coerceIn(0f, 1f)
-    val path = Path()
+    path.reset()
     if (degree <= 0f) return path
-    val steps = kotlin.math.max(20, (degree * 1.5f).roundToInt())
+    val steps = kotlin.math.max(DIAL_WAVE_MIN_STEPS, (degree / DIAL_WAVE_DEGREES_PER_STEP).roundToInt())
     val waveFrequency = 2 * PI.toFloat() * radius / waveLength
     for (i in 0..steps) {
         val currentDeg = -90f + degree * i / steps
@@ -393,7 +396,7 @@ private fun CoverTile(tile: Tile, modifier: Modifier) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         val side = min(maxHeight, maxWidth * COVER_ART_FRACTION)
         Row(Modifier.fillMaxSize(), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
-            rememberArt(tile.imageUrl)?.let {
+            rememberArt(tile.imageUrl, side)?.let {
                 Image(
                     it.asImageBitmap(),
                     contentDescription = null,
@@ -485,8 +488,8 @@ private fun MeetingTile(tile: Tile, modifier: Modifier) {
 }
 
 @Composable
-private fun PictureTile(tile: Tile, modifier: Modifier) {
-    val art = rememberArt(tile.imageUrl)
+private fun PictureTile(tile: Tile, modifier: Modifier, size: Dp) {
+    val art = rememberArt(tile.imageUrl, size)
     if (art != null) {
         Image(
             art.asImageBitmap(),

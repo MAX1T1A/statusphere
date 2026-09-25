@@ -21,6 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
@@ -64,24 +65,30 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.sin
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 internal val CardShape = RoundedCornerShape(17.dp)
 internal val CardPadding = 12.dp
@@ -95,6 +102,7 @@ private val ProgressStroke = 4.dp
 private val ProgressGap = 4.dp
 private val WaveAmplitude = 3.dp
 private val WaveLength = 28.dp
+private val WaveSampleStep = 2.dp
 
 private const val OFFLINE_ALPHA = 0.6f
 private const val PAUSED_ART_ALPHA = 0.5f
@@ -377,17 +385,19 @@ internal fun Presence.statusLine(resources: Resources): String = when (this) {
 
 @Composable
 private fun GameBanner(game: Game) {
-    val art = rememberArt(game.artUrl) ?: return
-    Image(
-        art.asImageBitmap(),
-        contentDescription = game.name,
-        contentScale = ContentScale.Crop,
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(max(art.width.toFloat() / art.height, MIN_BANNER_ASPECT))
-            .clip(CardShape)
-            .background(MaterialTheme.colorScheme.surfaceContainer),
-    )
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val art = rememberArt(game.artUrl, maxWidth) ?: return@BoxWithConstraints
+        Image(
+            art.asImageBitmap(),
+            contentDescription = game.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(max(art.width.toFloat() / art.height, MIN_BANNER_ASPECT))
+                .clip(CardShape)
+                .background(MaterialTheme.colorScheme.surfaceContainer),
+        )
+    }
 }
 
 @Composable
@@ -400,7 +410,7 @@ private fun MusicCard(music: Music) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            rememberArt(music.artUrl)?.let {
+            rememberArt(music.artUrl, MusicArtSize)?.let {
                 Image(
                     it.asImageBitmap(),
                     contentDescription = music.album.ifEmpty { null },
@@ -466,6 +476,7 @@ internal fun WavyProgress(
     track: Color = MaterialTheme.colorScheme.secondaryContainer,
 ) {
     val phase = if (wavy) wavePhase() else null
+    val wavePath = remember { Path() }
     Canvas(modifier.height(WaveAmplitude * 2 + ProgressStroke)) {
         val stroke = ProgressStroke.toPx()
         val mid = size.height / 2
@@ -475,7 +486,7 @@ internal fun WavyProgress(
         if (phase == null) {
             drawLine(active, Offset(start, mid), Offset(split, mid), stroke, StrokeCap.Round)
         } else {
-            drawPath(wave(start, split, mid, phase()), active, style = Stroke(stroke, cap = StrokeCap.Round))
+            drawPath(wave(wavePath, start, split, mid, phase()), active, style = Stroke(stroke, cap = StrokeCap.Round))
         }
         val trackStart = split + ProgressGap.toPx() + stroke
         if (trackStart < stop) drawLine(track, Offset(trackStart, mid), Offset(stop, mid), stroke, StrokeCap.Round)
@@ -494,45 +505,68 @@ private fun wavePhase(): () -> Float {
     return { phase }
 }
 
-private fun DrawScope.wave(start: Float, stop: Float, mid: Float, phase: Float): Path {
+private fun DrawScope.wave(path: Path, start: Float, stop: Float, mid: Float, phase: Float): Path {
     val amplitude = WaveAmplitude.toPx()
     val length = WaveLength.toPx()
-    val step = 1.dp.toPx()
-    return Path().apply {
-        var x = start
-        while (x <= stop) {
-            val y = mid + amplitude * sin(2 * PI * ((x - start) / length - phase)).toFloat()
-            if (x == start) moveTo(x, y) else lineTo(x, y)
-            x += step
-        }
+    val step = WaveSampleStep.toPx()
+    path.reset()
+    var x = start
+    while (x <= stop) {
+        val y = mid + amplitude * sin(2 * PI * ((x - start) / length - phase)).toFloat()
+        if (x == start) path.moveTo(x, y) else path.lineTo(x, y)
+        x += step
     }
+    return path
 }
 
-private object ArtCache : LruCache<String, Bitmap>(ART_CACHE_BYTES) {
-    override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+private data class ArtKey(val url: String, val maxDimensionPx: Int)
+
+private object ArtCache : LruCache<ArtKey, Bitmap>(ART_CACHE_BYTES) {
+    override fun sizeOf(key: ArtKey, value: Bitmap): Int = value.byteCount
 }
+
+private val artFetchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+private val artRequests = ConcurrentHashMap<ArtKey, Deferred<Bitmap?>>()
 
 @Composable
-internal fun rememberArt(url: String): Bitmap? {
-    val art by produceState(ArtCache.get(url), url) {
+internal fun rememberArt(url: String, maxSize: Dp): Bitmap? {
+    val key = ArtKey(url, with(LocalDensity.current) { maxSize.roundToPx() })
+    val art by produceState(ArtCache.get(key), key) {
         if (value != null || !url.startsWith("https://")) return@produceState
-        value = withContext(Dispatchers.IO) {
-            runCatching { fetchArt(url) }
-                .onSuccess { ArtCache.put(url, it) }
-                .onFailure { Log.w(TAG, "art_fetch_failed url=$url detail=${it.message}") }
-                .getOrNull()
-        }
+        value = fetchArtDeduped(key).await()
     }
     return art
 }
 
-private fun fetchArt(url: String): Bitmap {
+private fun fetchArtDeduped(key: ArtKey): Deferred<Bitmap?> =
+    artRequests.computeIfAbsent(key) {
+        artFetchScope.async { fetchArt(key) }
+            .also { deferred -> deferred.invokeOnCompletion { artRequests.remove(key, deferred) } }
+    }
+
+private fun fetchArt(key: ArtKey): Bitmap? = runCatching {
+    val (url, maxDimensionPx) = key
     val connection = URL(url).openConnection() as HttpURLConnection
     connection.connectTimeout = ART_TIMEOUT.inWholeMilliseconds.toInt()
     connection.readTimeout = ART_TIMEOUT.inWholeMilliseconds.toInt()
-    try {
-        return connection.inputStream.use { BitmapFactory.decodeStream(it) } ?: error("undecodable image")
+    val bytes = try {
+        connection.inputStream.use { it.readBytes() }
     } finally {
         connection.disconnect()
     }
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    val options = BitmapFactory.Options().apply { inSampleSize = artSampleSize(bounds.outWidth, bounds.outHeight, maxDimensionPx) }
+    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: error("undecodable image")
+    ArtCache.put(key, bitmap)
+    bitmap
+}.onFailure { Log.w(TAG, "art_fetch_failed url=${key.url} detail=${it.message}") }.getOrNull()
+
+private fun artSampleSize(width: Int, height: Int, maxDimensionPx: Int): Int {
+    val target = maxDimensionPx.coerceAtLeast(1)
+    var sampleSize = 1
+    while (width / (sampleSize * 2) >= target && height / (sampleSize * 2) >= target) {
+        sampleSize *= 2
+    }
+    return sampleSize
 }

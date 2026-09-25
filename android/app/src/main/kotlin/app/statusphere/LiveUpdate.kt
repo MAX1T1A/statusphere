@@ -12,6 +12,7 @@ import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 
 private const val LIVE_CHANNEL_ID = "pinned_friend"
@@ -26,34 +27,51 @@ fun clearLiveNotification(context: Context) {
     NotificationManagerCompat.from(context).cancel(LIVE_NOTIFICATION_ID)
 }
 
+private data class RenderedLiveNotification(
+    val name: String,
+    val activityText: String,
+    val activityShort: String,
+    val canPromote: Boolean,
+)
+
 suspend fun mirrorPinnedToNotification(context: Context, status: Flow<PresenceStatus>) {
     combine(PresenceService.pinned, status.mapNotNull { it.room }) { pinnedId, room ->
         pinnedId?.let { id -> room.find { it.id == id } }
-    }.distinctUntilChanged().collect { account -> updateLiveNotification(context, account) }
+    }.map { account -> account?.let { it.render(context) } }
+        .distinctUntilChanged()
+        .collect { rendered -> updateLiveNotification(context, rendered) }
 }
 
-private fun updateLiveNotification(context: Context, account: Account?) {
-    if (account == null) {
+private fun Account.render(context: Context): RenderedLiveNotification {
+    val canPromote = presence is Presence.Online &&
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA &&
+        NotificationManagerCompat.from(context).canPostPromotedNotifications()
+    return RenderedLiveNotification(
+        name = name,
+        activityText = activityText(presence, context.resources),
+        activityShort = activityShort(presence, context.resources),
+        canPromote = canPromote,
+    )
+}
+
+private fun updateLiveNotification(context: Context, rendered: RenderedLiveNotification?) {
+    if (rendered == null) {
         clearLiveNotification(context)
         return
     }
-    val presence = account.presence
     val openApp = PendingIntent.getActivity(
         context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
     )
     val builder = NotificationCompat.Builder(context, LIVE_CHANNEL_ID)
         .setSmallIcon(R.drawable.ic_presence)
-        .setContentTitle(account.name)
-        .setContentText(activityText(presence, context.resources))
+        .setContentTitle(rendered.name)
+        .setContentText(rendered.activityText)
         .setContentIntent(openApp)
         .setOngoing(true)
         .setOnlyAlertOnce(true)
 
-    val canPromote = presence is Presence.Online &&
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA &&
-        NotificationManagerCompat.from(context).canPostPromotedNotifications()
-    if (canPromote) {
-        builder.setRequestPromotedOngoing(true).setShortCriticalText(activityShort(presence, context.resources))
+    if (rendered.canPromote) {
+        builder.setRequestPromotedOngoing(true).setShortCriticalText(rendered.activityShort)
     }
 
     NotificationManagerCompat.from(context).notify(LIVE_NOTIFICATION_ID, builder.build())
