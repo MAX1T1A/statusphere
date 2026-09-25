@@ -47,6 +47,8 @@ var (
 	membersFlag   = flag.Bool("members", false, "List members of your room")
 	kickFlag      = flag.String("kick", "", "Remove a member by <account_id>")
 	leaveFlag     = flag.Bool("leave", false, "Leave the room you're in, keeping your account")
+	promoteFlag   = flag.String("promote", "", "Grant admin rights to a member by <account_id>")
+	demoteFlag    = flag.String("demote", "", "Revoke admin rights from a member by <account_id>")
 	setNameFlag   = flag.String("set-name", "", "Set your account's display name")
 	postPhotoFlag = flag.String("post-photo", "", "Share <path> as your current photo status, replacing any previous one")
 
@@ -163,6 +165,30 @@ func dispatch() error {
 				return fmt.Errorf("cannot leave %s: you're the owner or not a member", room)
 			}
 			fmt.Printf("Left room %s\n", room)
+			return nil
+		})
+	case *promoteFlag != "":
+		return withConfig(func(c *auth.Config) error {
+			ok, err := c.Promote(*promoteFlag)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("cannot grant admin to %s", *promoteFlag)
+			}
+			fmt.Printf("%s is now an admin\n", *promoteFlag)
+			return nil
+		})
+	case *demoteFlag != "":
+		return withConfig(func(c *auth.Config) error {
+			ok, err := c.Demote(*demoteFlag)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("cannot revoke admin from %s", *demoteFlag)
+			}
+			fmt.Printf("%s is no longer an admin\n", *demoteFlag)
 			return nil
 		})
 	default:

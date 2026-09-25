@@ -160,11 +160,12 @@ type menuItem struct {
 	desc   string
 }
 
-func (m model) isOwner() bool {
+func (m model) isManager() bool {
 	for _, g := range m.groups {
 		for _, d := range g.devices {
 			if d.String(presence.KeyAccountID) == m.chat.localID {
-				return d.String(presence.KeyRole) == "owner"
+				role := d.String(presence.KeyRole)
+				return role == "owner" || role == "admin"
 			}
 		}
 	}
@@ -352,7 +353,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mode = modeView
 			m.menuIndex = int(m.panel)
 		case "x", "ч":
-			if m.isOwner() {
+			if m.isManager() {
 				if peer := m.focusedDevice().String(presence.KeyAccountID); peer != "" &&
 					peer != m.chat.localID && m.focusedDevice().String(presence.KeyRole) != "owner" {
 					m.confirmKick = peer
@@ -1273,7 +1274,7 @@ func (m model) footer() string {
 		hint += accentStyle.Render("tab") + dimStyle.Render(" chat · ")
 	}
 	hint += accentStyle.Render("v") + dimStyle.Render(" panel · ") + accentStyle.Render("s") + dimStyle.Render(" settings · ")
-	if peer := m.focusedDevice(); m.isOwner() && peer.String(presence.KeyRole) != "owner" &&
+	if peer := m.focusedDevice(); m.isManager() && peer.String(presence.KeyRole) != "owner" &&
 		peer.String(presence.KeyAccountID) != "" && peer.String(presence.KeyAccountID) != m.chat.localID {
 		hint += accentStyle.Render("x") + dimStyle.Render(" remove · ")
 	}
